@@ -352,6 +352,10 @@ document.getElementById("serviceForm").addEventListener("submit", async (e)=>{
   const status=document.getElementById("formStatus");
   if(!firebaseReady){status.textContent="Firebase není nastavený.";return;}
   if(!currentUser){status.textContent="Nejdřív se přihlaš jako technik.";return;}
+  if (!currentUser.email.endsWith("@astip.cz")) {
+  status.textContent = "Nemáš oprávnění ukládat záznamy. Použij firemní účet.";
+  return;
+}
   if(!selectedSite){status.textContent="Není vybrané místo.";return;}
 
   status.textContent="Ukládám záznam…";
