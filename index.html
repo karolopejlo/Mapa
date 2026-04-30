@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"/>
+<title>Servisní mapa FZ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+<style>
+:root{
+  --red:#dc2626;--orange:#f97316;--yellow:#eab308;--green:#16a34a;--blue:#2563eb;
+  --bg:#f8fafc;--card:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;color:var(--text);background:var(--bg)}
+.app{display:grid;grid-template-columns:390px 1fr;height:100vh}
+aside{overflow:auto;background:var(--card);border-right:1px solid var(--border);padding:16px}
+#map{height:100vh;width:100%}
+h1{margin:0 0 6px;font-size:20px}
+h2{font-size:18px;margin:0 0 10px}
+h3{font-size:15px;margin:12px 0 8px}
+.small{color:var(--muted);font-size:13px;line-height:1.35}
+.notice{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:10px;font-size:13px;line-height:1.35;margin:10px 0}
+.ok{background:#ecfdf5;border-color:#bbf7d0;color:#166534}
+.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+input,select,button,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:white;font-size:14px}
+textarea{min-height:82px;resize:vertical}
+button{cursor:pointer;font-weight:700}
+button:disabled{opacity:.55;cursor:not-allowed}
+.primary{background:var(--blue);color:white;border-color:var(--blue)}
+.secondary{background:#f1f5f9}
+.danger{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.stat{border:1px solid var(--border);border-radius:14px;padding:10px;background:white}
+.stat b{display:block;font-size:21px}
+.stat span{color:var(--muted);font-size:12px}
+.legend{display:grid;gap:6px;margin:10px 0;font-size:13px}
+.legend div{display:flex;gap:8px;align-items:center}
+.dot{width:13px;height:13px;border-radius:50%;display:inline-block;border:2px solid white;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.list{display:grid;gap:8px;margin-top:10px}
+.item{border:1px solid var(--border);border-radius:14px;padding:10px;background:white;cursor:pointer}
+.item:hover{background:#eff6ff;border-color:#93c5fd}
+.item-title{font-weight:700;font-size:13px;margin-bottom:4px}
+.item-meta{font-size:12px;color:var(--muted);line-height:1.35}
+.pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
+.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef9c3;color:#854d0e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
+.drawer{position:fixed;right:0;top:0;height:100vh;width:min(580px,100vw);background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 35px rgba(15,23,42,.18);z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
+.drawer.open{transform:translateX(0)}
+.drawer-head{display:flex;gap:8px;justify-content:space-between;align-items:flex-start}
+.x{width:auto;padding:6px 10px}
+.card{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;margin:10px 0}
+table{border-collapse:collapse;font-size:13px;width:100%}
+td{padding:4px 0;vertical-align:top}
+td:first-child{color:var(--muted);width:145px;padding-right:8px}
+.history-item{border:1px solid var(--border);border-radius:12px;padding:10px;margin:8px 0;background:#fff}
+.link-list a{display:block;overflow-wrap:anywhere;margin:4px 0}
+@media(max-width:850px){
+  .app{grid-template-columns:1fr;grid-template-rows:44vh 56vh}
+  #map{height:44vh}
+  aside{order:2;border-right:0;border-top:1px solid var(--border)}
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+<aside>
+  <h1>Servisní mapa FZ</h1>
+  <p class="small">GitHub Pages + Firebase Auth + Firestore. Bez Firebase Storage / Blaze. Fotky zatím jako odkazy.</p>
+
+  <div id="firebaseBox" class="notice err">
+    Firebase config zatím není doplněný v index.html.
+  </div>
+
+  <div class="row">
+    <button class="primary" id="loginBtn">Přihlásit technika</button>
+    <button class="secondary" id="logoutBtn">Odhlásit</button>
+  </div>
+  <p id="userBox" class="small">Nepřihlášeno</p>
+
+  <div id="gpsBox" class="notice">Načítám data…</div>
+  <button class="secondary" id="exportBtn">Exportovat CSV s GPS</button>
+  <p id="progress" class="small"></p>
+
+  <label>Hledat</label>
+  <input id="search" placeholder="adresa, zdroj, kontakt..."/>
+
+  <div class="row">
+    <div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div>
+    <div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div>
+  </div>
+
+  <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
+
+  <div class="stats">
+    <div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div>
+    <div class="stat"><b id="gpsCount">0</b><span>s GPS</span></div>
+  </div>
+
+  <div class="legend">
+    <div><span class="dot" style="background:var(--red)"></span> Po termínu / méně než 7 dní</div>
+    <div><span class="dot" style="background:var(--orange)"></span> 7-30 dní</div>
+    <div><span class="dot" style="background:var(--yellow)"></span> 30-60 dní</div>
+    <div><span class="dot" style="background:var(--green)"></span> Více než 60 dní</div>
+  </div>
+
+  <div id="list" class="list"></div>
+</aside>
+<div id="map"></div>
+</div>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div>
+      <h2 id="detailTitle">Detail místa</h2>
+      <p id="detailSub" class="small"></p>
+    </div>
+    <button class="secondary x" id="closeDrawer">Zavřít</button>
+  </div>
+
+  <div class="card">
+    <h3>Informace o místě</h3>
+    <table id="detailTable"></table>
+  </div>
+
+  <div class="card">
+    <h3>Nový servisní záznam</h3>
+    <form id="serviceForm">
+      <input type="hidden" id="siteId"/>
+      <label>Datum kontroly</label>
+      <input type="date" id="checkDate" required/>
+
+      <label>Technik</label>
+      <input id="technician" placeholder="Jméno technika" required/>
+
+      <label>Výsledek kontroly</label>
+      <select id="result" required>
+        <option value="OK">OK</option>
+        <option value="Závada">Závada</option>
+        <option value="Doporučená oprava">Doporučená oprava</option>
+        <option value="Neprovedeno">Neprovedeno</option>
+      </select>
+
+      <div class="row">
+        <div><label>Stav AKU</label><input id="batteryState" placeholder="např. OK / špatné"/></div>
+        <div><label>Naměřené hodnoty</label><input id="measurements" placeholder="např. 52.8 V"/></div>
+      </div>
+
+      <label>Závady / zjištění</label>
+      <textarea id="issues" placeholder="Popis závad nebo zjištění"></textarea>
+
+      <label>Doporučení</label>
+      <textarea id="recommendation" placeholder="Doporučená oprava / další postup"></textarea>
+
+      <label>Odkazy na fotky</label>
+      <textarea id="photoLinks" placeholder="Vlož odkazy na fotky z Google Drive / OneDrive, každý odkaz na nový řádek"></textarea>
+      <p class="small">Bez Blaze nejde nahrávat fotky přímo do Firebase Storage. Zatím ukládáme odkazy.</p>
+
+      <label>Podpis / jméno zákazníka</label>
+      <input id="customerSign" placeholder="Jméno, případně podpis textem"/>
+
+      <button class="primary" type="submit" style="margin-top:12px">Uložit servisní záznam</button>
+      <p id="formStatus" class="small"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Historie záznamů</h3>
+    <div id="history" class="small">Zatím nenačteno.</div>
+  </div>
+</div>
+
+<script type="module">
+/*
+  DOPLŇ SEM FIREBASE CONFIG:
+  Firebase Console -> Project settings -> Your apps -> Astip-mapa -> SDK setup and configuration -> Config
+*/
+const firebaseConfig = {
+  apiKey: "VLOZIT_API_KEY",
+  authDomain: "VLOZIT_AUTH_DOMAIN",
+  projectId: "VLOZIT_PROJECT_ID",
+  storageBucket: "VLOZIT_STORAGE_BUCKET",
+  messagingSenderId: "VLOZIT_MESSAGING_SENDER_ID",
+  appId: "VLOZIT_APP_ID"
+};
+
+const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
+
+let app, auth, db;
+let fb = {};
+let currentUser = null;
+
+if (firebaseReady) {
+  const appMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
+  const authMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
+  const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
+
+  fb = { appMod, authMod, fsMod };
+  app = appMod.initializeApp(firebaseConfig);
+  auth = authMod.getAuth(app);
+  db = fsMod.getFirestore(app);
+
+  document.getElementById("firebaseBox").className = "notice ok";
+  document.getElementById("firebaseBox").innerHTML = "Firebase je nastavený. Přihlas technika a můžeš ukládat servisní záznamy.";
+
+  authMod.onAuthStateChanged(auth, user => {
+    currentUser = user;
+    document.getElementById("userBox").textContent = user ? `Přihlášen: ${user.email}` : "Nepřihlášeno";
+  });
+}
+
+const CSV_FILE = "data.csv";
+const GPS_STORAGE_KEY = "fz_gps_cache_v1";
+
+function safe(v){return String(v ?? "").trim();}
+function parseNum(v){
+  if(v===null||v===undefined||v==="") return null;
+  const s = String(v).trim().replace(",", ".");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+function escapeHtml(s){return String(s ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
+function get(row, name){
+  if(!row) return "";
+  if(row[name] !== undefined) return row[name];
+  const wanted = String(name).replace(/^\uFEFF/, "").trim().toLowerCase();
+  for(const key of Object.keys(row)){
+    const cleaned = String(key).replace(/^\uFEFF/, "").trim().toLowerCase();
+    if(cleaned === wanted) return row[key];
+  }
+  return "";
+}
+function idFor(row,i){
+  const raw=[safe(get(row,"Řádek v původním Excelu")),safe(get(row,"Adresa / umístění")),safe(get(row,"Zdroj"))].join("|");
+  return btoa(unescape(encodeURIComponent(raw))).replaceAll("=","") || String(i);
+}
+function loadCache(){try{return JSON.parse(localStorage.getItem(GPS_STORAGE_KEY)||"{}");}catch{return {};}}
+function saveCache(c){localStorage.setItem(GPS_STORAGE_KEY,JSON.stringify(c));}
+
+let gpsCache=loadCache(), originalData=[], rows=[], selectedSite=null;
+const map=L.map("map").setView([49.8,15.5],7);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+let layer=L.layerGroup().addTo(map), markerById=new Map();
+
+function normalize(data){
+  return data.map((r,i)=>{
+    const id=idFor(r,i), c=gpsCache[id];
+    let lat=parseNum(get(r,"GPS_lat")), lon=parseNum(get(r,"GPS_lon"));
+    if((!Number.isFinite(lat)||!Number.isFinite(lon))&&c){lat=c.lat;lon=c.lon;}
+    return {
+      id,i,raw:r,
+      kraj:safe(get(r,"Kraj")),
+      adresa:safe(get(r,"Adresa / umístění")),
+      zdroj:safe(get(r,"Zdroj")),
+      kontakt:safe(get(r,"Kontakt")),
+      posledni:safe(get(r,"Poslední proběhlá kontrola")),
+      pristi:safe(get(r,"Příští plánovaná kontrola")),
+      dni:safe(get(r,"Dní do kontroly")),
+      stav:safe(get(r,"Stav pro mapu")),
+      barva:safe(get(r,"Barva bodu")),
+      poznamky:safe(get(r,"Poznámky")),
+      lat,lon
+    };
+  });
+}
+function hasGps(r){return Number.isFinite(r.lat)&&Number.isFinite(r.lon);}
+function color(r){
+  const b=r.barva.toLowerCase();
+  if(b.includes("červen")||b.includes("cerven"))return "#dc2626";
+  if(b.includes("oran"))return "#f97316";
+  if(b.includes("žlut")||b.includes("zlut"))return "#eab308";
+  if(b.includes("zelen"))return "#16a34a";
+  const d=Number(r.dni);
+  if(!Number.isFinite(d)||d<7)return "#dc2626";
+  if(d<30)return "#f97316";
+  if(d<60)return "#eab308";
+  return "#16a34a";
+}
+function pillClass(r){const c=color(r); if(c==="#dc2626")return"red"; if(c==="#f97316")return"orange"; if(c==="#eab308")return"yellow"; if(c==="#16a34a")return"green"; return"gray";}
+function currentFilter(){return{q:safe(document.getElementById("search").value).toLowerCase(),s:safe(document.getElementById("statusFilter").value),k:safe(document.getElementById("regionFilter").value)};}
+function filtered(){const f=currentFilter(); return rows.filter(r=>{if(f.s&&r.stav!==f.s)return false;if(f.k&&r.kraj!==f.k)return false;if(f.q){const hay=[r.adresa,r.zdroj,r.kontakt,r.kraj,r.stav,r.poznamky].join(" ").toLowerCase(); if(!hay.includes(f.q))return false;} return true;});}
+
+function render(){
+  layer.clearLayers(); markerById.clear();
+  const visible=filtered(), withGps=visible.filter(hasGps);
+  withGps.forEach(r=>{
+    const m=L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.9})
+      .bindPopup(`<b>${escapeHtml(r.adresa)}</b><br>${escapeHtml(r.zdroj)}<br><button onclick="window.openSiteDetail('${r.id}')">Otevřít detail / formulář</button>`)
+      .addTo(layer);
+    markerById.set(r.id,m);
+  });
+
+  const list=document.getElementById("list"); list.innerHTML="";
+  visible.slice().sort((a,b)=>{const da=Number(a.dni),db=Number(b.dni);return(Number.isFinite(da)?da:999999)-(Number.isFinite(db)?db:999999);}).slice(0,120).forEach(r=>{
+    const div=document.createElement("div"); div.className="item";
+    div.innerHTML=`<div class="item-title">${escapeHtml(r.adresa||r.zdroj||"Bez názvu")}</div>
+      <div class="item-meta">${escapeHtml(r.zdroj)}<br>Příští kontrola: <b>${escapeHtml(r.pristi||"není vyplněno")}</b>${r.dni ? " · "+escapeHtml(r.dni)+" dní" : ""}</div>
+      <span class="pill ${pillClass(r)}">${escapeHtml(r.stav||r.barva||"bez stavu")}</span>`;
+    div.onclick=()=>openSiteDetail(r.id);
+    list.appendChild(div);
+  });
+
+  document.getElementById("shownCount").textContent=String(visible.length);
+  document.getElementById("gpsCount").textContent=String(rows.filter(hasGps).length);
+  const missing=rows.filter(r=>!hasGps(r)).length, box=document.getElementById("gpsBox");
+  if(missing){box.className="notice";box.innerHTML=`Chybí GPS u <b>${missing}</b> záznamů. Nahraj data.csv s GPS nebo použij export z geokodéru.`;}
+  else{box.className="notice ok";box.innerHTML="GPS jsou doplněné pro všechny dostupné záznamy.";}
+}
+function populateFilters(){
+  document.getElementById("statusFilter").innerHTML='<option value="">Vše</option>';
+  document.getElementById("regionFilter").innerHTML='<option value="">Vše</option>';
+  [...new Set(rows.map(r=>r.stav).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;document.getElementById("statusFilter").appendChild(o);});
+  [...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;document.getElementById("regionFilter").appendChild(o);});
+}
+function fit(){const pts=filtered().filter(hasGps).map(r=>[r.lat,r.lon]); if(pts.length)map.fitBounds(pts,{padding:[30,30]});}
+
+window.openSiteDetail = async function(siteId){
+  const r=rows.find(x=>x.id===siteId); if(!r)return;
+  selectedSite=r;
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("detailTitle").textContent=r.adresa || "Detail místa";
+  document.getElementById("detailSub").textContent=r.zdroj;
+  document.getElementById("siteId").value=r.id;
+  document.getElementById("technician").value=currentUser?.displayName || currentUser?.email || "";
+  document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
+  document.getElementById("detailTable").innerHTML=`
+    <tr><td>Kraj</td><td>${escapeHtml(r.kraj)}</td></tr>
+    <tr><td>Kontakt</td><td>${escapeHtml(r.kontakt)}</td></tr>
+    <tr><td>Poslední kontrola</td><td>${escapeHtml(r.posledni)}</td></tr>
+    <tr><td>Příští kontrola</td><td><b>${escapeHtml(r.pristi)}</b></td></tr>
+    <tr><td>Stav</td><td>${escapeHtml(r.stav)}</td></tr>
+    <tr><td>Poznámky</td><td>${escapeHtml(r.poznamky)}</td></tr>
+    <tr><td>GPS</td><td>${hasGps(r) ? r.lat.toFixed(6)+", "+r.lon.toFixed(6) : "chybí"}</td></tr>
+    <tr><td>ID místa</td><td>${escapeHtml(r.id)}</td></tr>`;
+  await loadHistory(r.id);
+};
+
+async function loadHistory(siteId){
+  const history=document.getElementById("history");
+  if(!firebaseReady){history.textContent="Firebase není nastavený, historie se nenačte."; return;}
+  history.textContent="Načítám historii…";
+  try{
+    const {collection, query, where, orderBy, getDocs} = fb.fsMod;
+    const q=query(collection(db,"serviceRecords"), where("siteId","==",siteId), orderBy("createdAt","desc"));
+    const snap=await getDocs(q);
+    if(snap.empty){history.textContent="Zatím žádný servisní záznam."; return;}
+    history.innerHTML="";
+    snap.forEach(docSnap=>{
+      const d=docSnap.data();
+      const links=(d.photoLinks||[]).map(u=>`<a href="${escapeHtml(u)}" target="_blank">${escapeHtml(u)}</a>`).join("");
+      const div=document.createElement("div"); div.className="history-item";
+      div.innerHTML=`<b>${escapeHtml(d.checkDate||"bez data")} - ${escapeHtml(d.result||"")}</b><br>
+        Technik: ${escapeHtml(d.technician||"")}<br>
+        AKU: ${escapeHtml(d.batteryState||"")}<br>
+        Měření: ${escapeHtml(d.measurements||"")}<br>
+        Závady: ${escapeHtml(d.issues||"")}<br>
+        Doporučení: ${escapeHtml(d.recommendation||"")}<br>
+        Podpis: ${escapeHtml(d.customerSign||"")}<br>
+        <div class="link-list">${links}</div>`;
+      history.appendChild(div);
+    });
+  }catch(e){history.textContent="Chyba načtení historie: "+e.message;}
+}
+
+function csvEscape(v){const s=String(v??""); return /[",\n;]/.test(s) ? '"' + s.replaceAll('"','""') + '"' : s;}
+function exportCsv(){
+  const headers=Object.keys(originalData[0]||{}); if(!headers.includes("GPS_lat"))headers.push("GPS_lat"); if(!headers.includes("GPS_lon"))headers.push("GPS_lon");
+  const lines=[headers.map(csvEscape).join(";")];
+  rows.forEach(r=>{const obj={...r.raw,GPS_lat:hasGps(r)?r.lat:"",GPS_lon:hasGps(r)?r.lon:""}; lines.push(headers.map(h=>csvEscape(obj[h])).join(";"));});
+  const blob=new Blob(["\ufeff"+lines.join("\n")],{type:"text/csv;charset=utf-8"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="data_s_GPS.csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+document.getElementById("serviceForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const status=document.getElementById("formStatus");
+  if(!firebaseReady){status.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){status.textContent="Nejdřív se přihlaš jako technik.";return;}
+  if(!selectedSite){status.textContent="Není vybrané místo.";return;}
+
+  status.textContent="Ukládám záznam…";
+  try{
+    const {collection, addDoc, serverTimestamp} = fb.fsMod;
+    const photoLinks = document.getElementById("photoLinks").value
+      .split(/\n+/).map(x=>x.trim()).filter(Boolean);
+
+    await addDoc(collection(db,"serviceRecords"),{
+      siteId:selectedSite.id,
+      siteAddress:selectedSite.adresa,
+      siteSource:selectedSite.zdroj,
+      siteRegion:selectedSite.kraj,
+      technician:document.getElementById("technician").value,
+      technicianEmail:currentUser.email,
+      checkDate:document.getElementById("checkDate").value,
+      result:document.getElementById("result").value,
+      batteryState:document.getElementById("batteryState").value,
+      measurements:document.getElementById("measurements").value,
+      issues:document.getElementById("issues").value,
+      recommendation:document.getElementById("recommendation").value,
+      customerSign:document.getElementById("customerSign").value,
+      photoLinks,
+      createdAt:serverTimestamp()
+    });
+    status.textContent="Uloženo.";
+    e.target.reset();
+    document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
+    await loadHistory(selectedSite.id);
+  }catch(err){status.textContent="Chyba uložení: "+err.message;}
+});
+
+document.getElementById("loginBtn").onclick=async()=>{
+  if(!firebaseReady){alert("Nejdřív doplň Firebase konfiguraci v index.html.");return;}
+  const {GoogleAuthProvider, signInWithPopup} = fb.authMod;
+  await signInWithPopup(auth,new GoogleAuthProvider());
+};
+document.getElementById("logoutBtn").onclick=async()=>{if(firebaseReady) await fb.authMod.signOut(auth);};
+document.getElementById("closeDrawer").onclick=()=>document.getElementById("drawer").classList.remove("open");
+document.getElementById("search").addEventListener("input",render);
+document.getElementById("statusFilter").addEventListener("change",render);
+document.getElementById("regionFilter").addEventListener("change",render);
+document.getElementById("fitBtn").addEventListener("click",fit);
+document.getElementById("exportBtn").addEventListener("click",exportCsv);
+
+Papa.parse(CSV_FILE,{
+  download:true,
+  header:true,
+  skipEmptyLines:true,
+  delimiter:"",
+  transformHeader: h => String(h).replace(/^\uFEFF/, "").trim(),
+  complete:results=>{
+    if(results.errors && results.errors.length){
+      console.warn("CSV parse warnings:", results.errors);
+    }
+    originalData=results.data.filter(r => Object.values(r).some(v => String(v ?? "").trim() !== ""));
+    rows=normalize(originalData);
+    populateFilters();
+    render();
+    fit();
+
+    const withGps = rows.filter(hasGps).length;
+    document.getElementById("progress").textContent =
+      `Načteno ${rows.length} řádků, s GPS ${withGps}.`;
+  },
+  error:err=>{document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+err;}
+});
+</script>
+</body>
+</html>
