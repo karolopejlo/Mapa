@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Servisní mapa FZ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a}
+.app{display:grid;grid-template-columns:390px 1fr;height:100vh}
+aside{overflow:auto;background:white;padding:16px;border-right:1px solid #e2e8f0}
+#map{height:100vh;width:100%;background:#e5e7eb}
+h1{font-size:20px;margin:0 0 6px}.small{font-size:13px;color:#64748b}
+.notice{border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px;margin:10px 0;font-size:13px}
+.ok{border-color:#bbf7d0;background:#ecfdf5;color:#166534}
+input,select,button,textarea{width:100%;padding:9px 10px;border:1px solid #e2e8f0;border-radius:10px;background:white;font-size:14px}
+button{font-weight:700;cursor:pointer}.primary{background:#2563eb;color:white;border-color:#2563eb}.secondary{background:#f1f5f9}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.stat{border:1px solid #e2e8f0;border-radius:14px;padding:10px}.stat b{font-size:22px;display:block}
+.legend{display:grid;gap:6px;margin:10px 0;font-size:13px}.legend div{display:flex;gap:8px;align-items:center}
+.dot{width:13px;height:13px;border-radius:50%;display:inline-block;border:2px solid white;box-shadow:0 0 0 1px #999}
+.item{border:1px solid #e2e8f0;border-radius:14px;padding:10px;background:white;cursor:pointer;margin-bottom:8px}
+.item-title{font-weight:700;font-size:13px}.item-meta{font-size:12px;color:#64748b;line-height:1.35}
+.pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
+.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef9c3;color:#854d0e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
+.drawer{position:fixed;right:0;top:0;height:100vh;width:min(680px,100vw);background:#fff;border-left:1px solid #e2e8f0;box-shadow:-10px 0 35px #0003;z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
+.drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between;gap:10px}.x{width:auto}
+.card{border:1px solid #e2e8f0;border-radius:14px;padding:12px;background:#fff;margin:10px 0}
+table{border-collapse:collapse;font-size:13px;width:100%}td{padding:5px 0;border-bottom:1px solid #f1f5f9;vertical-align:top}
+td:first-child{font-weight:700;color:#334155;width:190px;padding-right:8px}td:nth-child(2){word-break:break-word}
+</style>
+</head>
+<body>
+<div class="app"><aside>
+<h1>Servisní mapa FZ</h1><p class="small">Data se načítají z <b>data.csv</b>.</p>
+<div id="firebaseBox" class="notice">Firebase formuláře jsou v této verzi vypnuté / připravené na doplnění configu.</div>
+<div id="gpsBox" class="notice">Načítám data…</div>
+<p id="progress" class="small"></p>
+<label>Hledat</label><input id="search" placeholder="název, adresa, zdroj, kontakt...">
+<div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
+<button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
+<div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat"><b id="gpsCount">0</b><span>s GPS</span></div></div>
+<div class="legend">
+<div><span class="dot" style="background:#dc2626"></span> Po termínu / méně než 7 dní</div>
+<div><span class="dot" style="background:#f97316"></span> 7–30 dní</div>
+<div><span class="dot" style="background:#eab308"></span> 30–60 dní</div>
+<div><span class="dot" style="background:#16a34a"></span> Více než 60 dní</div>
+</div><div id="list"></div>
+</aside><div id="map"></div></div>
+
+<div class="drawer" id="drawer"><div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
+<div class="card"><h3>Veškerá data z Excelu</h3><table id="detailTable"></table></div></div>
+
+<script>
+const CSV_FILE="data.csv";
+let rows=[];
+const map=L.map("map").setView([49.9,15.5],7);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+function safe(v){return String(v??"").trim()}
+function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+function num(v){if(v===null||v===undefined||v==="")return null;const n=Number(String(v).trim().replace(",","."));return Number.isFinite(n)?n:null}
+function get(r,n){if(r[n]!==undefined)return r[n];const w=String(n).replace(/^\uFEFF/,"").trim().toLowerCase();for(const k of Object.keys(r)){if(String(k).replace(/^\uFEFF/,"").trim().toLowerCase()===w)return r[k]}return""}
+function first(r,a){for(const n of a){const v=safe(get(r,n));if(v)return v}return""}
+function inCzSk(r){return Number.isFinite(r.lat)&&Number.isFinite(r.lon)&&r.lat>=47&&r.lat<=51.5&&r.lon>=12&&r.lon<=23}
+function rawGps(r){return Number.isFinite(r.lat)&&Number.isFinite(r.lon)}
+function color(r){const b=safe(r.barva).toLowerCase();if(b.includes("červen")||b.includes("cerven"))return"#dc2626";if(b.includes("oran"))return"#f97316";if(b.includes("žlut")||b.includes("zlut"))return"#eab308";if(b.includes("zelen"))return"#16a34a";const d=Number(String(r.dni).replace(",","."));if(!Number.isFinite(d))return"#64748b";if(d<7)return"#dc2626";if(d<30)return"#f97316";if(d<60)return"#eab308";return"#16a34a"}
+function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":c==="#16a34a"?"green":"gray"}
+function norm(data){return data.map((raw,i)=>({i,raw,lat:num(get(raw,"GPS_lat")),lon:num(get(raw,"GPS_lon")),adresa:first(raw,["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"]),zdroj:first(raw,["Popis_zdroje","Zdroj","Jaký zdroj"]),kontakt:first(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]),kraj:first(raw,["Kraj"]),poznamky:first(raw,["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"]),pristi:first(raw,["Příští plánovaná kontrola","Příští_kontrola"]),posledni:first(raw,["Poslední proběhlá kontrola","Poslední_kontrola"]),dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),stav:first(raw,["Stav pro mapu","Stav_kontroly"]),barva:first(raw,["Barva bodu","Barva_bodu"])}))}
+function filtered(){const q=safe(document.getElementById("search").value).toLowerCase(),s=safe(document.getElementById("statusFilter").value),k=safe(document.getElementById("regionFilter").value);return rows.filter(r=>{if(s&&r.stav!==s)return false;if(k&&r.kraj!==k)return false;if(q&&!([r.adresa,r.zdroj,r.kontakt,r.kraj,r.stav,r.poznamky].join(" ").toLowerCase().includes(q)))return false;return true})}
+function render(){layer.clearLayers();const vis=filtered(),gps=vis.filter(inCzSk);gps.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.92}).bindPopup(`<b>${esc(r.adresa||"Bez názvu")}</b><br>${esc(r.zdroj)}<br><button onclick="openDetail(${r.i})">Detail</button>`).addTo(layer));const list=document.getElementById("list");list.innerHTML="";vis.slice().sort((a,b)=>(Number(a.dni)||999999)-(Number(b.dni)||999999)).slice(0,140).forEach(r=>{const d=document.createElement("div");d.className="item";d.innerHTML=`<div class="item-title">${esc(r.adresa||"Bez názvu")}</div><div class="item-meta">${esc(r.zdroj)}<br>Příští kontrola: <b>${esc(r.pristi||"není vyplněno")}</b></div><span class="pill ${pill(r)}">${esc(r.stav||"bez stavu")}</span>`;d.onclick=()=>openDetail(r.i);list.appendChild(d)});document.getElementById("shownCount").textContent=vis.length;document.getElementById("gpsCount").textContent=rows.filter(inCzSk).length;const missing=rows.length-rows.filter(rawGps).length,ignored=rows.filter(rawGps).length-rows.filter(inCzSk).length;const box=document.getElementById("gpsBox");box.className=(missing||ignored)?"notice":"notice ok";box.innerHTML=(missing||ignored)?`Chybí GPS u <b>${missing}</b> záznamů. Ignorováno mimo ČR/SR: <b>${ignored}</b>.`:"GPS jsou doplněné a body mimo ČR/SR jsou vyčištěné."}
+function filters(){for(const [id,vals] of [["statusFilter",[...new Set(rows.map(r=>r.stav).filter(Boolean))].sort()],["regionFilter",[...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort()]]){const el=document.getElementById(id);el.innerHTML='<option value="">Vše</option>';vals.forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;el.appendChild(o)})}}
+function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
+function detailTable(r){const raw=r.raw, priority=["Název","Adresa_GPS","Umístění","Umístění zdroje","Kraj","Popis_zdroje","Jaký zdroj","Zdroj","Kontakt_mapy","Hlavní kontakt","Kontakt","Poznámky_mapy","Poznámky","Cena FZ v Kč","Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby","Poslední_kontrola","Příští_kontrola","Dní_do_kontroly","Stav_kontroly","Barva_bodu","Všechny_termíny","GPS_lat","GPS_lon","GPS_status","GPS_nalezeno_jako","GPS_poznámka"];const used=new Set(),out=[];function add(k){if(!k||used.has(k)||raw[k]===undefined)return;const v=safe(raw[k]);if(!v||k==="GPS_raw")return;used.add(k);out.push(`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`)}priority.forEach(add);Object.keys(raw).forEach(add);return out.join("")||"<tr><td>Data</td><td>Bez dalších údajů</td></tr>"}
+window.openDetail=function(i){const r=rows[Number(i)];if(!r)return;document.getElementById("drawer").classList.add("open");document.getElementById("detailTitle").textContent=r.adresa||"Bez názvu";document.getElementById("detailSub").textContent=r.zdroj||"";document.getElementById("detailTable").innerHTML=detailTable(r)}
+document.getElementById("closeDrawer").onclick=()=>document.getElementById("drawer").classList.remove("open");
+document.getElementById("search").addEventListener("input",render);document.getElementById("statusFilter").addEventListener("change",render);document.getElementById("regionFilter").addEventListener("change",render);document.getElementById("fitBtn").addEventListener("click",fit);
+Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:res=>{rows=norm(res.data.filter(r=>Object.values(r).some(v=>safe(v)!=="")));filters();render();fit();document.getElementById("progress").textContent=`Načteno ${rows.length} řádků.`},error:e=>{document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+e}});
+</script>
+</body>
+</html>
