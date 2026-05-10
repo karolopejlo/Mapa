@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Servisní mapa FZ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+:root{--red:#dc2626;--orange:#f97316;--green:#16a34a;--gray:#64748b;--blue:#2563eb;--border:#e2e8f0}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a}
+.app{display:grid;grid-template-columns:395px 1fr;height:100vh}
+aside{overflow:auto;background:#fff;padding:16px;border-right:1px solid var(--border)}
+#map{height:100vh;width:100%;background:#e5e7eb}
+h1{font-size:20px;margin:0 0 6px}.small{font-size:13px;color:#64748b;line-height:1.35}
+.notice{border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px;margin:10px 0;font-size:13px}
+.ok{border-color:#bbf7d0;background:#ecfdf5;color:#166534}.err{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+input,select,button,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:white;font-size:14px}
+textarea{min-height:75px;resize:vertical}
+button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:white;border-color:var(--blue)}.secondary{background:#f1f5f9}.danger{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.stat{border:1px solid var(--border);border-radius:14px;padding:10px}.stat b{font-size:22px;display:block}
+.legend{display:grid;gap:6px;margin:10px 0;font-size:13px}.legend div{display:flex;gap:8px;align-items:center}
+.dot{width:13px;height:13px;border-radius:50%;display:inline-block;border:2px solid white;box-shadow:0 0 0 1px #999}
+.item{border:1px solid var(--border);border-radius:14px;padding:10px;background:white;cursor:pointer;margin-bottom:8px}
+.item:hover{background:#eff6ff}.item-title{font-weight:700;font-size:13px}.item-meta{font-size:12px;color:#64748b;line-height:1.35}
+.pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
+.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
+.drawer{position:fixed;right:0;top:0;height:100vh;width:min(760px,100vw);background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 35px #0003;z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
+.drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between;gap:10px}.x{width:auto}
+.card{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;margin:10px 0}
+table{border-collapse:collapse;font-size:13px;width:100%}td{padding:6px 0;border-bottom:1px solid #f1f5f9;vertical-align:top}
+td:first-child{font-weight:700;color:#334155;width:205px;padding-right:8px}td:nth-child(2){word-break:break-word}
+.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hidden{display:none}
+.checkrow{display:flex;align-items:center;gap:8px;margin:10px 0}.checkrow input{width:auto}
+@media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:45vh 55vh}#map{height:45vh}aside{order:2;border-right:0;border-top:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="app"><aside>
+<h1>Servisní mapa FZ</h1><p class="small">Data se načítají z <b>data.csv</b>. Detail místa zobrazuje všechna data z Excelu bez duplicit.</p>
+
+<div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
+<div class="row" id="mainLoginRow" style="display:none"><button class="primary" id="loginBtn">Přihlásit technika</button><button class="secondary" id="logoutBtn">Odhlásit</button></div>
+<p id="userBox" class="small" style="display:none">Nepřihlášeno</p>
+
+<div id="gpsBox" class="notice" style="display:none">Načítám data…</div>
+<p id="progress" class="small" style="display:none"></p>
+
+<label>Hledat</label><input id="search" placeholder="název, adresa, zdroj, kontakt...">
+<div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
+<button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
+<button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
+
+<div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat"><b id="gpsCount">0</b><span>s GPS</span></div></div>
+<div class="legend">
+<div><span class="dot" style="background:#dc2626"></span> Propadlé kontroly</div>
+<div><span class="dot" style="background:#f97316"></span> 1–30 dní k termínu</div>
+<div><span class="dot" style="background:#eab308"></span> Kontrola objednaná</div>
+<div><span class="dot" style="background:#16a34a"></span> Vše ostatní</div>
+</div>
+<div id="list"></div>
+</aside><div id="map"></div></div>
+
+<div class="drawer" id="drawer">
+<div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
+
+<div class="card" id="protocolCard">
+  <h3>Protokol / potvrzení o provedené zkoušce</h3>
+  <button class="primary" id="openProtocolBtn" type="button">Vyplnit protokol</button>
+  <p class="small">Protokol se uloží k vybranému místu do Firebase.</p>
+
+  <form id="protocolForm" style="display:none;margin-top:12px">
+    <label>Datum provedení kontroly zdroje</label>
+    <input type="date" id="protoDate" required>
+
+    <div class="edit-grid">
+      <div><label>Kontrolované zařízení – typ</label><input id="protoDeviceType"></div>
+      <div><label>Výrobní č.</label><input id="protoSerial"></div>
+    </div>
+
+    <label>Plomba</label><input id="protoSeal">
+
+    <label>1) Místo kontroly</label>
+    <input id="protoPlace">
+
+    <label>2) Provozovatel zařízení</label>
+    <input id="protoOperator">
+
+    <label>3) Objednatel zkoušky provozuschopnosti</label>
+    <input id="protoCustomer">
+
+    <label>4) Umístění PBZ v objektu</label>
+    <textarea id="protoPbzLocation"></textarea>
+
+    <div class="edit-grid">
+      <div><label>Počet baterií (ks)</label><input id="protoBatteryCount"></div>
+      <div><label>Kapacita (Ah)</label><input id="protoCapacity"></div>
+      <div><label>Počet sad (ks)</label><input id="protoSetCount"></div>
+      <div><label>Pom. Bat (Ah)</label><input id="protoAuxBatteryAh"></div>
+      <div><label>Teplota okolí (°C)</label><input id="protoTemp"></div>
+      <div><label>Plomba</label><input id="protoSeal2"></div>
+    </div>
+
+    <h4>Měření AC</h4>
+    <div class="edit-grid">
+      <div><label>Vstup (Vac)</label><input id="protoInputVac"></div>
+      <div><label>Výstup 1 (Vac)</label><input id="protoOutput1Vac"></div>
+      <div><label>Výstup 2 (Vac)</label><input id="protoOutput2Vac"></div>
+      <div><label>Výstup zál. 1 (Vac)</label><input id="protoBackup1Vac"></div>
+      <div><label>Výstup zál. 2 (Vac)</label><input id="protoBackup2Vac"></div>
+    </div>
+
+    <h4>Měření DC</h4>
+    <div class="edit-grid">
+      <div><label>Hl. bat. 1 (Vdc)</label><input id="protoMainBatVdc"></div>
+      <div><label>Reset diagnostiky</label><input id="protoResetDiag"></div>
+      <div><label>Pom. bat. (Vdc)</label><input id="protoAuxBatVdc"></div>
+      <div><label>Rozvážení 1 (Vdc)</label><input id="protoUnbalance1"></div>
+      <div><label>Rozvážení 2 (Vdc)</label><input id="protoUnbalance2"></div>
+    </div>
+
+    <label>5) Umístění jističů UPS a záložního zařízení v objektu</label>
+    <textarea id="protoBreakersLocation"></textarea>
+
+    <label>6) Typ a umístění zálohovaných zařízení</label>
+    <div class="checkrow"><input type="checkbox" id="protoLift"><label for="protoLift" style="margin:0">Výtah</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoVent"><label for="protoVent" style="margin:0">Vent. výt. šachty</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoMachineLight"><label for="protoMachineLight" style="margin:0">Osvětlení strojovny</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoChuc"><label for="protoChuc" style="margin:0">CHÚC</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoDamper"><label for="protoDamper" style="margin:0">Klapka</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoSkylight"><label for="protoSkylight" style="margin:0">Světlík</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoGate"><label for="protoGate" style="margin:0">Vrata</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoAts"><label for="protoAts" style="margin:0">ATS</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoRpo"><label for="protoRpo" style="margin:0">RPO</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoNo"><label for="protoNo" style="margin:0">NO</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoSprinkler"><label for="protoSprinkler" style="margin:0">Sprinkler</label></div>
+    <div class="checkrow"><input type="checkbox" id="protoCsTs"><label for="protoCsTs" style="margin:0">CS/TS</label></div>
+    <label>Jiné zařízení</label><input id="protoOtherDevice">
+
+    <label>7) Umístění ovládání zálohovaných zařízení a jejich režim</label>
+    <textarea id="protoControlLocation"></textarea>
+
+    <label>8) Parkování a vstup do objektu, předepsané OOPP</label>
+    <div class="edit-grid">
+      <div class="checkrow"><input type="checkbox" id="protoBlue"><label for="protoBlue" style="margin:0">modrá</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoB"><label for="protoB" style="margin:0">B</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoC"><label for="protoC" style="margin:0">C</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoGarage"><label for="protoGarage" style="margin:0">garáže</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoCarLift"><label for="protoCarLift" style="margin:0">auto výtah</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoBarrier"><label for="protoBarrier" style="margin:0">závora</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoParkingHouse"><label for="protoParkingHouse" style="margin:0">park. dům</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoPermit"><label for="protoPermit" style="margin:0">povolení</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoTraining"><label for="protoTraining" style="margin:0">školení</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoShoes"><label for="protoShoes" style="margin:0">boty</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoVest"><label for="protoVest" style="margin:0">vesta</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoHelmet"><label for="protoHelmet" style="margin:0">helma</label></div>
+    </div>
+    <label>Jiné OOPP / vstup</label><input id="protoOtherAccess">
+
+    <label>9) Kontakty</label>
+    <textarea id="protoContacts"></textarea>
+
+    <label>10) Dostupnost</label>
+    <div class="edit-grid">
+      <div class="checkrow"><input type="checkbox" id="protoWcOk"><label for="protoWcOk" style="margin:0">WC OK</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoWcNok"><label for="protoWcNok" style="margin:0">WC NOK</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoLightOk"><label for="protoLightOk" style="margin:0">Osvětlení OK</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoLightNok"><label for="protoLightNok" style="margin:0">Osvětlení NOK</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoLadder"><label for="protoLadder" style="margin:0">Žebřík</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoStairs"><label for="protoStairs" style="margin:0">Schody</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoLowCeiling"><label for="protoLowCeiling" style="margin:0">Snížený strop</label></div>
+      <div class="checkrow"><input type="checkbox" id="protoExtremeTemp"><label for="protoExtremeTemp" style="margin:0">Extrémní teploty</label></div>
+    </div>
+    <label>Jiná dostupnost</label><textarea id="protoOtherAvailability"></textarea>
+
+    <label>11) Perioda zkoušky provozuschopnosti</label>
+    <select id="protoPeriod">
+      <option value="">Vyber</option>
+      <option value="6 měsíců">6 měsíců</option>
+      <option value="12 měsíců">12 měsíců</option>
+    </select>
+
+    <label>12) Zařízení pracuje ve vyhovujících podmínkách</label>
+    <select id="protoConditions">
+      <option value="">Vyber</option>
+      <option value="ano">ano</option>
+      <option value="ne">ne</option>
+    </select>
+    <label>Odůvodnění podmínek</label>
+    <textarea id="protoConditionsReason"></textarea>
+
+    <label>13) Poznámky</label>
+    <textarea id="protoNotes"></textarea>
+
+    <div class="edit-grid">
+      <div><label>Za objednavatele</label><input id="protoClientSign" placeholder="čitelně + podpis"></div>
+      <div><label>Kontrolu provedl</label><input id="protoTechSign"></div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="primary" type="submit">Uložit protokol</button>
+      <button class="secondary" type="button" id="closeProtocolBtn">Zavřít protokol</button>
+    </div>
+    <p id="protocolStatus" class="small"></p>
+  </form>
+</div>
+
+
+<div class="card"><h3>Data</h3><table id="detailTable"></table></div>
+<div class="card">
+  <div class="row">
+    <button class="secondary" id="editBtn">Upravit údaje</button>
+    <button class="secondary" id="reloadEditBtn">Načíst uložené úpravy</button>
+  </div>
+  <p id="editStatus" class="small"></p>
+</div>
+
+<div class="card" id="editCard" style="display:none">
+  <h3>Upravit údaje zdroje a polohu na mapě</h3><p class="small">Změna GPS lat/lon se po uložení projeví rovnou jako nová poloha bodu na mapě.</p>
+  <div class="edit-grid">
+    <div><label>Název</label><input id="editName"></div>
+    <div><label>Kontakt</label><input id="editContact"></div>
+  </div>
+  <label>Zdroj / popis zařízení</label><input id="editSource">
+  <div class="checkrow"><input type="checkbox" id="editOrdered"><label for="editOrdered" style="margin:0">Kontrola je objednaná – zobrazit žlutě</label></div>
+  <label>Adresa pro GPS / mapu</label><input id="editGpsAddress" placeholder="např. Nemocniční 492/4, Albrechtice, Česká republika">
+  <div class="edit-grid">
+    <div><label>GPS lat</label><input id="editGpsLat" placeholder="49.123456"></div>
+    <div><label>GPS lon</label><input id="editGpsLon" placeholder="16.123456"></div>
+  </div>
+  <label>Poznámky</label><textarea id="editNotes"></textarea>
+  <div class="row" style="margin-top:8px">
+    <button class="primary" id="saveEditBtn">Uložit úpravy do Firebase</button>
+    <button class="secondary" id="cancelEditBtn">Zrušit</button>
+  </div>
+</div>
+
+<div class="card" id="newSiteCard" style="display:none">
+  <h3>Přidat nové místo</h3>
+  <p class="small">Nové místo se uloží do Firebase kolekce <b>sites</b> a zobrazí se v mapě bez úpravy CSV.</p>
+
+  <label>Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
+  <label>Adresa pro GPS / mapu</label><input id="newGpsAddress" placeholder="Ulice číslo, město, Česká republika">
+  <div class="edit-grid">
+    <div><label>GPS lat</label><input id="newGpsLat" placeholder="49.123456"></div>
+    <div><label>GPS lon</label><input id="newGpsLon" placeholder="16.123456"></div>
+  </div>
+
+  <div class="edit-grid">
+    <div><label>Kraj</label><select id="newRegion"><option value="">Vyber kraj</option></select></div>
+    <div><label>Kontakt</label><input id="newContact"></div>
+  </div>
+
+  <label>Zdroj / popis zařízení</label><input id="newSource">
+  <div class="checkrow"><input type="checkbox" id="newOrdered"><label for="newOrdered" style="margin:0">Kontrola je objednaná – zobrazit žlutě</label></div>
+  <label>Příští kontrola</label><input type="date" id="newNextCheck">
+  <label>Poslední kontrola</label><input type="date" id="newLastCheck">
+  <label>Poznámky</label><textarea id="newNotes"></textarea>
+  <label>Další informace</label><textarea id="newExtra" placeholder="Sem napiš cokoliv dalšího – fakturace, protokol, cena, poznámka..."></textarea>
+
+  <div class="row" style="margin-top:8px">
+    <button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
+    <button class="secondary" id="cancelNewSiteBtn">Zrušit</button>
+  </div>
+  <p id="newSiteStatus" class="small"></p>
+</div>
+
+
+
+<div class="card">
+<h3>Nový servisní záznam</h3>
+<form id="serviceForm">
+<label>Datum kontroly</label><input type="date" id="checkDate" required>
+<label>Technik</label><input id="technician" placeholder="Jméno technika" required>
+<label>Výsledek kontroly</label><select id="result" required><option value="OK">OK</option><option value="Závada">Závada</option><option value="Doporučená oprava">Doporučená oprava</option><option value="Neprovedeno">Neprovedeno</option></select>
+<label>Závady / zjištění</label><textarea id="issues"></textarea>
+<label>Doporučení</label><textarea id="recommendation"></textarea>
+<label>Odkazy na fotky</label><textarea id="photoLinks" placeholder="Každý odkaz na nový řádek"></textarea>
+<button class="primary" type="submit" style="margin-top:12px">Uložit servisní záznam</button>
+<p id="formStatus" class="small"></p>
+</form>
+</div>
+
+
+<div class="card"><h3>Historie záznamů</h3><div id="history" class="small">Zatím nenačteno.</div></div>
+</div>
+
+<script type="module">
+/*
+SEM VLOŽ SVŮJ FUNKČNÍ FIREBASE CONFIG:
+const firebaseConfig = {...}
+*/
+const firebaseConfig = {
+  apiKey: "VLOZIT_API_KEY",
+  authDomain: "VLOZIT_AUTH_DOMAIN",
+  projectId: "VLOZIT_PROJECT_ID",
+  storageBucket: "VLOZIT_STORAGE_BUCKET",
+  messagingSenderId: "VLOZIT_MESSAGING_SENDER_ID",
+  appId: "VLOZIT_APP_ID"
+};
+
+const CSV_FILE="data.csv";
+const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
+let app, auth, db, fb={}, currentUser=null;
+let rows=[], csvRows=[], extraSites=[], selectedSite=null, editCache={};
+
+if(firebaseReady){
+  const appMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
+  const authMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
+  const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
+  fb={appMod,authMod,fsMod};
+  app=appMod.initializeApp(firebaseConfig);
+  auth=authMod.getAuth(app);
+  db=fsMod.getFirestore(app);
+  document.getElementById("firebaseBox").className="notice ok";
+  document.getElementById("firebaseBox").innerHTML="Firebase je nastavený. Přihlášení, historie a úpravy jsou aktivní.";
+  authMod.onAuthStateChanged(auth,user=>{
+    currentUser=user;
+    document.getElementById("userBox").textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
+  });
+}
+
+const map=L.map("map").setView([49.9,15.5],7);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
+const layer=L.layerGroup().addTo(map);
+
+function safe(v){return String(v??"").trim()}
+function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+function num(v){if(v===null||v===undefined||v==="")return null;const n=Number(String(v).trim().replace(",","."));return Number.isFinite(n)?n:null}
+function get(r,n){if(!r)return"";if(r[n]!==undefined)return r[n];const w=String(n).replace(/^\uFEFF/,"").trim().toLowerCase();for(const k of Object.keys(r)){if(String(k).replace(/^\uFEFF/,"").trim().toLowerCase()===w)return r[k]}return""}
+function first(r,a){for(const n of a){const v=safe(get(r,n));if(v)return v}return""}
+function siteId(raw,i){return first(raw,["Klíč_adresy","ID_mista","Název","Adresa_GPS","Adresa / umístění","Umístění"]) || String(i)}
+function rawGps(r){return Number.isFinite(r.lat)&&Number.isFinite(r.lon)}
+function inCzSk(r){return rawGps(r)&&r.lat>=47&&r.lat<=51.5&&r.lon>=12&&r.lon<=23}
+
+function parseDateValue(v){
+  const s=safe(v);
+  if(!s) return null;
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  m=s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if(m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+  const d=new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+function formatDateCz(dateObj){
+  if(!dateObj || isNaN(dateObj.getTime())) return "";
+  return `${dateObj.getDate()}.${dateObj.getMonth()+1}.${dateObj.getFullYear()}`;
+}
+function addMonths(dateObj, months){
+  const d=new Date(dateObj.getTime());
+  const day=d.getDate();
+  d.setMonth(d.getMonth()+months);
+  if(d.getDate()!==day) d.setDate(0);
+  return d;
+}
+function periodMonths(r){
+  const text=[r.raw?.["Zdrojový_soubor"], r.raw?.["Zdrojovy_soubor"], r.raw?.["Zdroj_dat"], r.raw?.["Perioda"], r.raw?.["period"], r.raw?.["Perioda zkoušky provozuschopnosti"]].join(" ").toLowerCase();
+  if(text.includes("12")) return 12;
+  if(text.includes("6")) return 6;
+  return 6;
+}
+function computedNextDate(r){
+  const last=parseDateValue(r.posledni);
+  if(last) return addMonths(last, periodMonths(r));
+  const next=parseDateValue(r.pristi);
+  return next;
+}
+function daysToComputedNext(r){
+  const next=computedNextDate(r);
+  if(!next) return null;
+  const today=new Date(); today.setHours(0,0,0,0);
+  next.setHours(0,0,0,0);
+  return Math.round((next.getTime()-today.getTime())/86400000);
+}
+function displayNext(r){
+  const d=computedNextDate(r);
+  return d ? formatDateCz(d) : (r.pristi || "");
+}
+function color(r){
+  const d=daysToComputedNext(r);
+  if(Number.isFinite(d) && d < 0) return "#dc2626";
+  if(r.ordered === true) return "#eab308";
+  if(Number.isFinite(d) && d >= 1 && d <= 30) return "#f97316";
+  return "#16a34a";
+}
+function statusText(r){
+  const d=daysToComputedNext(r);
+  if(Number.isFinite(d) && d < 0) return "Propadlá kontrola";
+  if(r.ordered === true) return "Kontrola objednaná";
+  if(Number.isFinite(d) && d >= 1 && d <= 30) return "1–30 dní k termínu";
+  return "OK / ostatní";
+}
+function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":"green"}
+
+function applyEditToRow(r){
+  const e=editCache[r.id];
+  if(!e) return r;
+
+  const lat = num(e.gpsLat);
+  const lon = num(e.gpsLon);
+  const updatedRaw = {...r.raw};
+
+  if(e.name) updatedRaw["Upravený název"] = e.name;
+  if(e.contact) updatedRaw["Upravený kontakt"] = e.contact;
+  if(e.source) updatedRaw["Upravený zdroj"] = e.source;
+  if(e.notes) updatedRaw["Upravené poznámky"] = e.notes;
+  if(e.gpsAddress) updatedRaw["Upravená Adresa_GPS"] = e.gpsAddress;
+  if(e.ordered !== undefined) updatedRaw["Kontrola objednaná"] = e.ordered ? "ANO" : "NE";
+  if(Number.isFinite(lat)) updatedRaw["Upravené GPS_lat"] = String(lat);
+  if(Number.isFinite(lon)) updatedRaw["Upravené GPS_lon"] = String(lon);
+
+  return {...r,
+    raw: updatedRaw,
+    adresa:e.name || r.adresa,
+    kontakt:e.contact || r.kontakt,
+    zdroj:e.source || r.zdroj,
+    poznamky:e.notes || r.poznamky,
+    lat:Number.isFinite(lat) ? lat : r.lat,
+    lon:Number.isFinite(lon) ? lon : r.lon,
+    gpsAddress:e.gpsAddress || r.gpsAddress,
+    ordered:e.ordered === true ? true : r.ordered,
+    edit:e
+  };
+}
+function normalize(data){
+  return data.map((raw,i)=>{
+    const lat=num(get(raw,"GPS_lat")), lon=num(get(raw,"GPS_lon"));
+    const adresa=first(raw,["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"]);
+    const zdroj=first(raw,["Popis_zdroje","Zdroj","Jaký zdroj"]);
+    const kontakt=first(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
+    const r={
+      id:siteId(raw,i), i, raw, lat, lon,
+      gpsAddress:first(raw,["Adresa_GPS","Adresa / umístění","Umístění"]),
+      adresa, zdroj, kontakt,
+      kraj:first(raw,["Kraj"]),
+      poznamky:first(raw,["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"]),
+      pristi:first(raw,["Příští plánovaná kontrola","Příští_kontrola"]),
+      posledni:first(raw,["Poslední proběhlá kontrola","Poslední_kontrola"]),
+      dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),
+      stav:first(raw,["Stav pro mapu","Stav_kontroly"]),
+      barva:first(raw,["Barva bodu","Barva_bodu"]),
+      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav_kontroly","Stav pro mapu"]).toLowerCase().includes("objednan"))
+    };
+    return applyEditToRow(r);
+  });
+}
+
+async function loadEdits(){
+  if(!firebaseReady || !db) return;
+  try{
+    const {collection,getDocs}=fb.fsMod;
+    const snap=await getDocs(collection(db,"siteEdits"));
+    editCache={};
+    snap.forEach(d=>editCache[d.id]=d.data());
+    rows=csvRows.concat(extraSites).map(applyEditToRow);
+    render();
+    document.getElementById("editStatus").textContent="Uložené úpravy načteny.";
+  }catch(e){
+    document.getElementById("editStatus").textContent="Úpravy se nepodařilo načíst: "+e.message;
+  }
+}
+
+
+function daysBetweenToday(dateStr){
+  const s=safe(dateStr);
+  if(!s) return "";
+  const d=new Date(s+"T00:00:00");
+  if(isNaN(d.getTime())) return "";
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  return Math.round((d.getTime()-today.getTime())/86400000);
+}
+
+function newSiteToRow(docId, d){
+  const days = d.nextCheck ? daysBetweenToday(d.nextCheck) : "";
+  const raw = {
+    "Název": d.name || "",
+    "Adresa_GPS": d.gpsAddress || "",
+    "Kraj": d.region || "",
+    "Popis_zdroje": d.source || "",
+    "Kontakt_mapy": d.contact || "",
+    "Poznámky_mapy": d.notes || "",
+    "Další informace": d.extra || "",
+    "Příští_kontrola": d.nextCheck || "",
+    "Poslední_kontrola": d.lastCheck || "",
+    "Dní_do_kontroly": days,
+    "Kontrola objednaná": d.ordered ? "ANO" : "NE",
+    "Stav_kontroly": d.ordered ? "Kontrola objednaná" : (days === "" ? "OK / ostatní" : (days < 0 ? "Propadlá kontrola" : (days <= 30 ? "1–30 dní k termínu" : "OK / ostatní"))),
+    "GPS_lat": d.gpsLat || "",
+    "GPS_lon": d.gpsLon || "",
+    "Zdroj_dat": "Firebase nové místo",
+    "Firebase_doc_id": docId
+  };
+  const r = normalize([raw])[0];
+  r.id = "firebase_site_" + docId;
+  r.isNewSite = true;
+  return applyEditToRow(r);
+}
+
+async function loadExtraSites(){
+  extraSites = [];
+  if(!firebaseReady || !db) return;
+  try{
+    const {collection,getDocs}=fb.fsMod;
+    const snap=await getDocs(collection(db,"sites"));
+    snap.forEach(docSnap => extraSites.push(newSiteToRow(docSnap.id, docSnap.data())));
+    rows = csvRows.concat(extraSites).map(applyEditToRow);
+    filters();
+    render();
+  }catch(e){
+    document.getElementById("newSiteStatus").textContent = "Nová místa se nepodařilo načíst: " + e.message;
+  }
+}
+
+
+function populateNewRegionOptions(){
+  const el=document.getElementById("newRegion");
+  if(!el) return;
+  const current=el.value;
+  const regions=[...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort();
+  el.innerHTML='<option value="">Vyber kraj</option>';
+  regions.forEach(v=>{
+    const o=document.createElement("option");
+    o.value=v;
+    o.textContent=v;
+    el.appendChild(o);
+  });
+  if(current && regions.includes(current)) el.value=current;
+}
+
+function openNewSiteForm(){
+  selectedSite=null;
+  populateNewRegionOptions();
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("newSiteCard").style.display="block";
+  document.getElementById("editCard").style.display="none";
+  document.getElementById("detailTitle").textContent="Přidat nové místo";
+  document.getElementById("detailSub").textContent="Vyplň údaje a ulož do Firebase.";
+  document.getElementById("detailTable").innerHTML="<tr><td>Nové místo</td><td>Po uložení se zobrazí v mapě.</td></tr>";
+  document.getElementById("newSiteStatus").textContent="";
+}
+
+function filtered(){
+  const q=safe(document.getElementById("search").value).toLowerCase(),s=safe(document.getElementById("statusFilter").value),k=safe(document.getElementById("regionFilter").value);
+  return rows.filter(r=>{
+    const st=statusText(r);
+    if(s&&st!==s)return false;
+    if(k&&r.kraj!==k)return false;
+    if(q&&!([r.adresa,r.zdroj,r.kontakt,r.kraj,st,r.poznamky].join(" ").toLowerCase().includes(q)))return false;
+    return true;
+  });
+}
+function render(){
+  layer.clearLayers();
+  const vis=filtered(), gps=vis.filter(inCzSk);
+  gps.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.92})
+    .bindPopup(`<b>${esc(r.adresa||"Bez názvu")}</b><br>${esc(r.zdroj)}<br>${esc(statusText(r))}<br><button onclick="openDetail(${r.i})">Detail</button>`).addTo(layer));
+  const list=document.getElementById("list");list.innerHTML="";
+  vis.slice().sort((a,b)=>((daysToComputedNext(a)??999999)-(daysToComputedNext(b)??999999))).slice(0,160).forEach(r=>{
+    const d=document.createElement("div");d.className="item";
+    d.innerHTML=`<div class="item-title">${esc(r.adresa||"Bez názvu")}</div><div class="item-meta">${esc(r.zdroj)}<br>Další kontrola: <b>${esc(displayNext(r)||"není vyplněno")}</b></div><span class="pill ${pill(r)}">${esc(statusText(r))}</span>`;
+    d.onclick=()=>openDetail(r.i);list.appendChild(d);
+  });
+  document.getElementById("shownCount").textContent=vis.length;
+  document.getElementById("gpsCount").textContent=rows.filter(inCzSk).length;
+  const missing=rows.length-rows.filter(rawGps).length, ignored=rows.filter(rawGps).length-rows.filter(inCzSk).length;
+  const box=document.getElementById("gpsBox");
+  box.className=(missing||ignored)?"notice":"notice ok";
+  box.innerHTML=(missing||ignored)?`Chybí GPS u <b>${missing}</b> záznamů. Ignorováno mimo ČR/SR: <b>${ignored}</b>.`:"GPS jsou doplněné a body mimo ČR/SR jsou vyčištěné.";
+}
+function filters(){
+  const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
+  st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
+  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
+  [...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
+}
+function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
+
+const duplicateValueAliases = [
+  ["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"],
+  ["Popis_zdroje","Zdroj","Jaký zdroj"],
+  ["Kontakt_mapy","Kontakt","Hlavní kontakt"],
+  ["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"],
+  ["Příští plánovaná kontrola","Příští_kontrola"],
+  ["Poslední proběhlá kontrola","Poslední_kontrola"],
+  ["Dní do kontroly","Dní_do_kontroly"],
+  ["Stav pro mapu","Stav_kontroly"],
+  ["Barva bodu","Barva_bodu"]
+];
+function canonicalKey(key){
+  for(const group of duplicateValueAliases){
+    if(group.includes(key)) return group[0];
+  }
+  return key;
+}
+
+function formatCzDate(v){
+  const s=safe(v);
+  if(!s) return "";
+  const m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return `${Number(m[3])}.${Number(m[2])}.${m[1]}`;
+  const d=new Date(s);
+  if(!isNaN(d.getTime())) return `${d.getDate()}.${d.getMonth()+1}.${d.getFullYear()}`;
+  return s;
+}
+
+function detailTable(r){
+  const raw={...r.raw};
+  raw["Další kontrola podle periody"] = displayNext(r);
+  raw["Perioda kontroly"] = periodMonths(r) === 12 ? "12 měsíců" : "6 měsíců";
+  if(r.edit){
+    raw["Upravený název"]=r.edit.name||"";
+    raw["Upravený kontakt"]=r.edit.contact||"";
+    raw["Upravený zdroj"]=r.edit.source||"";
+    raw["Upravené poznámky"]=r.edit.notes||"";
+  }
+
+  // Tyto řádky v detailu nechceme zobrazovat.
+  const bannedLabels = new Set([
+    "počet_termínů","počet termínů","pocet_terminu","pocet terminu",
+    "měsíc","mesic",
+    "zdrojový_řádek","zdrojovy_radek","zdrojový řádek","zdrojovy radek",
+    "všechny_termíny","vsechny_terminy","všechny termíny","vsechny terminy"
+  ]);
+
+  const priority=[
+    "Název","Adresa_GPS","Umístění","Umístění zdroje","Kraj",
+    "Popis_zdroje","Jaký zdroj",
+    "Kontakt_mapy","Hlavní kontakt",
+    "Poznámky_mapy","Poznámky",
+    "Cena FZ v Kč","Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby",
+    "Poslední_kontrola","Další kontrola podle periody","Perioda kontroly","Příští_kontrola","Dní_do_kontroly","Stav_kontroly","Barva_bodu","Kontrola objednaná",
+    "GPS_lat","GPS_lon","GPS_status","GPS_nalezeno_jako","GPS_poznámka",
+    "Upravený název","Upravený kontakt","Upravený zdroj","Upravená Adresa_GPS","Upravené GPS_lat","Upravené GPS_lon","Upravené poznámky"
+  ];
+
+  const usedKeys=new Set(), usedValues=new Set(), out=[];
+
+  function niceValue(k,v){
+    if(k==="Poslední_kontrola" || k==="Poslední proběhlá kontrola") return formatCzDate(v);
+    if(k==="Příští_kontrola" || k==="Příští plánovaná kontrola") return formatCzDate(v);
+    return safe(v);
+  }
+
+  function add(k){
+    if(!k||raw[k]===undefined||k==="GPS_raw")return;
+    const labelNorm=String(k).trim().toLowerCase();
+    if(bannedLabels.has(labelNorm))return;
+    if(/^Měsíc_\d+$/i.test(k) || /^Mesic_\d+$/i.test(k))return;
+
+    const ck=canonicalKey(k);
+    if(bannedLabels.has(String(ck).trim().toLowerCase()))return;
+
+    const v=niceValue(k, raw[k]);
+    if(!v)return;
+
+    const valKey=v.toLowerCase();
+    if(usedKeys.has(ck))return;
+    if(usedValues.has(valKey) && !k.startsWith("Upraven"))return;
+
+    usedKeys.add(ck);
+    usedValues.add(valKey);
+    out.push(`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`);
+  }
+
+  priority.forEach(add);
+  Object.keys(raw).forEach(add);
+  return out.join("")||"<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
+}
+
+window.openDetail=function(i){
+  const r=rows[Number(i)]; if(!r)return; selectedSite=r;
+  document.getElementById("drawer").classList.add("open");
+  document.getElementById("newSiteCard").style.display="none";
+  document.getElementById("detailTitle").textContent=r.adresa||"Bez názvu";
+  document.getElementById("detailSub").textContent=r.zdroj||"";
+  document.getElementById("detailTable").innerHTML=detailTable(r);
+  const pf=document.getElementById("protocolForm"); if(pf) pf.style.display="none";
+  document.getElementById("editName").value=r.adresa||"";
+  document.getElementById("editContact").value=r.kontakt||"";
+  document.getElementById("editSource").value=r.zdroj||"";
+  document.getElementById("editOrdered").checked = r.ordered === true;
+  document.getElementById("editGpsAddress").value=r.gpsAddress||first(r.raw,["Adresa_GPS","Adresa / umístění","Umístění"])||"";
+  document.getElementById("editGpsLat").value=Number.isFinite(r.lat)?String(r.lat):"";
+  document.getElementById("editGpsLon").value=Number.isFinite(r.lon)?String(r.lon):"";
+  document.getElementById("editNotes").value=r.poznamky||"";
+  document.getElementById("technician").value=currentUser?.displayName||currentUser?.email||"";
+  document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
+  loadHistory(r.id);
+}
+async function loadHistory(siteId){
+  const history=document.getElementById("history");
+  if(!firebaseReady){history.textContent="Firebase není nastavený, historie se nenačte.";return;}
+  try{
+    const {collection,query,where,orderBy,getDocs}=fb.fsMod;
+    const q=query(collection(db,"serviceRecords"),where("siteId","==",siteId),orderBy("createdAt","desc"));
+    const snap=await getDocs(q);
+    if(snap.empty){history.textContent="Zatím žádný servisní záznam.";return;}
+    history.innerHTML="";
+    snap.forEach(docSnap=>{const d=docSnap.data();const div=document.createElement("div");div.className="card";div.innerHTML=`<b>${esc(d.checkDate||"bez data")} - ${esc(d.result||"")}</b><br>Technik: ${esc(d.technician||"")}<br>Závady: ${esc(d.issues||"")}<br>Doporučení: ${esc(d.recommendation||"")}`;history.appendChild(div)});
+  }catch(e){history.textContent="Chyba načtení historie: "+e.message;}
+}
+
+document.getElementById("loginBtn").onclick=async()=>{if(!firebaseReady){alert("Doplň Firebase config v index.html.");return;}const {GoogleAuthProvider,signInWithPopup}=fb.authMod;await signInWithPopup(auth,new GoogleAuthProvider())};
+document.getElementById("logoutBtn").onclick=async()=>{if(firebaseReady)await fb.authMod.signOut(auth)};
+document.getElementById("closeDrawer").onclick=()=>document.getElementById("drawer").classList.remove("open");
+document.getElementById("search").addEventListener("input",render);
+document.getElementById("statusFilter").addEventListener("change",render);
+document.getElementById("regionFilter").addEventListener("change",render);
+document.getElementById("fitBtn").addEventListener("click",fit);
+document.getElementById("reloadEditBtn").onclick=async()=>{await loadEdits(); await loadExtraSites();};
+document.getElementById("addSiteBtn").onclick=openNewSiteForm;
+document.getElementById("cancelNewSiteBtn").onclick=()=>document.getElementById("newSiteCard").style.display="none";
+document.getElementById("saveNewSiteBtn").onclick=async()=>{
+  const st=document.getElementById("newSiteStatus");
+  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+
+  const name=document.getElementById("newName").value.trim();
+  const gpsLat=document.getElementById("newGpsLat").value.trim();
+  const gpsLon=document.getElementById("newGpsLon").value.trim();
+
+  if(!name){
+    st.className="small";
+    st.textContent="Je potřeba doplnit místo / název, který se bude zobrazovat na mapě.";
+    document.getElementById("newName").focus();
+    return;
+  }
+  if(!gpsLat || !gpsLon){
+    st.className="small";
+    st.textContent="Vyplň GPS lat a GPS lon, aby se bod mohl zobrazit na mapě.";
+    if(!gpsLat) document.getElementById("newGpsLat").focus();
+    else document.getElementById("newGpsLon").focus();
+    return;
+  }
+
+  const data={
+    name,
+    gpsAddress:document.getElementById("newGpsAddress").value.trim(),
+    gpsLat,
+    gpsLon,
+    region:document.getElementById("newRegion").value.trim(),
+    contact:document.getElementById("newContact").value.trim(),
+    source:document.getElementById("newSource").value.trim(),
+    ordered:document.getElementById("newOrdered").checked,
+    nextCheck:document.getElementById("newNextCheck").value,
+    lastCheck:document.getElementById("newLastCheck").value,
+    notes:document.getElementById("newNotes").value.trim(),
+    extra:document.getElementById("newExtra").value.trim(),
+    createdBy:currentUser.email,
+    createdAt:new Date().toISOString(),
+    updatedBy:currentUser.email,
+    updatedAt:new Date().toISOString()
+  };
+
+  try{
+    const {collection,addDoc}=fb.fsMod;
+    await addDoc(collection(db,"sites"),data);
+    st.textContent="Nové místo uloženo.";
+    document.getElementById("newName").value="";
+    document.getElementById("newGpsAddress").value="";
+    document.getElementById("newGpsLat").value="";
+    document.getElementById("newGpsLon").value="";
+    document.getElementById("newRegion").value="";
+    document.getElementById("newContact").value="";
+    document.getElementById("newSource").value="";
+    document.getElementById("newOrdered").checked=false;
+    document.getElementById("newNextCheck").value="";
+    document.getElementById("newLastCheck").value="";
+    document.getElementById("newNotes").value="";
+    document.getElementById("newExtra").value="";
+    await loadExtraSites();
+    fit();
+  }catch(e){st.textContent="Chyba uložení nového místa: "+e.message;}
+};
+document.getElementById("editBtn").onclick=()=>document.getElementById("editCard").style.display="block";
+document.getElementById("cancelEditBtn").onclick=()=>document.getElementById("editCard").style.display="none";
+document.getElementById("saveEditBtn").onclick=async()=>{
+  const st=document.getElementById("editStatus");
+  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+  if(!selectedSite){st.textContent="Není vybrané místo.";return;}
+  const edit={
+    name:document.getElementById("editName").value,
+    contact:document.getElementById("editContact").value,
+    source:document.getElementById("editSource").value,
+    ordered:document.getElementById("editOrdered").checked,
+    gpsAddress:document.getElementById("editGpsAddress").value,
+    gpsLat:document.getElementById("editGpsLat").value,
+    gpsLon:document.getElementById("editGpsLon").value,
+    notes:document.getElementById("editNotes").value,
+    updatedBy:currentUser.email,
+    updatedAt:new Date().toISOString()
+  };
+  try{
+    const {doc,setDoc}=fb.fsMod;
+    await setDoc(doc(db,"siteEdits",selectedSite.id),edit,{merge:true});
+    editCache[selectedSite.id]=edit;
+    rows=rows.map(r=>r.id===selectedSite.id?applyEditToRow(r):r);
+    selectedSite=rows[selectedSite.i];
+    render(); openDetail(selectedSite.i);
+    st.textContent="Úpravy uloženy.";
+  }catch(e){st.textContent="Chyba uložení: "+e.message;}
+};
+document.getElementById("serviceForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const st=document.getElementById("formStatus");
+  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+  if(!selectedSite){st.textContent="Není vybrané místo.";return;}
+  try{
+    const {collection,addDoc,serverTimestamp}=fb.fsMod;
+    await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
+    st.textContent="Uloženo."; loadHistory(selectedSite.id);
+  }catch(err){st.textContent="Chyba uložení: "+err.message;}
+});
+
+
+function checkbox(id){return document.getElementById(id)?.checked || false;}
+function val(id){return document.getElementById(id)?.value || "";}
+
+function pickRawValue(raw, names){
+  for(const n of names){
+    const v=safe(get(raw,n));
+    if(v) return v;
+  }
+  return "";
+}
+
+function setIfEmpty(id,value){
+  const el=document.getElementById(id);
+  if(!el) return;
+  if(!safe(el.value) && safe(value)) el.value=value;
+}
+
+function setCheckbox(id,value){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.checked = value === true || String(value).toLowerCase()==="true" || String(value).toLowerCase()==="ano";
+}
+
+async function getLastProtocol(siteId){
+  if(!firebaseReady || !db || !siteId) return null;
+  try{
+    const {collection,query,where,orderBy,limit,getDocs}=fb.fsMod;
+    const q=query(collection(db,"protocols"),where("siteId","==",siteId),orderBy("createdAt","desc"),limit(1));
+    const snap=await getDocs(q);
+    if(snap.empty) return null;
+    let data=null;
+    snap.forEach(d=>data=d.data());
+    return data;
+  }catch(e){
+    console.warn("Nepodařilo se načíst poslední protokol:",e);
+    return null;
+  }
+}
+
+async function prefillProtocol(){
+  if(!selectedSite) return;
+
+  const raw=selectedSite.raw || {};
+  const last=await getLastProtocol(selectedSite.id);
+
+  // základ z aktuálního místa
+  document.getElementById("protoDate").value = new Date().toISOString().slice(0,10);
+  document.getElementById("protoPlace").value = selectedSite.adresa || pickRawValue(raw,["Adresa_GPS","Umístění","Umístění zdroje"]);
+  document.getElementById("protoContacts").value = selectedSite.kontakt || pickRawValue(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
+  document.getElementById("protoTechSign").value = currentUser?.displayName || currentUser?.email || "";
+  document.getElementById("protoDeviceType").value = selectedSite.zdroj || pickRawValue(raw,["Jaký zdroj","Zdroj","Popis_zdroje"]);
+
+  // předvyplnění z dat v indexu / CSV
+  setIfEmpty("protoSerial", pickRawValue(raw,["Výrobní č.","Výrobní číslo","Vyrobni cislo","SN","Serial","Sériové číslo"]));
+  setIfEmpty("protoBatteryCount", pickRawValue(raw,["Počet baterií","Pocet baterii","Počet baterií (ks)","Baterie ks","Počet AKU"]));
+  setIfEmpty("protoCapacity", pickRawValue(raw,["Kapacita","Kapacita (Ah)","Kapacita Ah","Ah"]));
+  setIfEmpty("protoSetCount", pickRawValue(raw,["Počet sad","Pocet sad","Počet sad (ks)","Sady ks"]));
+  setIfEmpty("protoAuxBatteryAh", pickRawValue(raw,["Pom. Bat","Pom. Bat (Ah)","Pomocná baterie","Pom baterie"]));
+
+
+  setIfEmpty("protoOperator", pickRawValue(raw,["Provozovatel","Provozovatel zařízení"]));
+  setIfEmpty("protoCustomer", pickRawValue(raw,["Objednatel","Faktura na","Protokol na","Objednatel zkoušky provozuschopnosti"]));
+  setIfEmpty("protoPbzLocation", pickRawValue(raw,["Umístění PBZ","Umístění","Umístění zdroje","Adresa_GPS"]));
+  setIfEmpty("protoBreakersLocation", pickRawValue(raw,["Umístění jističů","Jističe UPS","Jističe"]));
+  setIfEmpty("protoControlLocation", pickRawValue(raw,["Umístění ovládání","Ovládání zálohovaných zařízení"]));
+
+
+  // pokud existuje předchozí protokol, má prioritu pro technické hodnoty
+  if(last){
+    setIfEmpty("protoDeviceType", last.deviceType);
+    setIfEmpty("protoSerial", last.serial);
+
+    setIfEmpty("protoOperator", last.operator);
+    setIfEmpty("protoCustomer", last.customer);
+    setIfEmpty("protoPbzLocation", last.pbzLocation);
+    setIfEmpty("protoBatteryCount", last.batteryCount);
+    setIfEmpty("protoCapacity", last.capacityAh);
+    setIfEmpty("protoSetCount", last.setCount);
+    setIfEmpty("protoAuxBatteryAh", last.auxBatteryAh);
+
+
+
+
+
+
+
+
+
+
+
+    setIfEmpty("protoBreakersLocation", last.breakersLocation);
+    setIfEmpty("protoControlLocation", last.controlLocation);
+    setIfEmpty("protoContacts", last.contacts);
+    setIfEmpty("protoPeriod", last.period);
+    setIfEmpty("protoConditions", last.conditions);
+    setIfEmpty("protoConditionsReason", last.conditionsReason);
+
+    if(last.backedDevices){
+      setCheckbox("protoLift", last.backedDevices.lift);
+      setCheckbox("protoVent", last.backedDevices.vent);
+      setCheckbox("protoMachineLight", last.backedDevices.machineLight);
+      setCheckbox("protoChuc", last.backedDevices.chuc);
+      setCheckbox("protoDamper", last.backedDevices.damper);
+      setCheckbox("protoSkylight", last.backedDevices.skylight);
+      setCheckbox("protoGate", last.backedDevices.gate);
+      setCheckbox("protoAts", last.backedDevices.ats);
+      setCheckbox("protoRpo", last.backedDevices.rpo);
+      setCheckbox("protoNo", last.backedDevices.no);
+      setCheckbox("protoSprinkler", last.backedDevices.sprinkler);
+      setCheckbox("protoCsTs", last.backedDevices.csTs);
+      setIfEmpty("protoOtherDevice", last.backedDevices.other);
+    }
+
+    if(last.access){
+      setCheckbox("protoBlue", last.access.blue);
+      setCheckbox("protoB", last.access.b);
+      setCheckbox("protoC", last.access.c);
+      setCheckbox("protoGarage", last.access.garage);
+      setCheckbox("protoCarLift", last.access.carLift);
+      setCheckbox("protoBarrier", last.access.barrier);
+      setCheckbox("protoParkingHouse", last.access.parkingHouse);
+      setCheckbox("protoPermit", last.access.permit);
+      setCheckbox("protoTraining", last.access.training);
+      setCheckbox("protoShoes", last.access.shoes);
+      setCheckbox("protoVest", last.access.vest);
+      setCheckbox("protoHelmet", last.access.helmet);
+      setIfEmpty("protoOtherAccess", last.access.other);
+    }
+
+    if(last.availability){
+      setCheckbox("protoWcOk", last.availability.wcOk);
+      setCheckbox("protoWcNok", last.availability.wcNok);
+      setCheckbox("protoLightOk", last.availability.lightOk);
+      setCheckbox("protoLightNok", last.availability.lightNok);
+      setCheckbox("protoLadder", last.availability.ladder);
+      setCheckbox("protoStairs", last.availability.stairs);
+      setCheckbox("protoLowCeiling", last.availability.lowCeiling);
+      setCheckbox("protoExtremeTemp", last.availability.extremeTemp);
+      setIfEmpty("protoOtherAvailability", last.availability.other);
+    }
+
+    document.getElementById("protocolStatus").textContent="Předvyplněno z posledního uloženého protokolu a dat místa.";
+  }else{
+    document.getElementById("protocolStatus").textContent="Předvyplněno z dat místa.";
+  }
+}
+
+function protocolPayload(){
+  return {
+    siteId:selectedSite?.id || "",
+    siteName:selectedSite?.adresa || "",
+    siteSource:selectedSite?.zdroj || "",
+    technicianEmail:currentUser?.email || "",
+    date:val("protoDate"),
+    deviceType:val("protoDeviceType"),
+    serial:val("protoSerial"),
+    seal:val("protoSeal"),
+    place:val("protoPlace"),
+    operator:val("protoOperator"),
+    customer:val("protoCustomer"),
+    pbzLocation:val("protoPbzLocation"),
+    batteryCount:val("protoBatteryCount"),
+    capacityAh:val("protoCapacity"),
+    setCount:val("protoSetCount"),
+    auxBatteryAh:val("protoAuxBatteryAh"),
+    temperature:val("protoTemp"),
+    seal2:val("protoSeal2"),
+    inputVac:val("protoInputVac"),
+    output1Vac:val("protoOutput1Vac"),
+    output2Vac:val("protoOutput2Vac"),
+    backup1Vac:val("protoBackup1Vac"),
+    backup2Vac:val("protoBackup2Vac"),
+    mainBatVdc:val("protoMainBatVdc"),
+    resetDiagnostics:val("protoResetDiag"),
+    auxBatVdc:val("protoAuxBatVdc"),
+    unbalance1:val("protoUnbalance1"),
+    unbalance2:val("protoUnbalance2"),
+    breakersLocation:val("protoBreakersLocation"),
+    backedDevices:{
+      lift:checkbox("protoLift"),
+      vent:checkbox("protoVent"),
+      machineLight:checkbox("protoMachineLight"),
+      chuc:checkbox("protoChuc"),
+      damper:checkbox("protoDamper"),
+      skylight:checkbox("protoSkylight"),
+      gate:checkbox("protoGate"),
+      ats:checkbox("protoAts"),
+      rpo:checkbox("protoRpo"),
+      no:checkbox("protoNo"),
+      sprinkler:checkbox("protoSprinkler"),
+      csTs:checkbox("protoCsTs"),
+      other:val("protoOtherDevice")
+    },
+    controlLocation:val("protoControlLocation"),
+    access:{
+      blue:checkbox("protoBlue"),
+      b:checkbox("protoB"),
+      c:checkbox("protoC"),
+      garage:checkbox("protoGarage"),
+      carLift:checkbox("protoCarLift"),
+      barrier:checkbox("protoBarrier"),
+      parkingHouse:checkbox("protoParkingHouse"),
+      permit:checkbox("protoPermit"),
+      training:checkbox("protoTraining"),
+      shoes:checkbox("protoShoes"),
+      vest:checkbox("protoVest"),
+      helmet:checkbox("protoHelmet"),
+      other:val("protoOtherAccess")
+    },
+    contacts:val("protoContacts"),
+    availability:{
+      wcOk:checkbox("protoWcOk"),
+      wcNok:checkbox("protoWcNok"),
+      lightOk:checkbox("protoLightOk"),
+      lightNok:checkbox("protoLightNok"),
+      ladder:checkbox("protoLadder"),
+      stairs:checkbox("protoStairs"),
+      lowCeiling:checkbox("protoLowCeiling"),
+      extremeTemp:checkbox("protoExtremeTemp"),
+      other:val("protoOtherAvailability")
+    },
+    period:val("protoPeriod"),
+    conditions:val("protoConditions"),
+    conditionsReason:val("protoConditionsReason"),
+    notes:val("protoNotes"),
+    clientSign:val("protoClientSign"),
+    techSign:val("protoTechSign"),
+    createdAt:new Date().toISOString()
+  };
+}
+
+document.getElementById("openProtocolBtn").onclick=()=>{
+  if(!selectedSite){alert("Nejdřív otevři konkrétní místo.");return;}
+  document.getElementById("protocolForm").style.display="block";
+  document.getElementById("protocolStatus").textContent="Předvyplňuji protokol...";
+  prefillProtocol();
+};
+
+document.getElementById("closeProtocolBtn").onclick=()=>{
+  document.getElementById("protocolForm").style.display="none";
+};
+
+document.getElementById("protocolForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const st=document.getElementById("protocolStatus");
+  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+  if(!selectedSite){st.textContent="Není vybrané místo.";return;}
+
+  try{
+    const {collection,addDoc,serverTimestamp}=fb.fsMod;
+    const payload=protocolPayload();
+    payload.createdAt=serverTimestamp();
+    payload.createdBy=currentUser.email;
+    await addDoc(collection(db,"protocols"),payload);
+    st.textContent="Protokol uložen.";
+    if(typeof loadHistory === "function") loadHistory(selectedSite.id);
+  }catch(err){
+    st.textContent="Chyba uložení protokolu: "+err.message;
+  }
+});
+
+Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:async res=>{
+  const data=res.data.filter(r=>Object.values(r).some(v=>safe(v)!==""));
+  csvRows=normalize(data);
+  rows=csvRows.map(applyEditToRow);
+  filters(); populateNewRegionOptions(); render(); fit();
+  document.getElementById("progress").textContent=`Načteno ${rows.length} řádků.`;
+  await loadEdits();
+  await loadExtraSites();
+},error:e=>{document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+e}});
+</script>
+</body>
+</html>
