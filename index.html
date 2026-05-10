@@ -676,7 +676,7 @@ function render(){
 function filters(){
   const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
   st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
-  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
+  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Jezdit bez objednávky"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
   [...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
