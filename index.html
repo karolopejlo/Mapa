@@ -109,6 +109,11 @@ object-fit:contain;
       <div><label>Výrobní č.</label><input id="protoSerial"></div>
     </div>
 
+    <label>Kontrolované zařízení / zdroj</label>
+    <select id="protoDeviceSelect">
+      <option value="">Automaticky / první zdroj</option>
+    </select>
+
     <label>Plomba</label><input id="protoSeal">
 
     <label>1) Místo kontroly</label>
@@ -144,7 +149,13 @@ object-fit:contain;
     <h4>Měření DC</h4>
     <div class="edit-grid">
       <div><label>Hl. bat. 1 (Vdc)</label><input id="protoMainBatVdc"></div>
-      <div><label>Reset diagnostiky</label><input id="protoResetDiag"></div>
+      <div><label>Reset diagnostiky *</label>
+<select id="protoResetDiag" required>
+  <option value="">Vyber</option>
+  <option value="ano">ano</option>
+  <option value="není">není</option>
+</select>
+</div>
       <div><label>Pom. bat. (Vdc)</label><input id="protoAuxBatVdc"></div>
       <div><label>Rozvážení 1 (Vdc)</label><input id="protoUnbalance1"></div>
       <div><label>Rozvážení 2 (Vdc)</label><input id="protoUnbalance2"></div>
@@ -882,6 +893,12 @@ document.getElementById("serviceForm").addEventListener("submit",async e=>{
   if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
   if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
   if(!selectedSite){st.textContent="Není vybrané místo.";return;}
+  if(!val("protoResetDiag")){
+    st.textContent="Je nutné vyplnit pole Reset diagnostiky.";
+    document.getElementById("protoResetDiag").focus();
+    return;
+  }
+
   try{
     const {collection,addDoc,serverTimestamp}=fb.fsMod;
     await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
@@ -892,6 +909,79 @@ document.getElementById("serviceForm").addEventListener("submit",async e=>{
 
 function checkbox(id){return document.getElementById(id)?.checked || false;}
 function val(id){return document.getElementById(id)?.value || "";}
+
+
+function splitPossibleSources(text){
+  const s=safe(text);
+  if(!s) return [];
+  return s
+    .split(/\s*(?:\||;|\n|\r| \/ |, (?=(?:UPS|zdroj|FZ|PBZ|typ|[A-Z0-9]{3,})))\s*/i)
+    .map(x=>x.trim())
+    .filter(Boolean);
+}
+
+function sourceOptionsFromSite(site){
+  const raw=site?.raw || {};
+  const candidates=[
+    site?.zdroj,
+    get(raw,"Jaký zdroj"),
+    get(raw,"Zdroj"),
+    get(raw,"Popis_zdroje"),
+    get(raw,"Kontrolované zařízení"),
+    get(raw,"Typ"),
+    get(raw,"Serviska")
+  ].filter(Boolean);
+
+  let out=[];
+  candidates.forEach(c=>{
+    const parts=splitPossibleSources(c);
+    if(parts.length) out.push(...parts);
+    else out.push(String(c).trim());
+  });
+
+  // unique, remove empty
+  const seen=new Set();
+  return out.filter(x=>{
+    const k=x.toLowerCase();
+    if(!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function populateProtocolDeviceSelect(){
+  const sel=document.getElementById("protoDeviceSelect");
+  if(!sel || !selectedSite) return;
+
+  const current=sel.value;
+  const devices=sourceOptionsFromSite(selectedSite);
+
+  sel.innerHTML='<option value="">Automaticky / první zdroj</option>';
+  devices.forEach((d,idx)=>{
+    const o=document.createElement("option");
+    o.value=d;
+    o.textContent=d || `Zdroj ${idx+1}`;
+    sel.appendChild(o);
+  });
+
+  if(current && devices.includes(current)) sel.value=current;
+  else if(devices.length===1) sel.value=devices[0];
+}
+
+function resetProtocolTechnicalFieldsForNewDevice(){
+  [
+    "protoDeviceType","protoSerial","protoSeal","protoSeal2",
+    "protoBatteryCount","protoCapacity","protoSetCount","protoAuxBatteryAh",
+    "protoInputVac","protoOutput1Vac","protoOutput2Vac","protoBackup1Vac","protoBackup2Vac",
+    "protoMainBatVdc","protoResetDiag","protoAuxBatVdc","protoUnbalance1","protoUnbalance2"
+  ].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.value="";
+  });
+
+  const sel=document.getElementById("protoDeviceSelect");
+  if(sel && sel.value) document.getElementById("protoDeviceType").value=sel.value;
+}
 
 function pickRawValue(raw, names){
   for(const n of names){
@@ -936,6 +1026,7 @@ async function prefillProtocol(){
   const last=await getLastProtocol(selectedSite.id);
 
   // základ z aktuálního místa
+  populateProtocolDeviceSelect();
   document.getElementById("protoDate").value = new Date().toISOString().slice(0,10);
   document.getElementById("protoPlace").value = selectedSite.adresa || pickRawValue(raw,["Adresa_GPS","Umístění","Umístění zdroje"]);
   document.getElementById("protoContacts").value = selectedSite.kontakt || pickRawValue(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
@@ -1044,6 +1135,7 @@ function protocolPayload(){
     siteSource:selectedSite?.zdroj || "",
     technicianEmail:currentUser?.email || "",
     date:val("protoDate"),
+    selectedDevice:val("protoDeviceSelect"),
     deviceType:val("protoDeviceType"),
     serial:val("protoSerial"),
     seal:val("protoSeal"),
@@ -1139,6 +1231,12 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
   if(!selectedSite){st.textContent="Není vybrané místo.";return;}
 
+  if(!val("protoResetDiag")){
+    st.textContent="Je nutné vyplnit pole Reset diagnostiky.";
+    document.getElementById("protoResetDiag").focus();
+    return;
+  }
+
   try{
     const {collection,addDoc,serverTimestamp}=fb.fsMod;
     const payload=protocolPayload();
@@ -1151,6 +1249,15 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     st.textContent="Chyba uložení protokolu: "+err.message;
   }
 });
+
+
+const protoDeviceSelectEl=document.getElementById("protoDeviceSelect");
+if(protoDeviceSelectEl){
+  protoDeviceSelectEl.addEventListener("change",()=>{
+    resetProtocolTechnicalFieldsForNewDevice();
+    document.getElementById("protocolStatus").textContent="Vybrán jiný zdroj – vyplň hodnoty pro tento zdroj.";
+  });
+}
 
 Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:async res=>{
   const data=res.data.filter(r=>Object.values(r).some(v=>safe(v)!==""));
