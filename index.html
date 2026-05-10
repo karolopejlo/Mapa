@@ -8,6 +8,25 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <style>
+
+html,body{height:100%;width:100%}
+#map{
+height:100vh !important;
+width:100% !important;
+background:#dfe3e8;
+min-height:400px;
+}
+.leaflet-container{
+height:100% !important;
+width:100% !important;
+}
+
+
+.pink-ring{
+box-shadow:0 0 0 4px #ec4899 !important;
+border-color:#be185d !important;
+}
+
 :root{--red:#dc2626;--orange:#f97316;--green:#16a34a;--gray:#64748b;--blue:#2563eb;--border:#e2e8f0}
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a}
@@ -297,6 +316,7 @@ object-fit:contain;
 
   <label>Zdroj / popis zařízení</label><input id="newSource">
   <div class="checkrow"><input type="checkbox" id="newOrdered"><label for="newOrdered" style="margin:0">Kontrola je objednaná – zobrazit žlutě</label></div>
+  <div class="checkrow"><input type="checkbox" id="newNoOrder"><label for="newNoOrder" style="margin:0">Jezdit bez objednávky – označit růžově</label></div>
   <label>Příští kontrola</label><input type="date" id="newNextCheck">
   <label>Poslední kontrola</label><input type="date" id="newLastCheck">
   <label>Poznámky</label><textarea id="newNotes"></textarea>
@@ -448,6 +468,33 @@ function statusText(r){
 }
 function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":"green"}
 
+function isNoOrderSite(r){
+  if(r.noOrder === true) return true;
+  const raw=r.raw || {};
+  const text=[
+    raw["Bez objednávky"],
+    raw["Bez objednavky"],
+    raw["Jezdit bez objednávky"],
+    raw["Jezdit bez objednavky"],
+    raw["Růžová"],
+    raw["Ruzova"],
+    raw["Typ"],
+    raw["Kategorie"],
+    raw["Poznámky"],
+    raw["Poznámky_mapy"],
+    raw["DŮLEŽITÁ POZNÁMKA"]
+  ].map(v=>safe(v).toLowerCase()).join(" | ");
+
+  return (
+    text.includes("bez objednáv") ||
+    text.includes("jezdit bez objednáv") ||
+    text.includes("jezdit bez objednav") ||
+    text.includes("růžov") ||
+    text.includes("ruzov")
+  );
+}
+
+
 function applyEditToRow(r){
   const e=editCache[r.id];
   if(!e) return r;
@@ -495,7 +542,8 @@ function normalize(data){
       dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),
       stav:first(raw,["Stav pro mapu","Stav_kontroly"]),
       barva:first(raw,["Barva bodu","Barva_bodu"]),
-      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav_kontroly","Stav pro mapu"]).toLowerCase().includes("objednan"))
+      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav_kontroly","Stav pro mapu"]).toLowerCase().includes("objednan")),
+      noOrder:(first(raw,["Jezdit bez objednávky","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
     };
     return applyEditToRow(r);
   });
@@ -541,6 +589,7 @@ function newSiteToRow(docId, d){
     "Poslední_kontrola": d.lastCheck || "",
     "Dní_do_kontroly": days,
     "Kontrola objednaná": d.ordered ? "ANO" : "NE",
+    "Jezdit bez objednávky": d.noOrder ? "ANO" : "NE",
     "Stav_kontroly": d.ordered ? "Kontrola objednaná" : (days === "" ? "OK / ostatní" : (days < 0 ? "Propadlá kontrola" : (days <= 30 ? "1–30 dní k termínu" : "OK / ostatní"))),
     "GPS_lat": d.gpsLat || "",
     "GPS_lon": d.gpsLon || "",
@@ -761,9 +810,42 @@ async function loadHistory(siteId){
 
 function fixMapView(){
   if(typeof map === "undefined") return;
-  setTimeout(()=>{ map.invalidateSize(true); if(typeof fit==="function") fit(); },100);
-  setTimeout(()=>{ map.invalidateSize(true); if(typeof fit==="function") fit(); },500);
-  setTimeout(()=>{ map.invalidateSize(true); if(typeof fit==="function") fit(); },1200);
+
+  try{
+    map.invalidateSize(true);
+
+    // donucení znovunačtení dlaždic
+    map.eachLayer(layer=>{
+      if(layer && layer.redraw){
+        try{ layer.redraw(); }catch(e){}
+      }
+    });
+
+    if(typeof fit==="function") fit();
+
+    setTimeout(()=>{
+      map.invalidateSize(true);
+      map.eachLayer(layer=>{
+        if(layer && layer.redraw){
+          try{ layer.redraw(); }catch(e){}
+        }
+      });
+      if(typeof fit==="function") fit();
+    },300);
+
+    setTimeout(()=>{
+      map.invalidateSize(true);
+      map.eachLayer(layer=>{
+        if(layer && layer.redraw){
+          try{ layer.redraw(); }catch(e){}
+        }
+      });
+      if(typeof fit==="function") fit();
+    },1000);
+
+  }catch(e){
+    console.warn("Map refresh error",e);
+  }
 }
 
 function showApp(){
@@ -836,6 +918,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     contact:document.getElementById("newContact").value.trim(),
     source:document.getElementById("newSource").value.trim(),
     ordered:document.getElementById("newOrdered").checked,
+    noOrder:document.getElementById("newNoOrder").checked,
     nextCheck:document.getElementById("newNextCheck").value,
     lastCheck:document.getElementById("newLastCheck").value,
     notes:document.getElementById("newNotes").value.trim(),
@@ -858,6 +941,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     document.getElementById("newContact").value="";
     document.getElementById("newSource").value="";
     document.getElementById("newOrdered").checked=false;
+    document.getElementById("newNoOrder").checked=false;
     document.getElementById("newNextCheck").value="";
     document.getElementById("newLastCheck").value="";
     document.getElementById("newNotes").value="";
@@ -1268,6 +1352,9 @@ if(protoDeviceSelectEl){
 }
 
 window.addEventListener("resize",fixMapView);
+window.addEventListener("DOMContentLoaded",()=>{
+  setTimeout(()=>{ if(typeof fixMapView==="function") fixMapView(); },800);
+});
 Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:async res=>{
   const data=res.data.filter(r=>Object.values(r).some(v=>safe(v)!==""));
   csvRows=normalize(data);
