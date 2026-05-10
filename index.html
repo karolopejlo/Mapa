@@ -2,7 +2,7 @@
 <html lang="cs">
 <head>
 <meta charset="utf-8">
-<title>Servisní mapa FZ</title>
+<title>Servis záložních zdrojů - mapa FZ</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -68,7 +68,7 @@ object-fit:contain;
 </div>
 
 <div class="app" id="mainApp" style="display:none"><aside>
-<h1>Servisní mapa FZ</h1><p class="small">Data se načítají z <b>data.csv</b>. Detail místa zobrazuje všechna data z Excelu bez duplicit.</p>
+<h1>Servis záložních zdrojů - mapa FZ</h1>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
 <div class="row" id="mainLoginRow" style="display:none"><button class="primary" id="loginBtn">Přihlásit technika</button><button class="secondary" id="logoutBtn">Odhlásit</button></div>
@@ -109,7 +109,7 @@ object-fit:contain;
       <div><label>Výrobní č.</label><input id="protoSerial"></div>
     </div>
 
-    <label>Kontrolované zařízení / zdroj</label>
+    <label>Kontrolované zařízení / zdroj</label><p class="small">Pokud je v datech více zdrojů oddělených znakem +, vyber konkrétní zdroj.</p>
     <select id="protoDeviceSelect">
       <option value="">Automaticky / první zdroj</option>
     </select>
@@ -758,6 +758,14 @@ async function loadHistory(siteId){
 }
 
 
+
+function fixMapView(){
+  if(typeof map === "undefined") return;
+  setTimeout(()=>{ map.invalidateSize(true); if(typeof fit==="function") fit(); },100);
+  setTimeout(()=>{ map.invalidateSize(true); if(typeof fit==="function") fit(); },500);
+  setTimeout(()=>{ map.invalidateSize(true); if(typeof fit==="function") fit(); },1200);
+}
+
 function showApp(){
   document.getElementById("startupScreen").style.display="none";
   document.getElementById("mainApp").style.display="grid";
@@ -915,7 +923,7 @@ function splitPossibleSources(text){
   const s=safe(text);
   if(!s) return [];
   return s
-    .split(/\s*(?:\||;|\n|\r| \/ |, (?=(?:UPS|zdroj|FZ|PBZ|typ|[A-Z0-9]{3,})))\s*/i)
+    .split(/\s*(?:\+|\||;|\n|\r| \/ |, (?=(?:UPS|zdroj|FZ|PBZ|typ|[A-Z0-9]{3,})))\s*/i)
     .map(x=>x.trim())
     .filter(Boolean);
 }
@@ -1259,12 +1267,14 @@ if(protoDeviceSelectEl){
   });
 }
 
+window.addEventListener("resize",fixMapView);
 Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:async res=>{
   const data=res.data.filter(r=>Object.values(r).some(v=>safe(v)!==""));
   csvRows=normalize(data);
   rows=csvRows.map(applyEditToRow);
   filters(); populateNewRegionOptions(); render(); fit();
   document.getElementById("progress").textContent=`Načteno ${rows.length} řádků.`;
+  fixMapView();
   await loadEdits();
   await loadExtraSites();
 },error:e=>{document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+e}});
