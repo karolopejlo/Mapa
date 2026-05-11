@@ -120,6 +120,7 @@ object-fit:contain;
 
 <div class="app" id="mainApp" style="display:none"><aside>
 <h1>Servis záložních zdrojů - mapa FZ</h1>
+<button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
 <div class="row" id="mainLoginRow" style="display:none"><button class="primary" id="loginBtn">Přihlásit technika</button><button class="secondary" id="logoutBtn">Odhlásit</button></div>
@@ -318,7 +319,15 @@ object-fit:contain;
   </div>
   <label>Zdroj / popis zařízení</label><input id="editSource">
   <div class="checkrow"><input type="checkbox" id="editOrdered"><label for="editOrdered" style="margin:0">Kontrola je objednaná – zobrazit žlutě</label></div>
-  <label>Adresa pro GPS / mapu</label><input id="editGpsAddress" placeholder="např. Nemocniční 492/4, Albrechtice, Česká republika">
+  <label>Adresa pro GPS / mapu</label>
+  <div class="row">
+    <input id="editGpsAddress" placeholder="např. Nemocniční 492/4, Albrechtice, Česká republika">
+    <button type="button" class="secondary" id="editFindGpsBtn">Dopočítat GPS</button>
+  </div>
+  <div class="edit-grid">
+    <div><label>Poslední kontrola</label><input type="date" id="editLastCheck"></div>
+    <div><label>Další kontrola</label><input id="editNextCheck" readonly></div>
+  </div>
   <div class="edit-grid">
     <div><label>GPS lat</label><input id="editGpsLat" placeholder="49.123456"></div>
     <div><label>GPS lon</label><input id="editGpsLon" placeholder="16.123456"></div>
@@ -327,6 +336,7 @@ object-fit:contain;
   <div class="row" style="margin-top:8px">
     <button class="primary" id="saveEditBtn">Uložit úpravy do Firebase</button>
     <button class="secondary" id="cancelEditBtn">Zrušit</button>
+    <button class="danger" id="deleteSiteBtn" type="button">Smazat místo</button>
   </div>
 </div>
 
@@ -422,7 +432,7 @@ if(firebaseReady){
     currentUser=user;
     document.getElementById("userBox").textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
     if(user){ showApp(); }
-    else { showLogin(); }
+    else { const topLogoutBtn=document.getElementById("topLogoutBtn"); if(topLogoutBtn) topLogoutBtn.style.display="none"; showLogin(); }
   });
 }
 
@@ -592,6 +602,8 @@ function applyEditToRow(r){
   if(e.source) updatedRaw["Upravený zdroj"] = e.source;
   if(e.notes) updatedRaw["Upravené poznámky"] = e.notes;
   if(e.gpsAddress) updatedRaw["Upravená Adresa_GPS"] = e.gpsAddress;
+  if(e.lastCheck) updatedRaw["Upravená poslední kontrola"] = e.lastCheck;
+  if(e.nextCheck) updatedRaw["Upravená další kontrola"] = e.nextCheck;
   if(e.ordered !== undefined) updatedRaw["Kontrola objednaná"] = e.ordered ? "ANO" : "NE";
   if(Number.isFinite(lat)) updatedRaw["Upravené GPS_lat"] = String(lat);
   if(Number.isFinite(lon)) updatedRaw["Upravené GPS_lon"] = String(lon);
@@ -602,6 +614,8 @@ function applyEditToRow(r){
     kontakt:e.contact || r.kontakt,
     zdroj:e.source || r.zdroj,
     poznamky:e.notes || r.poznamky,
+    posledni:e.lastCheck || r.posledni,
+    pristi:e.nextCheck || r.pristi,
     lat:Number.isFinite(lat) ? lat : r.lat,
     lon:Number.isFinite(lon) ? lon : r.lon,
     gpsAddress:e.gpsAddress || r.gpsAddress,
@@ -640,7 +654,7 @@ async function loadEdits(){
     const snap=await getDocs(collection(db,"siteEdits"));
     editCache={};
     snap.forEach(d=>editCache[d.id]=d.data());
-    rows=csvRows.concat(extraSites).map(applyEditToRow);
+    rows=csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
     render();
     document.getElementById("editStatus").textContent="Uložené úpravy načteny.";
   }catch(e){
@@ -693,7 +707,7 @@ async function loadExtraSites(){
     const {collection,getDocs}=fb.fsMod;
     const snap=await getDocs(collection(db,"sites"));
     snap.forEach(docSnap => extraSites.push(newSiteToRow(docSnap.id, docSnap.data())));
-    rows = csvRows.concat(extraSites).map(applyEditToRow);
+    rows = csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
     filters();
     render();
   }catch(e){
@@ -727,6 +741,119 @@ function openNewSiteForm(){
   document.getElementById("detailSub").textContent="Vyplň údaje a ulož do Firebase.";
   document.getElementById("detailTable").innerHTML="<tr><td>Nové místo</td><td>Po uložení se zobrazí v mapě.</td></tr>";
   document.getElementById("newSiteStatus").textContent="";
+}
+
+
+async function geocodeAddressGeneric(address){
+  const q=encodeURIComponent(address);
+  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${q}`;
+  const res=await fetch(url,{headers:{"Accept":"application/json"}});
+  if(!res.ok) throw new Error("Geokódování selhalo");
+  const data=await res.json();
+  if(!Array.isArray(data)||!data.length) return null;
+  return {lat:data[0].lat, lon:data[0].lon, display:data[0].display_name || ""};
+}
+
+function isoDateFromAny(v){
+  const d=parseDateValue(v);
+  if(!d) return "";
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+function recalcEditNextCheck(){
+  const last=isoDateFromAny(document.getElementById("editLastCheck")?.value);
+  const out=document.getElementById("editNextCheck");
+  if(!out) return;
+  if(!last || !selectedSite){out.value="";return;}
+  const d=parseDateValue(last);
+  const next=addMonths(d, periodMonths(selectedSite));
+  out.value=formatDateCz(next);
+}
+
+async function recalcGpsForEditedAddress(){
+  const st=document.getElementById("editStatus");
+  const address=document.getElementById("editGpsAddress").value.trim();
+  if(!address){
+    st.textContent="Nejdřív vyplň adresu pro GPS.";
+    document.getElementById("editGpsAddress").focus();
+    return;
+  }
+  try{
+    st.textContent="Dopočítávám GPS podle adresy...";
+    const result=await geocodeAddressGeneric(address);
+    if(!result){
+      st.textContent="Adresa nebyla nalezena.";
+      return;
+    }
+    document.getElementById("editGpsLat").value=result.lat;
+    document.getElementById("editGpsLon").value=result.lon;
+    st.textContent="GPS doplněno podle adresy.";
+  }catch(e){
+    st.textContent="Chyba při dopočítání GPS: "+e.message;
+  }
+}
+
+async function deleteSelectedSite(){
+  const st=document.getElementById("editStatus");
+  if(!selectedSite){st.textContent="Není vybrané místo.";return;}
+  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+
+  const ok=confirm("Opravdu smazat toto místo i jeho uložené údaje z Firebase?\\n\\nPozor: místa z původního data.csv nepůjde fyzicky odstranit z CSV, ale uloží se jako skryté.");
+  if(!ok) return;
+
+  try{
+    const {doc,setDoc,deleteDoc,collection,query,where,getDocs}=fb.fsMod;
+
+    if(selectedSite.isNewSite && selectedSite.raw && selectedSite.raw["Firebase_doc_id"]){
+      const docId=selectedSite.raw["Firebase_doc_id"];
+      await deleteDoc(doc(db,"sites",docId));
+    }else{
+      await setDoc(doc(db,"deletedSites",selectedSite.id),{
+        siteId:selectedSite.id,
+        siteName:selectedSite.adresa || "",
+        deletedBy:currentUser.email,
+        deletedAt:new Date().toISOString()
+      },{merge:true});
+    }
+
+    // smaž editaci místa, pokud existuje
+    try{ await deleteDoc(doc(db,"siteEdits",selectedSite.id)); }catch(e){}
+
+    // volitelně smaž protokoly a servisní záznamy k místu
+    for(const colName of ["protocols","serviceRecords"]){
+      try{
+        const q=query(collection(db,colName),where("siteId","==",selectedSite.id));
+        const snap=await getDocs(q);
+        for(const d of snap.docs){ await deleteDoc(d.ref); }
+      }catch(e){ console.warn("Mazání kolekce selhalo",colName,e); }
+    }
+
+    st.textContent="Místo bylo smazáno/skryto.";
+    document.getElementById("drawer").classList.remove("open");
+    await loadDeletedSites();
+    await loadExtraSites();
+    render();
+  }catch(e){
+    st.textContent="Chyba při mazání: "+e.message;
+  }
+}
+
+let deletedSiteIds=new Set();
+async function loadDeletedSites(){
+  deletedSiteIds=new Set();
+  if(!firebaseReady || !db) return;
+  try{
+    const {collection,getDocs}=fb.fsMod;
+    const snap=await getDocs(collection(db,"deletedSites"));
+    snap.forEach(d=>deletedSiteIds.add(d.id));
+    rows=csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
+  }catch(e){
+    console.warn("Nepodařilo se načíst smazaná místa",e);
+  }
 }
 
 function filtered(){
@@ -885,6 +1012,8 @@ window.openDetail=function(i){
   document.getElementById("editGpsAddress").value=r.gpsAddress||first(r.raw,["Adresa_GPS","Adresa / umístění","Umístění"])||"";
   document.getElementById("editGpsLat").value=Number.isFinite(r.lat)?String(r.lat):"";
   document.getElementById("editGpsLon").value=Number.isFinite(r.lon)?String(r.lon):"";
+  document.getElementById("editLastCheck").value=isoDateFromAny(r.posledni)||"";
+  recalcEditNextCheck();
   document.getElementById("editNotes").value=r.poznamky||"";
   document.getElementById("technician").value=currentUser?.displayName||currentUser?.email||"";
   document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
@@ -1033,6 +1162,23 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
 };
 document.getElementById("editBtn").onclick=()=>document.getElementById("editCard").style.display="block";
 document.getElementById("cancelEditBtn").onclick=()=>document.getElementById("editCard").style.display="none";
+
+const editFindGpsBtn=document.getElementById("editFindGpsBtn");
+if(editFindGpsBtn) editFindGpsBtn.onclick=recalcGpsForEditedAddress;
+
+const editGpsAddressEl=document.getElementById("editGpsAddress");
+if(editGpsAddressEl){
+  let gpsTimer=null;
+  editGpsAddressEl.addEventListener("change",recalcGpsForEditedAddress);
+  editGpsAddressEl.addEventListener("blur",recalcGpsForEditedAddress);
+}
+
+const editLastCheckEl=document.getElementById("editLastCheck");
+if(editLastCheckEl) editLastCheckEl.addEventListener("change",recalcEditNextCheck);
+
+const deleteSiteBtn=document.getElementById("deleteSiteBtn");
+if(deleteSiteBtn) deleteSiteBtn.onclick=deleteSelectedSite;
+
 document.getElementById("saveEditBtn").onclick=async()=>{
   const st=document.getElementById("editStatus");
   if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
@@ -1046,6 +1192,8 @@ document.getElementById("saveEditBtn").onclick=async()=>{
     gpsAddress:document.getElementById("editGpsAddress").value,
     gpsLat:document.getElementById("editGpsLat").value,
     gpsLon:document.getElementById("editGpsLon").value,
+    lastCheck:document.getElementById("editLastCheck").value,
+    nextCheck:document.getElementById("editNextCheck").value,
     notes:document.getElementById("editNotes").value,
     updatedBy:currentUser.email,
     updatedAt:new Date().toISOString()
@@ -1444,6 +1592,7 @@ Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",
   document.getElementById("progress").textContent=`Načteno ${rows.length} řádků.`;
   fixMapView();
   await loadEdits();
+  await loadDeletedSites();
   await loadExtraSites();
 },error:e=>{document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+e}});
 
