@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Servis záložních zdrojů - mapa FZ</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
 window.addEventListener("DOMContentLoaded",()=>{
@@ -20,6 +20,23 @@ setTimeout(()=>{
     st.textContent="Firebase se nenačetl. Zkontroluj internet / blokování skriptů.";
   }
 },2000);
+
+
+function mobileFixMap(){
+  try{
+    if(window.map && window.map.invalidateSize){
+      setTimeout(()=>window.map.invalidateSize(true),100);
+      setTimeout(()=>window.map.invalidateSize(true),450);
+      setTimeout(()=>window.map.invalidateSize(true),1000);
+      if(typeof fit==="function"){
+        setTimeout(()=>fit(),600);
+      }
+    }
+  }catch(e){}
+}
+window.addEventListener("resize", mobileFixMap);
+window.addEventListener("orientationchange", mobileFixMap);
+window.addEventListener("pageshow", mobileFixMap);
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js">
@@ -104,6 +121,91 @@ object-fit:contain;
 }
 
 @media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:45vh 55vh}#map{height:45vh}aside{order:2;border-right:0;border-top:1px solid var(--border)}}
+
+/* MOBIL / TABLET OPTIMALIZACE */
+button,input,select,textarea{
+  min-height:44px;
+  font-size:16px;
+}
+.drawer{
+  -webkit-overflow-scrolling:touch;
+}
+.drawer.open{
+  transform:translateX(0);
+}
+@media(max-width:1024px){
+  .app{
+    grid-template-columns:1fr;
+    grid-template-rows:52vh 48vh;
+    height:100dvh;
+  }
+  #map{
+    height:52vh !important;
+    min-height:320px;
+  }
+  aside{
+    order:2;
+    border-right:0;
+    border-top:1px solid var(--border);
+    padding:12px;
+  }
+  .drawer{
+    width:100vw !important;
+    height:100dvh !important;
+    padding:12px;
+    border-left:0;
+  }
+  .drawer-head{
+    position:sticky;
+    top:0;
+    background:white;
+    z-index:10;
+    padding-bottom:8px;
+    border-bottom:1px solid var(--border);
+  }
+  .startup-card{
+    width:min(460px,94vw);
+    padding:24px;
+  }
+  .logo-img{
+    width:min(300px,85%);
+  }
+  .row,.edit-grid{
+    grid-template-columns:1fr;
+  }
+  .checkgrid2{
+    grid-template-columns:1fr 1fr;
+  }
+}
+@media(max-width:600px){
+  .app{
+    grid-template-rows:46vh 54vh;
+  }
+  #map{
+    height:46vh !important;
+    min-height:270px;
+  }
+  h1{font-size:18px}
+  .stats{
+    grid-template-columns:1fr 1fr;
+  }
+  .checkgrid2{
+    grid-template-columns:1fr;
+  }
+  .item{
+    padding:12px;
+  }
+  .drawer{
+    font-size:15px;
+  }
+  table,td{
+    font-size:13px;
+  }
+  td:first-child{
+    width:130px;
+  }
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -422,7 +524,7 @@ object-fit:contain;
     if(startup) startup.style.display="none";
     if(app) app.style.display="grid";
     if(topLogout) topLogout.style.display="block";
-    setTimeout(()=>{try{ if(window.map) window.map.invalidateSize(true); if(window.fit) window.fit(); }catch(e){}},500);
+    setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); if(window.fit) window.fit(); }catch(e){}},500);
   }
 
   function initAuth(){
@@ -449,7 +551,18 @@ object-fit:contain;
     const auth=initAuth();
     if(!auth) return;
 
+    const isMobileOrTablet =
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      window.innerWidth <= 1024 ||
+      (navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+
     try{
+      if(isMobileOrTablet){
+        status("Přesměrovávám na Google přihlášení...");
+        await auth.signInWithRedirect(googleProvider());
+        return;
+      }
+
       status("Otevírám Google přihlášení...");
       await auth.signInWithPopup(googleProvider());
     }catch(e){
@@ -547,7 +660,8 @@ if(firebaseReady){
   });
 }
 
-const map=L.map("map").setView([49.9,15.5],7);
+window.map=L.map("map").setView([49.9,15.5],7);
+const map=window.map;
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
 const layer=L.layerGroup().addTo(map);
 
@@ -845,7 +959,7 @@ function populateNewRegionOptions(){
 function openNewSiteForm(){
   selectedSite=null;
   populateNewRegionOptions();
-  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
   document.getElementById("editCard").style.display="none";
   document.getElementById("detailTitle").textContent="Přidat nové místo";
@@ -1015,6 +1129,7 @@ function filters(){
   [...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
+window.fit=fit;
 
 const duplicateValueAliases = [
   ["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"],
@@ -1110,7 +1225,7 @@ function detailTable(r){
 
 window.openDetail=function(i){
   const r=rows[Number(i)]; if(!r)return; selectedSite=r;
-  document.getElementById("drawer").classList.add("open");
+  document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="none";
   document.getElementById("detailTitle").textContent=r.adresa||"Bez názvu";
   document.getElementById("detailSub").textContent=r.zdroj||"";
