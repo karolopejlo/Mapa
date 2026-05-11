@@ -469,13 +469,62 @@ function statusText(r){
 }
 function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":"green"}
 
+function normPinkText(s){
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[_\/\\,.;:()\-]+/g," ")
+    .replace(/\b(ceska republika|slovensko|cr|sr|okres|kraj|budova|objekt|areal|cp|c p|z s|m s)\b/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function meaningfulTokens(s){
+  return normPinkText(s)
+    .split(" ")
+    .filter(t => t.length >= 3 && !["dps","ldn","ups","astip","strong","minut","min","bud"].includes(t));
+}
+
+function pinkMatch(place, pinkPlace){
+  const a = normPinkText(place);
+  const b = normPinkText(pinkPlace);
+  if(!a || !b) return false;
+
+  if(a.includes(b) || b.includes(a)) return true;
+
+  const at = meaningfulTokens(a);
+  const bt = meaningfulTokens(b);
+
+  if(!at.length || !bt.length) return false;
+
+  let common = 0;
+  for(const t of bt){
+    if(at.includes(t)) common++;
+  }
+
+  if(common >= 2) return true;
+  if(bt.length === 1 && at.includes(bt[0])) return true;
+
+  return false;
+}
+
 function isNoOrderSite(r){
   if(r.noOrder === true) return true;
 
-  const place = String(r.adresa || "").toLowerCase();
-  if(ORIGINAL_PINK_PLACES.some(p => place.includes(p) || p.includes(place))) return true;
-
   const raw=r.raw || {};
+  const place = [
+    r.adresa,
+    raw["Název"],
+    raw["Adresa_GPS"],
+    raw["Adresa / umístění"],
+    raw["Umístění"],
+    raw["Umístění zdroje"],
+    raw["Původní adresa / umístění"]
+  ].map(v=>safe(v)).filter(Boolean).join(" | ");
+
+  if(ORIGINAL_PINK_PLACES.some(p => pinkMatch(place,p))) return true;
+
   const text=[
     raw["Bez objednávky"],
     raw["Bez objednavky"],
