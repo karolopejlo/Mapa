@@ -923,22 +923,10 @@ function showLogin(){
   document.getElementById("mainApp").style.display="none";
 }
 
-document.getElementById("loginBtn").onclick=async()=>{if(!firebaseReady){alert("Doplň Firebase config v index.html.");return;}const {GoogleAuthProvider,signInWithPopup}=fb.authMod;await signInWithPopup(auth,new GoogleAuthProvider())};
-document.getElementById("logoutBtn").onclick=async()=>{if(firebaseReady)await fb.authMod.signOut(auth)};
-
-document.getElementById("startupLoginBtn").onclick=async()=>{
-  const st=document.getElementById("startupStatus");
-  if(!firebaseReady){
-    if(st) st.textContent="Firebase není nastavený – otevírám mapu bez ukládání.";
-    showApp();
-    return;
-  }
-  try{
-    const {GoogleAuthProvider,signInWithPopup}=fb.authMod;
-    await signInWithPopup(auth,new GoogleAuthProvider());
-  }catch(e){
-    if(st) st.textContent="Přihlášení selhalo: "+e.message;
-  }
+document.getElementById("loginBtn").onclick=async()=>{
+  if(!firebaseReady){alert("Nejdřív doplň Firebase konfiguraci v index.html.");return;}
+  const {GoogleAuthProvider, signInWithRedirect} = fb.authMod;
+  await signInWithRedirect(auth,new GoogleAuthProvider());
 };
 
 
