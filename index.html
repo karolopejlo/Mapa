@@ -355,6 +355,62 @@ button,input,select,textarea{
   }
 }
 
+
+/* ČISTŠÍ DETAIL A SERVISNÍ ZÁZNAM */
+.check-date-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.service-card{
+  background:linear-gradient(180deg,#ffffff,#f8fafc);
+}
+.service-card h3{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.service-card h3:before{
+  content:"";
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#2563eb;
+  display:inline-block;
+}
+#serviceForm{
+  display:grid;
+  gap:8px;
+}
+#serviceForm label{
+  margin-top:6px;
+}
+#serviceForm input,
+#serviceForm select,
+#serviceForm textarea{
+  background:#fff;
+  border-color:#cbd5e1;
+}
+.history-item{
+  border:1px solid #cbd5e1;
+  border-radius:14px;
+  padding:12px;
+  margin:10px 0;
+  background:#f8fafc;
+}
+.history-item b{
+  font-size:14px;
+}
+.history-date{
+  color:#2563eb;
+  font-weight:800;
+}
+@media(max-width:600px){
+  .check-date-row{
+    grid-template-columns:1fr 1fr;
+  }
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -403,12 +459,6 @@ button,input,select,textarea{
 <div class="drawer" id="drawer">
 <div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
 
-<div class="card" id="mobileQuickActions">
-  <div class="row">
-    <button class="primary" type="button" onclick="document.getElementById('protocolCard')?.scrollIntoView({behavior:'smooth'})">Vyplnit protokol</button>
-    <button class="secondary" type="button" onclick="document.querySelector('.card h3')?.scrollIntoView({behavior:'smooth'})">Data místa</button>
-  </div>
-</div>
 
 <div class="card" id="protocolCard">
   <h3>Protokol / potvrzení o provedené zkoušce</h3>
@@ -565,7 +615,7 @@ button,input,select,textarea{
 </div>
 
 
-<div class="card"><h3>Data</h3><table id="detailTable"></table></div>
+<div class="card"><h3>Data</h3><div class="check-date-row" id="controlDatesRow"><div class="stat"><span>Poslední kontrola</span><b id="detailLastCheck">-</b></div><div class="stat"><span>Další kontrola</span><b id="detailNextCheck">-</b></div></div><table id="detailTable"></table></div>
 <div class="card">
   <div class="row">
     <button class="secondary" id="editBtn">Upravit údaje</button>
@@ -636,7 +686,7 @@ button,input,select,textarea{
 
 
 
-<div class="card">
+<div class="card service-card">
 <h3>Nový servisní záznam</h3>
 <form id="serviceForm">
 <label>Datum kontroly</label><input type="date" id="checkDate" required>
@@ -1316,6 +1366,23 @@ function formatCzDate(v){
   return s;
 }
 
+
+const hiddenDataLabels = new Set([
+  "dní_do_kontroly","dní do kontroly","dni_do_kontroly","dni do kontroly",
+  "barva_bodu","barva bodu",
+  "gps_lat","gps_lon","gps_status","gps_nalezeno_jako","gps_poznámka","gps_poznamka","gps_raw",
+  "klíč_adresy","klic_adresy","klíč adresy","klic adresy",
+  "další kontrola podle periody","dalsi kontrola podle periody",
+  "zdrojový kód","zdrojovy kod","zdrojovy_kod","zdrojový_kód",
+  "firebase_doc_id","id místa","id mista"
+]);
+function shouldHideDataRow(k){
+  const key=String(k||"").trim().toLowerCase();
+  if(hiddenDataLabels.has(key)) return true;
+  if(key.includes("gps")) return true;
+  return false;
+}
+
 function detailTable(r){
   const raw={...r.raw};
   raw["Další kontrola podle periody"] = displayNext(r);
@@ -1341,8 +1408,8 @@ function detailTable(r){
     "Kontakt_mapy","Hlavní kontakt",
     "Poznámky_mapy","Poznámky",
     "Cena FZ v Kč","Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby",
-    "Poslední_kontrola","Další kontrola podle periody","Perioda kontroly","Příští_kontrola","Dní_do_kontroly","Stav_kontroly","Barva_bodu","Kontrola objednaná",
-    "GPS_lat","GPS_lon","GPS_status","GPS_nalezeno_jako","GPS_poznámka",
+    "Poslední_kontrola","Perioda kontroly","Příští_kontrola","Stav_kontroly","Kontrola objednaná",
+    
     "Upravený název","Upravený kontakt","Upravený zdroj","Upravená Adresa_GPS","Upravené GPS_lat","Upravené GPS_lon","Upravené poznámky"
   ];
 
@@ -1355,7 +1422,7 @@ function detailTable(r){
   }
 
   function add(k){
-    if(!k||raw[k]===undefined||k==="GPS_raw")return;
+    if(!k||raw[k]===undefined||k==="GPS_raw"||shouldHideDataRow(k))return;
     const labelNorm=String(k).trim().toLowerCase();
     if(bannedLabels.has(labelNorm))return;
     if(/^Měsíc_\d+$/i.test(k) || /^Mesic_\d+$/i.test(k))return;
@@ -1387,6 +1454,10 @@ window.openDetail=function(i){
   document.getElementById("detailTitle").textContent=r.adresa||"Bez názvu";
   document.getElementById("detailSub").textContent=r.zdroj||"";
   document.getElementById("detailTable").innerHTML=detailTable(r);
+  const lastBox=document.getElementById("detailLastCheck");
+  const nextBox=document.getElementById("detailNextCheck");
+  if(lastBox) lastBox.textContent=formatDateCz(parseDateValue(r.posledni)) || r.posledni || "-";
+  if(nextBox) nextBox.textContent=displayNext(r) || r.pristi || "-";
   const pf=document.getElementById("protocolForm"); if(pf) pf.style.display="none";
   document.getElementById("editName").value=r.adresa||"";
   document.getElementById("editContact").value=r.kontakt||"";
@@ -1404,15 +1475,68 @@ window.openDetail=function(i){
 }
 async function loadHistory(siteId){
   const history=document.getElementById("history");
-  if(!firebaseReady){history.textContent="Firebase není nastavený, historie se nenačte.";return;}
+  if(!firebaseReady){
+    history.textContent="Firebase není nastavený, historie se nenačte.";
+    return;
+  }
+  history.textContent="Načítám historii…";
+
   try{
-    const {collection,query,where,orderBy,getDocs}=fb.fsMod;
-    const q=query(collection(db,"serviceRecords"),where("siteId","==",siteId),orderBy("createdAt","desc"));
-    const snap=await getDocs(q);
-    if(snap.empty){history.textContent="Zatím žádný servisní záznam.";return;}
+    const {collection,query,where,getDocs}=fb.fsMod;
+    const items=[];
+
+    async function readCollection(colName,typeLabel){
+      try{
+        const q=query(collection(db,colName),where("siteId","==",siteId));
+        const snap=await getDocs(q);
+        snap.forEach(docSnap=>{
+          const d=docSnap.data();
+          items.push({...d,_type:typeLabel,_id:docSnap.id});
+        });
+      }catch(e){
+        console.warn("Historie kolekce nejde načíst",colName,e);
+      }
+    }
+
+    await readCollection("serviceRecords","Servisní záznam");
+    await readCollection("protocols","Protokol");
+
+    if(!items.length){
+      history.textContent="Zatím žádný záznam.";
+      return;
+    }
+
+    items.sort((a,b)=>{
+      const ad=(a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || a.checkDate || a.date || 0)).getTime();
+      const bd=(b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || b.checkDate || b.date || 0)).getTime();
+      return bd-ad;
+    });
+
     history.innerHTML="";
-    snap.forEach(docSnap=>{const d=docSnap.data();const div=document.createElement("div");div.className="card";div.innerHTML=`<b>${esc(d.checkDate||"bez data")} - ${esc(d.result||"")}</b><br>Technik: ${esc(d.technician||"")}<br>Závady: ${esc(d.issues||"")}<br>Doporučení: ${esc(d.recommendation||"")}`;history.appendChild(div)});
-  }catch(e){history.textContent="Chyba načtení historie: "+e.message;}
+    items.forEach(d=>{
+      const date=d.checkDate || d.date || "";
+      const title=d._type || "Záznam";
+      const result=d.result || d.conditions || "";
+      const tech=d.technician || d.techSign || d.createdBy || d.technicianEmail || "";
+      const issues=d.issues || d.notes || d.conditionsReason || "";
+      const recommendation=d.recommendation || "";
+      const links=(d.photoLinks||[]).map(u=>`<a href="${esc(u)}" target="_blank">${esc(u)}</a>`).join("");
+
+      const div=document.createElement("div");
+      div.className="history-item";
+      div.innerHTML=`
+        <b>${esc(title)} <span class="history-date">${esc(date || "bez data")}</span></b><br>
+        ${result ? "Výsledek: "+esc(result)+"<br>" : ""}
+        ${tech ? "Technik: "+esc(tech)+"<br>" : ""}
+        ${issues ? "Zjištění/poznámky: "+esc(issues)+"<br>" : ""}
+        ${recommendation ? "Doporučení: "+esc(recommendation)+"<br>" : ""}
+        ${links ? `<div class="link-list">${links}</div>` : ""}
+      `;
+      history.appendChild(div);
+    });
+  }catch(e){
+    history.textContent="Chyba načtení historie: "+e.message;
+  }
 }
 
 
