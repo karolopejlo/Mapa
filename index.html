@@ -228,6 +228,7 @@ button,input,select,textarea{
 <div class="app" id="mainApp" style="display:none"><aside>
 <h1>Servis záložních zdrojů - mapa FZ</h1>
 <button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
+<button class="primary" id="addSiteBtnTop" style="margin-bottom:10px">+ Přidat nové místo</button>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
 <div class="row" id="mainLoginRow" style="display:none"><button class="primary" id="loginBtn">Přihlásit technika</button><button class="secondary" id="logoutBtn">Odhlásit</button></div>
@@ -961,6 +962,7 @@ function openNewSiteForm(){
   populateNewRegionOptions();
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
+setTimeout(()=>{const n=document.getElementById("newName"); if(n){n.focus(); n.scrollIntoView({behavior:"smooth",block:"start"});}},100);
   document.getElementById("editCard").style.display="none";
   document.getElementById("detailTitle").textContent="Přidat nové místo";
   document.getElementById("detailSub").textContent="Vyplň údaje a ulož do Firebase.";
