@@ -700,13 +700,26 @@ function openNewSiteForm(){
 }
 
 function filtered(){
-  const q=safe(document.getElementById("search").value).toLowerCase(),s=safe(document.getElementById("statusFilter").value),k=safe(document.getElementById("regionFilter").value);
+  const q=safe(document.getElementById("search").value).toLowerCase();
+  const s=safe(document.getElementById("statusFilter").value);
+  const k=safe(document.getElementById("regionFilter").value);
+
   return rows.filter(r=>{
     const st=statusText(r);
-    if(s&&st!==s)return false;
-    if(k&&r.kraj!==k)return false;
-    if(q&&!([r.adresa,r.zdroj,r.kontakt,r.kraj,st,r.poznamky].join(" ").toLowerCase().includes(q)))return false;
-    return true;
+
+    const okQ = !q || [r.adresa,r.zdroj,r.kontakt,r.kraj,st,r.poznamky].join(" ").toLowerCase().includes(q);
+    const okK = !k || r.kraj === k;
+
+    // Růžová je nezávislý příznak z původního Excelu.
+    // Proto se filtruje samostatně přes isNoOrderSite(r).
+    let okS = true;
+    if(s === "Jezdit bez objednávky"){
+      okS = isNoOrderSite(r);
+    }else if(s){
+      okS = st === s;
+    }
+
+    return okQ && okK && okS;
   });
 }
 function render(){
