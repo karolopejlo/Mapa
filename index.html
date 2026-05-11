@@ -368,6 +368,9 @@ const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
 let app, auth, db, fb={}, currentUser=null;
 let rows=[], csvRows=[], extraSites=[], selectedSite=null, editCache={};
 
+const ORIGINAL_PINK_PLACES = ["mnichovice"];
+
+
 window.addEventListener("load",()=>{
   if(!firebaseReady){
     const st=document.getElementById("startupStatus");
@@ -470,6 +473,10 @@ function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"oran
 
 function isNoOrderSite(r){
   if(r.noOrder === true) return true;
+
+  const place = String(r.adresa || "").toLowerCase();
+  if(ORIGINAL_PINK_PLACES.some(p => place.includes(p) || p.includes(place))) return true;
+
   const raw=r.raw || {};
   const text=[
     raw["Bez objednávky"],
