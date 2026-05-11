@@ -499,6 +499,81 @@ button,input,select,textarea{
   }
 }
 
+
+/* ÚPRAVY DETAILU 2 */
+.control-dates-strong{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin-bottom:10px;
+}
+.control-date-box{
+  border-radius:16px;
+  padding:12px;
+  color:#0f172a;
+  border:1px solid rgba(15,23,42,.12);
+}
+.control-date-box span{
+  display:block;
+  font-size:12px;
+  font-weight:700;
+  opacity:.78;
+  margin-bottom:4px;
+}
+.control-date-box b{
+  font-size:20px;
+}
+.control-date-last{
+  background:#dcfce7;
+  color:#166534;
+}
+.control-date-next{
+  background:#fef9c3;
+  color:#854d0e;
+}
+.protocol-point{
+  margin-top:18px !important;
+  padding-top:14px !important;
+  border-top:1px solid #e2e8f0;
+}
+#protocolForm input,
+#protocolForm select{
+  min-height:38px;
+  padding:7px 9px;
+}
+#protocolForm textarea{
+  min-height:58px;
+  padding:7px 9px;
+}
+#protocolDeviceSelectWrap.hidden{
+  display:none !important;
+}
+.service-card h3{
+  font-size:20px !important;
+  margin-bottom:12px !important;
+}
+.service-card input,
+.service-card select{
+  min-height:38px;
+  padding:7px 9px;
+}
+.service-card textarea{
+  min-height:58px;
+  padding:7px 9px;
+}
+@media(max-width:600px){
+  .control-dates-strong{
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  .control-date-box{
+    padding:10px;
+  }
+  .control-date-box b{
+    font-size:17px;
+  }
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -563,23 +638,26 @@ button,input,select,textarea{
     <label>Výrobní č.</label>
     <input id="protoSerial">
 
-    <label>Kontrolované zařízení / zdroj</label><p class="small">Pokud je v datech více zdrojů oddělených znakem +, vyber konkrétní zdroj.</p>
-    <select id="protoDeviceSelect">
-      <option value="">Automaticky / první zdroj</option>
-    </select>
+    <div id="protocolDeviceSelectWrap">
+      <label>Kontrolované zařízení / zdroj</label>
+      <p class="small">Pokud je v datech více zdrojů oddělených znakem +, vyber konkrétní zdroj.</p>
+      <select id="protoDeviceSelect">
+        <option value="">Automaticky / první zdroj</option>
+      </select>
+    </div>
 
     <label>Plomba</label><input id="protoSeal">
 
-    <label>1) Místo kontroly</label>
+    <label class="protocol-point">1) Místo kontroly</label>
     <input id="protoPlace">
 
-    <label>2) Provozovatel zařízení</label>
+    <label class="protocol-point">2) Provozovatel zařízení</label>
     <input id="protoOperator">
 
-    <label>3) Objednatel zkoušky provozuschopnosti</label>
+    <label class="protocol-point">3) Objednatel zkoušky provozuschopnosti</label>
     <input id="protoCustomer">
 
-    <label>4) Umístění PBZ v objektu</label>
+    <label class="protocol-point">4) Umístění PBZ v objektu</label>
     <textarea id="protoPbzLocation"></textarea>
 
     <div class="edit-grid">
@@ -615,10 +693,10 @@ button,input,select,textarea{
       <div><label>Rozvážení 2 (Vdc)</label><input id="protoUnbalance2"></div>
     </div>
 
-    <label>5) Umístění jističů UPS a záložního zařízení v objektu</label>
+    <label class="protocol-point">5) Umístění jističů UPS a záložního zařízení v objektu</label>
     <textarea id="protoBreakersLocation"></textarea>
 
-    <label>6) Typ a umístění zálohovaných zařízení</label>
+    <label class="protocol-point">6) Typ a umístění zálohovaných zařízení</label>
     <div class="checkgrid2" id="protoDevicesGrid">
 <div class="checkrow"><input type="checkbox" id="protoLift"><label for="protoLift" style="margin:0">Výtah</label></div>
     <div class="checkrow"><input type="checkbox" id="protoVent"><label for="protoVent" style="margin:0">Vent. výt. šachty</label></div>
@@ -635,10 +713,10 @@ button,input,select,textarea{
     </div>
 <label>Jiné zařízení</label><input id="protoOtherDevice">
 
-    <label>7) Umístění ovládání zálohovaných zařízení a jejich režim</label>
+    <label class="protocol-point">7) Umístění ovládání zálohovaných zařízení a jejich režim</label>
     <textarea id="protoControlLocation"></textarea>
 
-    <label>8) Parkování a vstup do objektu, předepsané OOPP</label>
+    <label class="protocol-point">8) Parkování a vstup do objektu, předepsané OOPP</label>
     <div class="checkgrid2" id="protoAccessGrid">
       <div class="checkrow"><input type="checkbox" id="protoBlue"><label for="protoBlue" style="margin:0">modrá</label></div>
       <div class="checkrow"><input type="checkbox" id="protoB"><label for="protoB" style="margin:0">B</label></div>
@@ -655,10 +733,10 @@ button,input,select,textarea{
     </div>
     <label>Jiné OOPP / vstup</label><input id="protoOtherAccess">
 
-    <label>9) Kontakty</label>
+    <label class="protocol-point">9) Kontakty</label>
     <textarea id="protoContacts"></textarea>
 
-    <label>10) Dostupnost</label>
+    <label class="protocol-point">10) Dostupnost</label>
     <div class="checkgrid2" id="protoAvailabilityGrid">
       <div class="checkrow"><input type="checkbox" id="protoWcOk"><label for="protoWcOk" style="margin:0">WC OK</label></div>
       <div class="checkrow"><input type="checkbox" id="protoWcNok"><label for="protoWcNok" style="margin:0">WC NOK</label></div>
@@ -671,14 +749,14 @@ button,input,select,textarea{
 </div>
     <label>Jiná dostupnost</label><textarea id="protoOtherAvailability"></textarea>
 
-    <label>11) Perioda zkoušky provozuschopnosti</label>
+    <label class="protocol-point">11) Perioda zkoušky provozuschopnosti</label>
     <select id="protoPeriod">
       <option value="">Vyber</option>
       <option value="6 měsíců">6 měsíců</option>
       <option value="12 měsíců">12 měsíců</option>
     </select>
 
-    <label>12) Zařízení pracuje ve vyhovujících podmínkách</label>
+    <label class="protocol-point">12) Zařízení pracuje ve vyhovujících podmínkách</label>
     <select id="protoConditions">
       <option value="">Vyber</option>
       <option value="ano">ano</option>
@@ -687,7 +765,7 @@ button,input,select,textarea{
     <label>Odůvodnění podmínek</label>
     <textarea id="protoConditionsReason"></textarea>
 
-    <label>13) Poznámky</label>
+    <label class="protocol-point">13) Poznámky</label>
     <textarea id="protoNotes"></textarea>
 
     <div class="edit-grid">
@@ -704,7 +782,10 @@ button,input,select,textarea{
 </div>
 
 
-<div class="card"><h3>Data</h3><div class="check-date-row" id="controlDatesRow"><div class="stat"><span>Poslední kontrola</span><b id="detailLastCheck">-</b></div><div class="stat"><span>Další kontrola</span><b id="detailNextCheck">-</b></div></div><table id="detailTable"></table></div>
+<div class="card"><h3>Data</h3><div class="control-dates-strong" id="controlDatesRow">
+  <div class="control-date-box control-date-last"><span>Poslední kontrola</span><b id="detailLastCheck">-</b></div>
+  <div class="control-date-box control-date-next"><span>Další kontrola</span><b id="detailNextCheck">-</b></div>
+</div><table id="detailTable"></table></div>
 <div class="card">
   <div class="row">
     <button class="secondary" id="editBtn">Upravit údaje</button>
@@ -776,7 +857,7 @@ button,input,select,textarea{
 
 
 <div class="card service-card">
-<h3>Nový servisní záznam</h3>
+<h3>🛠️ Nový servisní záznam</h3>
 <form id="serviceForm">
 <label>Datum kontroly</label><input type="date" id="checkDate" required>
 <label>Technik</label><input id="technician" placeholder="Jméno technika" required>
@@ -1156,11 +1237,11 @@ function normalize(data){
       kraj:first(raw,["Kraj"]),
       poznamky:first(raw,["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"]),
       pristi:first(raw,["Příští plánovaná kontrola","Příští_kontrola"]),
-      posledni:first(raw,["Poslední proběhlá kontrola","Poslední_kontrola"]),
+      posledni:first(raw,["Poslední_kontrola"]),
       dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),
-      stav:first(raw,["Stav pro mapu","Stav_kontroly"]),
+      stav:first(raw,["Stav_kontroly"]),
       barva:first(raw,["Barva bodu","Barva_bodu"]),
-      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav_kontroly","Stav pro mapu"]).toLowerCase().includes("objednan")),
+      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan")),
       noOrder:(first(raw,["Jezdit bez objednávky","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
     };
     return applyEditToRow(r);
@@ -1433,9 +1514,9 @@ const duplicateValueAliases = [
   ["Kontakt_mapy","Kontakt","Hlavní kontakt"],
   ["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"],
   ["Příští plánovaná kontrola","Příští_kontrola"],
-  ["Poslední proběhlá kontrola","Poslední_kontrola"],
+  ["Poslední_kontrola"],
   ["Dní do kontroly","Dní_do_kontroly"],
-  ["Stav pro mapu","Stav_kontroly"],
+  ["Stav_kontroly"],
   ["Barva bodu","Barva_bodu"]
 ];
 function canonicalKey(key){
@@ -1457,6 +1538,9 @@ function formatCzDate(v){
 
 
 const hiddenDataLabels = new Set([
+  "stav_kontroly","stav kontroly","stav pro mapu",
+  "zdrojový_soubor","zdrojovy_soubor","zdrojový soubor","zdrojovy soubor",
+  "poslední_kontrola","posledni_kontrola","poslední kontrola","posledni kontrola","poslední proběhlá kontrola",
   "dní_do_kontroly","dní do kontroly","dni_do_kontroly","dni do kontroly",
   "barva_bodu","barva bodu",
   "gps_lat","gps_lon","gps_status","gps_nalezeno_jako","gps_poznámka","gps_poznamka","gps_raw",
@@ -1497,7 +1581,7 @@ function detailTable(r){
     "Kontakt_mapy","Hlavní kontakt",
     "Poznámky_mapy","Poznámky",
     "Cena FZ v Kč","Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby",
-    "Poslední_kontrola","Perioda kontroly","Příští_kontrola","Stav_kontroly","Kontrola objednaná",
+    "Perioda kontroly","Příští_kontrola","Kontrola objednaná",
     
     "Upravený název","Upravený kontakt","Upravený zdroj","Upravená Adresa_GPS","Upravené GPS_lat","Upravené GPS_lon","Upravené poznámky"
   ];
@@ -1882,12 +1966,23 @@ function sourceOptionsFromSite(site){
 
 function populateProtocolDeviceSelect(){
   const sel=document.getElementById("protoDeviceSelect");
+  const wrap=document.getElementById("protocolDeviceSelectWrap");
   if(!sel || !selectedSite) return;
 
-  const current=sel.value;
-  const devices=sourceOptionsFromSite(selectedSite);
+  const rawSource = [
+    selectedSite?.zdroj,
+    selectedSite?.raw?.["Jaký zdroj"],
+    selectedSite?.raw?.["Zdroj"],
+    selectedSite?.raw?.["Popis_zdroje"]
+  ].filter(Boolean).join(" ");
 
-  sel.innerHTML='<option value="">Automaticky / první zdroj</option>';
+  const devices=sourceOptionsFromSite(selectedSite);
+  const hasPlus = rawSource.includes("+");
+  const showSelect = hasPlus && devices.length > 1;
+
+  if(wrap) wrap.classList.toggle("hidden", !showSelect);
+
+  sel.innerHTML='<option value="">Vyber zdroj</option>';
   devices.forEach((d,idx)=>{
     const o=document.createElement("option");
     o.value=d;
@@ -1895,8 +1990,13 @@ function populateProtocolDeviceSelect(){
     sel.appendChild(o);
   });
 
-  if(current && devices.includes(current)) sel.value=current;
-  else if(devices.length===1) sel.value=devices[0];
+  if(showSelect){
+    sel.value="";
+  }else if(devices.length){
+    sel.value=devices[0];
+    const type=document.getElementById("protoDeviceType");
+    if(type && !type.value) type.value=devices[0];
+  }
 }
 
 function resetProtocolTechnicalFieldsForNewDevice(){
