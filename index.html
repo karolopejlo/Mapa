@@ -206,6 +206,155 @@ button,input,select,textarea{
   }
 }
 
+
+/* LEPŠÍ MOBILNÍ DETAIL MÍSTA */
+.drawer{
+  display:flex;
+  flex-direction:column;
+}
+.drawer-head{
+  gap:12px;
+}
+.drawer-head h2{
+  font-size:20px;
+  line-height:1.2;
+  margin:0 0 4px;
+}
+.drawer-head .small{
+  margin:0;
+}
+.card h3{
+  font-size:16px;
+  margin:0 0 10px;
+}
+#detailTable{
+  display:block;
+  width:100%;
+}
+#detailTable tbody,
+#detailTable tr,
+#detailTable td{
+  display:block;
+  width:100%;
+}
+#detailTable tr{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:9px 10px;
+  margin:7px 0;
+  background:#f8fafc;
+}
+#detailTable td{
+  border:0;
+  padding:0;
+}
+#detailTable td:first-child{
+  width:auto;
+  font-size:12px;
+  color:#64748b;
+  font-weight:700;
+  margin-bottom:4px;
+}
+#detailTable td:nth-child(2){
+  font-size:14px;
+  color:#0f172a;
+  line-height:1.35;
+}
+#newSiteCard,
+#editCard,
+#protocolCard{
+  scroll-margin-top:80px;
+}
+@media(max-width:1024px){
+  .drawer{
+    left:0;
+    right:0;
+    top:0;
+    bottom:0;
+    width:100vw !important;
+    height:100dvh !important;
+    max-width:none !important;
+    padding:0;
+    background:#f8fafc;
+  }
+  .drawer-head{
+    position:sticky;
+    top:0;
+    z-index:20;
+    background:white;
+    padding:12px;
+    border-bottom:1px solid var(--border);
+    box-shadow:0 4px 18px rgba(15,23,42,.08);
+  }
+  .drawer > .card{
+    margin:10px 10px;
+    border-radius:16px;
+    padding:14px;
+    background:white;
+  }
+  .drawer .x{
+    min-width:86px;
+    width:auto;
+    white-space:nowrap;
+  }
+  .drawer input,
+  .drawer select,
+  .drawer textarea,
+  .drawer button{
+    font-size:16px;
+    min-height:46px;
+  }
+  .drawer textarea{
+    min-height:95px;
+  }
+  .edit-grid,
+  .row{
+    grid-template-columns:1fr !important;
+  }
+  .checkgrid2{
+    grid-template-columns:1fr 1fr !important;
+    gap:6px 10px;
+  }
+  .checkrow{
+    min-height:38px;
+    background:#f8fafc;
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+    padding:6px 8px;
+  }
+  .checkrow input{
+    min-height:auto;
+    transform:scale(1.15);
+  }
+  #protocolForm h4{
+    margin:18px 0 8px;
+    padding-top:10px;
+    border-top:1px solid #e2e8f0;
+  }
+}
+@media(max-width:600px){
+  .drawer-head{
+    align-items:flex-start;
+  }
+  .drawer-head h2{
+    font-size:18px;
+  }
+  .drawer > .card{
+    margin:8px;
+    padding:12px;
+  }
+  .card h3{
+    font-size:15px;
+  }
+  #detailTable tr{
+    margin:6px 0;
+    padding:8px 9px;
+  }
+  .checkgrid2{
+    grid-template-columns:1fr !important;
+  }
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -228,7 +377,6 @@ button,input,select,textarea{
 <div class="app" id="mainApp" style="display:none"><aside>
 <h1>Servis záložních zdrojů - mapa FZ</h1>
 <button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
-<button class="primary" id="addSiteBtnTop" style="margin-bottom:10px">+ Přidat nové místo</button>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
 <div class="row" id="mainLoginRow" style="display:none"><button class="primary" id="loginBtn">Přihlásit technika</button><button class="secondary" id="logoutBtn">Odhlásit</button></div>
@@ -254,6 +402,13 @@ button,input,select,textarea{
 
 <div class="drawer" id="drawer">
 <div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
+
+<div class="card" id="mobileQuickActions">
+  <div class="row">
+    <button class="primary" type="button" onclick="document.getElementById('protocolCard')?.scrollIntoView({behavior:'smooth'})">Vyplnit protokol</button>
+    <button class="secondary" type="button" onclick="document.querySelector('.card h3')?.scrollIntoView({behavior:'smooth'})">Data místa</button>
+  </div>
+</div>
 
 <div class="card" id="protocolCard">
   <h3>Protokol / potvrzení o provedené zkoušce</h3>
@@ -448,7 +603,7 @@ button,input,select,textarea{
   </div>
 </div>
 
-<div class="card" id="newSiteCard" style="display:none">
+<div class="card" id="newSiteCard" style="order:-100" style="display:none">
   <h3>Přidat nové místo</h3>
   <p class="small">Nové místo se uloží do Firebase kolekce <b>sites</b> a zobrazí se v mapě bez úpravy CSV.</p>
 
@@ -1322,7 +1477,21 @@ document.getElementById("statusFilter").addEventListener("change",render);
 document.getElementById("regionFilter").addEventListener("change",render);
 document.getElementById("fitBtn").addEventListener("click",fit);
 document.getElementById("reloadEditBtn").onclick=async()=>{await loadEdits(); await loadExtraSites();};
-document.getElementById("addSiteBtn").onclick=openNewSiteForm;
+document.getElementById("addSiteBtn").onclick=()=>{
+  openNewSiteForm();
+  const form=document.getElementById("newSiteCard");
+  if(form){
+    form.style.display="block";
+    form.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+  setTimeout(()=>{
+    const first=document.getElementById("newName");
+    if(first){
+      first.focus();
+      first.click();
+    }
+  },120);
+};
 document.getElementById("cancelNewSiteBtn").onclick=()=>document.getElementById("newSiteCard").style.display="none";
 document.getElementById("saveNewSiteBtn").onclick=async()=>{
   const st=document.getElementById("newSiteStatus");
