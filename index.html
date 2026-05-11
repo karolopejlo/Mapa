@@ -676,7 +676,7 @@ button,input,select,textarea{
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
 
-<div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat"><b id="gpsCount">0</b><span>s GPS</span></div></div>
+<div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
 <div class="legend">
 <div><span class="dot" style="background:#dc2626"></span> Propadlé kontroly</div>
 <div><span class="dot" style="background:#f97316"></span> 1–30 dní k termínu</div>
@@ -692,8 +692,9 @@ button,input,select,textarea{
 
 <div class="card" id="protocolCard">
   <h3>Protokol / potvrzení o provedené zkoušce</h3>
+  <button class="primary" id="toggleProtocolBtn" type="button">Vyplnit protokol</button>
   <p class="small">Protokol se uloží k vybranému místu do Firebase.</p>
-  <form id="protocolForm" style="display:block;margin-top:8px">
+  <form id="protocolForm" style="display:none;margin-top:8px">
     <label>Datum provedení kontroly zdroje</label>
     <input type="date" id="protoDate" required>
 
@@ -846,7 +847,11 @@ button,input,select,textarea{
 </div>
 
 
-<div class="card"><h3>Data</h3><div class="data-edit-actions"><button class="primary" type="button" id="saveDataEditsBtn">Uložit data</button><button class="secondary" type="button" onclick="openDetail(selectedSite.i)">Vrátit změny</button></div><div class="control-dates-strong" id="controlDatesRow">
+<div class="card"><h3>Data</h3><div class="data-edit-actions">
+  <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
+  <button class="primary" type="button" id="saveDataEditsBtn" style="display:none">Uložit data</button>
+  <button class="secondary" type="button" id="cancelDataEditBtn" style="display:none">Zrušit úpravy</button>
+</div><div class="control-dates-strong" id="controlDatesRow">
   <div class="control-date-box control-date-last"><span>Poslední kontrola</span><b id="detailLastCheck">-</b></div>
   <div class="control-date-box control-date-next"><span>Další kontrola</span><b id="detailNextCheck">-</b></div>
 </div><table id="detailTable"></table></div>
@@ -904,12 +909,18 @@ button,input,select,textarea{
   </div>
 
   <label>Zdroj / popis zařízení</label><input id="newSource">
-  <div class="checkrow"><input type="checkbox" id="newOrdered"><label for="newOrdered" style="margin:0">Kontrola je objednaná – zobrazit žlutě</label></div>
   <div class="checkrow"><input type="checkbox" id="newNoOrder"><label for="newNoOrder" style="margin:0">Jezdit bez objednávky – označit růžově</label></div>
   <label>Příští kontrola</label><input type="date" id="newNextCheck">
   <label>Poslední kontrola</label><input type="date" id="newLastCheck">
   <label>Poznámky</label><textarea id="newNotes"></textarea>
   <label>Další informace</label><textarea id="newExtra" placeholder="Sem napiš cokoliv dalšího – fakturace, protokol, cena, poznámka..."></textarea>
+  <label>Veškerá data / vlastní pole</label>
+  <textarea id="newAllData" placeholder="Sem můžeš doplnit libovolná další data. Např.:
+Rok výroby: 2024
+Serviska: ano
+Faktura na: ...
+Protokol na: ...
+Cena FZ: ..."></textarea>
 
   <div class="row" style="margin-top:8px">
     <button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
@@ -1348,6 +1359,7 @@ function newSiteToRow(docId, d){
     "Kontakt_mapy": d.contact || "",
     "Poznámky_mapy": d.notes || "",
     "Další informace": d.extra || "",
+    "Vlastní data": d.allData || "",
     "Příští_kontrola": d.nextCheck || "",
     "Poslední_kontrola": d.lastCheck || "",
     "Dní_do_kontroly": days,
@@ -1756,14 +1768,33 @@ window.openDetail=function(i){
   document.getElementById("newSiteCard").style.display="none";
   document.getElementById("detailTitle").textContent=r.adresa||"Bez názvu";
   document.getElementById("detailSub").textContent=r.zdroj||"";
-  document.getElementById("detailTable").classList.add("data-edit-table");
-  document.getElementById("detailTable").innerHTML=editableDataTable(r);
+  document.getElementById("detailTable").classList.remove("data-edit-table");
+  document.getElementById("detailTable").innerHTML=detailTable(r);
   const lastBox=document.getElementById("detailLastCheck");
   const nextBox=document.getElementById("detailNextCheck");
   if(lastBox) lastBox.textContent=formatDateCz(parseDateValue(r.posledni)) || r.posledni || "-";
   if(nextBox) nextBox.textContent=displayNext(r) || r.pristi || "-";
-  const saveDataBtn=document.getElementById("saveDataEditsBtn"); if(saveDataBtn) saveDataBtn.onclick=saveAllDataEdits;
-  const pf=document.getElementById("protocolForm"); if(pf){ pf.style.display="block"; prefillProtocol(); };
+  const editDataToggleBtn=document.getElementById("editDataToggleBtn");
+  const saveDataBtn=document.getElementById("saveDataEditsBtn");
+  const cancelDataEditBtn=document.getElementById("cancelDataEditBtn");
+
+  if(editDataToggleBtn){
+    editDataToggleBtn.style.display="block";
+    editDataToggleBtn.onclick=()=>{
+      const table=document.getElementById("detailTable");
+      table.classList.add("data-edit-table");
+      table.innerHTML=editableDataTable(selectedSite);
+      editDataToggleBtn.style.display="none";
+      if(saveDataBtn) saveDataBtn.style.display="block";
+      if(cancelDataEditBtn) cancelDataEditBtn.style.display="block";
+    };
+  }
+  if(saveDataBtn){ saveDataBtn.style.display="none"; saveDataBtn.onclick=saveAllDataEdits; }
+  if(cancelDataEditBtn){
+    cancelDataEditBtn.style.display="none";
+    cancelDataEditBtn.onclick=()=>openDetail(selectedSite.i);
+  }
+  const pf=document.getElementById("protocolForm"); if(pf){ pf.style.display="none"; } const tb=document.getElementById("toggleProtocolBtn"); if(tb) tb.textContent="Vyplnit protokol";;
   document.getElementById("editName").value=r.adresa||"";
   document.getElementById("editContact").value=r.kontakt||"";
   document.getElementById("editSource").value=r.zdroj||"";
@@ -1776,7 +1807,7 @@ window.openDetail=function(i){
   document.getElementById("editNotes").value=r.poznamky||"";
   document.getElementById("technician").value=currentUser?.displayName||currentUser?.email||"";
   document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
-  loadHistory(r.id); if(typeof prefillProtocol==="function") prefillProtocol();
+  loadHistory(r.id);
 }
 async function loadHistory(siteId){
   const history=document.getElementById("history");
@@ -1953,12 +1984,13 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     region:document.getElementById("newRegion").value.trim(),
     contact:document.getElementById("newContact").value.trim(),
     source:document.getElementById("newSource").value.trim(),
-    ordered:document.getElementById("newOrdered").checked,
+    ordered:false,
     noOrder:document.getElementById("newNoOrder").checked,
     nextCheck:document.getElementById("newNextCheck").value,
     lastCheck:document.getElementById("newLastCheck").value,
     notes:document.getElementById("newNotes").value.trim(),
     extra:document.getElementById("newExtra").value.trim(),
+    allData:document.getElementById("newAllData").value.trim(),
     createdBy:currentUser.email,
     createdAt:new Date().toISOString(),
     updatedBy:currentUser.email,
@@ -1976,18 +2008,32 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     document.getElementById("newRegion").value="";
     document.getElementById("newContact").value="";
     document.getElementById("newSource").value="";
-    document.getElementById("newOrdered").checked=false;
+    
     document.getElementById("newNoOrder").checked=false;
     document.getElementById("newNextCheck").value="";
     document.getElementById("newLastCheck").value="";
     document.getElementById("newNotes").value="";
     document.getElementById("newExtra").value="";
+    document.getElementById("newAllData").value="";
     await loadExtraSites();
     fit();
   }catch(e){st.textContent="Chyba uložení nového místa: "+e.message;}
 };
 document.getElementById("editBtn").onclick=()=>document.getElementById("editCard").style.display="block";
 document.getElementById("cancelEditBtn").onclick=()=>document.getElementById("editCard").style.display="none";
+
+const toggleProtocolBtn=document.getElementById("toggleProtocolBtn");
+if(toggleProtocolBtn){
+  toggleProtocolBtn.onclick=()=>{
+    const f=document.getElementById("protocolForm");
+    if(!f) return;
+    const open=f.style.display !== "none";
+    f.style.display=open ? "none" : "block";
+    toggleProtocolBtn.textContent=open ? "Vyplnit protokol" : "Skrýt protokol";
+    if(!open && typeof prefillProtocol==="function") prefillProtocol();
+  };
+}
+
 
 const editFindGpsBtn=document.getElementById("editFindGpsBtn");
 if(editFindGpsBtn) editFindGpsBtn.onclick=recalcGpsForEditedAddress;
