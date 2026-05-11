@@ -641,6 +641,17 @@ button,input,select,textarea{
   }
 }
 
+
+.data-edit-table select{
+  width:100%;
+  min-height:36px;
+  padding:7px 9px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:white;
+  font-size:14px;
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -1296,6 +1307,7 @@ function applyEditToRow(r){
     lon:Number.isFinite(lon) ? lon : r.lon,
     gpsAddress:e.gpsAddress || r.gpsAddress,
     ordered:e.ordered === true ? true : r.ordered,
+    noOrder:e.noOrder === true ? true : r.noOrder,
     edit:e
   };
 }
@@ -1614,6 +1626,14 @@ function formatCzDate(v){
 
 
 const hiddenDataLabels = new Set([
+  "jaký zdroj","jaky zdroj",
+  "kontakt_mapy","kontakt mapy",
+  "poznámky_mapy","poznamky_mapy","poznámky mapy","poznamky mapy",
+  "všechny_termíny","vsechny_terminy","všechny termíny","vsechny terminy",
+  "zdrojový_řádek","zdrojovy_radek","zdrojový řádek","zdrojovy radek",
+  "důležitá poznámka","dulezita poznamka","důležitá_poznámka","dulezita_poznamka",
+  "počet_termínů","pocet_terminu","počet termínů","pocet terminu",
+
   "stav_kontroly","stav kontroly","stav pro mapu",
   "zdrojový_soubor","zdrojovy_soubor","zdrojový soubor","zdrojovy soubor",
   "poslední_kontrola","posledni_kontrola","poslední kontrola","posledni kontrola","poslední proběhlá kontrola",
@@ -1629,6 +1649,9 @@ function shouldHideDataRow(k){
   const key=String(k||"").trim().toLowerCase();
   if(hiddenDataLabels.has(key)) return true;
   if(key.includes("gps")) return true;
+  if(/^měsíc[_\s-]*\d*$/i.test(key) || /^mesic[_\s-]*\d*$/i.test(key)) return true;
+  if(/^month[_\s-]*\d*$/i.test(key)) return true;
+  if(/^\d{1,2}$/.test(key)) return true;
   return false;
 }
 
@@ -1652,9 +1675,27 @@ function editableDataTable(r){
     if(!v && /^Sloupec_\d+$/i.test(k)) return;
     used.add(k);
     const id="dataEdit_"+btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
-    const field = String(v).length > 70
-      ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
-      : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
+    const keyNorm=String(k).trim().toLowerCase();
+    let field;
+    if(keyNorm==="hlídáme sami termín" || keyNorm==="hlidame sami termin" || keyNorm==="hlídáme_sami_termín" || keyNorm==="hlidame_sami_termin"){
+      const val=safe(v).toLowerCase();
+      field=`<select data-key="${esc(k)}" id="${id}" data-special="watch-self">
+        <option value="">Vyber</option>
+        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
+        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
+      </select>`;
+    }else if(keyNorm==="smlouva ano/ne" || keyNorm==="smlouva_ano/ne" || keyNorm==="smlouva ano ne" || keyNorm==="smlouva"){
+      const val=safe(v).toLowerCase();
+      field=`<select data-key="${esc(k)}" id="${id}">
+        <option value="">Vyber</option>
+        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
+        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
+      </select>`;
+    }else{
+      field = String(v).length > 70
+        ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
+        : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
+    }
     rows.push(`<tr><td>${esc(k)}</td><td>${field}</td></tr>`);
   }
 
@@ -1672,14 +1713,26 @@ async function saveAllDataEdits(){
   if(!currentUser){ if(st) st.textContent="Nejdřív se přihlaš."; return; }
 
   const editedRaw={};
-  document.querySelectorAll("#detailTable input[data-key], #detailTable textarea[data-key]").forEach(el=>{
+  document.querySelectorAll("#detailTable input[data-key], #detailTable textarea[data-key], #detailTable select[data-key]").forEach(el=>{
     editedRaw[el.dataset.key]=el.value;
   });
+
+  const watchValue = Object.entries(editedRaw).find(([k,v])=>{
+    const key=String(k).trim().toLowerCase();
+    return (key==="hlídáme sami termín" || key==="hlidame sami termin" || key==="hlídáme_sami_termín" || key==="hlidame_sami_termin") && String(v).toLowerCase()==="ano";
+  });
+
+  if(watchValue){
+    editedRaw["Jezdit bez objednávky"] = "ANO";
+    editedRaw["Bez objednávky"] = "ANO";
+    editedRaw["Hlídáme sami termín"] = "ano";
+  }
 
   try{
     const {doc,setDoc}=fb.fsMod;
     const edit = {
       rawEdits: editedRaw,
+      noOrder: !!watchValue || selectedSite.noOrder === true,
       updatedBy: currentUser.email,
       updatedAt: new Date().toISOString()
     };
@@ -1711,6 +1764,11 @@ function detailTable(r){
 
   // Tyto řádky v detailu nechceme zobrazovat.
   const bannedLabels = new Set([
+    "jaký zdroj","jaky zdroj","kontakt_mapy","kontakt mapy","poznámky_mapy","poznamky_mapy","poznámky mapy","poznamky mapy",
+    "všechny_termíny","vsechny_terminy","všechny termíny","vsechny terminy",
+    "zdrojový_řádek","zdrojovy_radek","zdrojový řádek","zdrojovy radek",
+    "důležitá poznámka","dulezita poznamka","důležitá_poznámka","dulezita_poznamka",
+    "počet_termínů","pocet_terminu","počet termínů","pocet terminu",
     "počet_termínů","počet termínů","pocet_terminu","pocet terminu",
     "měsíc","mesic",
     "zdrojový_řádek","zdrojovy_radek","zdrojový řádek","zdrojovy radek",
