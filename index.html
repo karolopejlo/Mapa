@@ -991,7 +991,7 @@ button,input,select,textarea{
   </div>
 
   <label>Zdroj / popis zařízení</label><input id="newSource">
-  <div class="checkrow"><input type="checkbox" id="newNoOrder"><label for="newNoOrder" style="margin:0">Jezdit bez objednávky – označit růžově</label></div>
+  <div class="checkrow"><input type="checkbox" id="newNoOrder"><label for="newNoOrder" style="margin:0">Hlídáme termín sami – označit růžově</label></div>
   <label>Příští kontrola</label><input type="date" id="newNextCheck">
   <label>Poslední kontrola</label><input type="date" id="newLastCheck">
   <label>Poznámky</label><textarea id="newNotes"></textarea>
@@ -1326,7 +1326,7 @@ function isNoOrderSite(r){
   const text=[
     raw["Bez objednávky"],
     raw["Bez objednavky"],
-    raw["Jezdit bez objednávky"],
+    raw["Hlídáme termín sami"],
     raw["Jezdit bez objednavky"],
     raw["Růžová"],
     raw["Ruzova"],
@@ -1400,7 +1400,7 @@ function normalize(data){
       stav:first(raw,["Stav_kontroly"]),
       barva:first(raw,["Barva bodu","Barva_bodu"]),
       ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan")),
-      noOrder:(first(raw,["Jezdit bez objednávky","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
+      noOrder:(first(raw,["Hlídáme termín sami","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
     };
     return applyEditToRow(r);
   });
@@ -1447,7 +1447,7 @@ function newSiteToRow(docId, d){
     "Poslední_kontrola": d.lastCheck || "",
     "Dní_do_kontroly": days,
     "Kontrola objednaná": d.ordered ? "ANO" : "NE",
-    "Jezdit bez objednávky": d.noOrder ? "ANO" : "NE",
+    "Hlídáme termín sami": d.noOrder ? "ANO" : "NE",
     "Stav_kontroly": d.ordered ? "Kontrola objednaná" : (days === "" ? "OK / ostatní" : (days < 0 ? "Propadlá kontrola" : (days <= 30 ? "1–30 dní k termínu" : "OK / ostatní"))),
     "GPS_lat": d.gpsLat || "",
     "GPS_lon": d.gpsLon || "",
@@ -1631,7 +1631,7 @@ function filtered(){
     // Růžová je nezávislý příznak z původního Excelu.
     // Proto se filtruje samostatně přes isNoOrderSite(r).
     let okS = true;
-    if(s === "Jezdit bez objednávky"){
+    if(s === "Hlídáme termín sami"){
       okS = isNoOrderSite(r);
     }else if(s){
       okS = st === s;
@@ -1661,7 +1661,7 @@ function render(){
 function filters(){
   const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
   st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
-  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Jezdit bez objednávky"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
+  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Hlídáme termín sami"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
   [...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
@@ -1902,11 +1902,24 @@ async function saveAllDataEdits(){
     return dataNormFixed(k)==="hlidame kontroly sami" && String(v).toLowerCase()==="ano";
   });
 
+  // růžové místo + synchronizace do hlavního panelu
+  if(watchValue){
+    editedRaw["Hlídáme kontroly sami"]="ano";
+    editedRaw["Hlídáme sami termín"]="ano";
+    editedRaw["Jezdit hlídáme termín sami"]="ANO";
+    editedRaw["Bez objednávky"]="ANO";
+  }else{
+    editedRaw["Hlídáme kontroly sami"]="ne";
+    editedRaw["Hlídáme sami termín"]="ne";
+    editedRaw["Jezdit hlídáme termín sami"]="NE";
+    editedRaw["Bez objednávky"]="NE";
+  }
+
   // uložit jen jeden uživatelský řádek; interní růžové příznaky se do Data nezobrazují
   if(watchValue){
     editedRaw["Hlídáme kontroly sami"]="ano";
     editedRaw["Hlídáme sami termín"]="ano";
-    editedRaw["Jezdit bez objednávky"]="ANO";
+    editedRaw["Hlídáme termín sami"]="ANO";
     editedRaw["Bez objednávky"]="ANO";
   }
 
@@ -2040,7 +2053,7 @@ function orderedDataUser(raw){
 
 
 function getWatchSelfValue(raw){
-  const keys=["Hlídáme kontroly sami","Hlídáme sami termín","Hlidame kontroly sami","Jezdit bez objednávky","Bez objednávky"];
+  const keys=["Hlídáme kontroly sami","Hlídáme sami termín","Hlidame kontroly sami","Hlídáme termín sami","Bez objednávky"];
   for(const k of keys){
     if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
   }
@@ -2177,6 +2190,25 @@ function detectControlPeriod(raw){
   if(joined.includes("6 mes")) return "6";
 
   return "12";
+}
+
+
+function shouldWatchSelf(raw){
+  const keys=[
+    "Hlídáme kontroly sami",
+    "Hlídáme sami termín",
+    "Hlidame kontroly sami",
+    "Jezdit hlídáme termín sami",
+    "Bez objednávky"
+  ];
+
+  for(const k of keys){
+    if(raw && raw[k]!==undefined){
+      const v=String(raw[k]).toLowerCase().trim();
+      if(v==="ano" || v==="true" || v==="1") return true;
+    }
+  }
+  return false;
 }
 
 function detailTable(r){
