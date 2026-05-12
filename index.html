@@ -743,6 +743,33 @@ button,input,select,textarea{
   }
 }
 
+
+#newSiteCard > .row,
+#newSiteCard > label,
+#newSiteCard > input,
+#newSiteCard > textarea,
+#newSiteCard > select{
+}
+
+#newSiteCard .legacy-newsite-fields{
+  display:none!important;
+}
+
+
+/* schovat původní staré formuláře přidání místa */
+.legacy-newsite-fields,
+#newSiteCard > input,
+#newSiteCard > textarea,
+#newSiteCard > select,
+#newSiteCard > .row:first-of-type{
+  display:none !important;
+}
+
+/* ponechat jen nové čisté pole */
+#newAllFieldsBox{
+  display:grid !important;
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -1009,7 +1036,7 @@ button,input,select,textarea{
   <h3>Přidat nové místo</h3>
   <p class="small">Nové místo se uloží do Firebase kolekce <b>sites</b> a zobrazí se v mapě bez úpravy CSV.</p>
 
-  <label>Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
+  <label><div class="legacy-newsite-fields">Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
   <label>Adresa pro GPS / mapu</label><input id="newGpsAddress" placeholder="Ulice číslo, město, Česká republika">
   <div class="edit-grid">
     <div><label>GPS lat</label><input id="newGpsLat" placeholder="49.123456"></div>
@@ -1036,7 +1063,7 @@ Protokol na: ...
 Cena FZ: ..."></textarea>
 
   <div class="row" style="margin-top:8px">
-    <button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
+    </div><button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
     <button class="secondary" id="cancelNewSiteBtn">Zrušit</button>
   </div>
   <p id="newSiteStatus" class="small"></p>
@@ -1525,40 +1552,115 @@ function getAllKnownDataKeys(){
   return keys;
 }
 
+
+
+function hideLegacyNewSiteFields(){
+  document.querySelectorAll("#newSiteCard input:not([data-new-key]), #newSiteCard textarea:not([data-new-key]), #newSiteCard select:not([data-new-key])").forEach(el=>{
+    const keep = el.closest("#newAllFieldsBox");
+    if(!keep){
+      const wrap = el.closest("div") || el;
+      wrap.style.display="none";
+    }
+  });
+}
+
 function renderNewSiteAllFields(){
   const box=document.getElementById("newAllFieldsBox");
   if(!box) return;
 
-  box.innerHTML="";
-  getAllKnownDataKeys().forEach(k=>{
-    const label=newSiteFieldLabel(k);
-    const n=newSiteFieldNorm(k);
-    const wrap=document.createElement("div");
-    if(n==="poznamky" || n==="dulezita poznamka" || n==="popis zdroje") wrap.className="full";
+  box.innerHTML=`
+    <div>
+      <label>Název</label>
+      <input data-new-key="Název">
+    </div>
 
-    let field;
-    if(n==="perioda kontrol" || n==="perioda" || n==="cetnost" || n==="četnost"){
-      field=`<select data-new-key="${esc(k)}">
-        <option value="">Nevyplněno</option>
-        <option value="6">6 měsíců</option>
-        <option value="12">12 měsíců</option>
-      </select>`;
-    }else if(n==="hlidame kontroly sami" || n==="hlidame sami termin" || n==="serviska" || n==="smlouva ano/ne" || n==="smlouva"){
-      field=`<select data-new-key="${esc(k)}">
-        <option value="">Nevyplněno</option>
+    <div>
+      <label>Adresa / umístění</label>
+      <input data-new-key="Adresa / umístění">
+    </div>
+
+    <div class="full">
+      <label>Umístění zdroje</label>
+      <input data-new-key="Adresa_GPS">
+    </div>
+
+    <div class="full">
+      <label>Popis_zdroje</label>
+      <input data-new-key="Popis_zdroje">
+    </div>
+
+    <div class="full">
+      <label>Výrobní číslo</label>
+      <input data-new-key="Zdroj">
+    </div>
+
+    <div>
+      <label>Kontakt</label>
+      <input data-new-key="Kontakt">
+    </div>
+
+    <div>
+      <label>Kraj</label>
+      <input data-new-key="Kraj">
+    </div>
+
+    <div class="full">
+      <label>Poznámky_mapy</label>
+      <input data-new-key="Poznámky_mapy">
+    </div>
+
+    <div class="full">
+      <label>Poznámky</label>
+      <input data-new-key="Poznámky">
+    </div>
+
+    <div>
+      <label>Rok výroby</label>
+      <input data-new-key="Rok výroby">
+    </div>
+
+    <div>
+      <label>Serviska</label>
+      <select data-new-key="Serviska">
+        <option value=""></option>
         <option value="ano">ano</option>
         <option value="ne">ne</option>
-      </select>`;
-    }else if(n==="poznamky" || n==="poznamka" || n==="dulezita poznamka"){
-      field=`<textarea data-new-key="${esc(k)}" placeholder=""></textarea>`;
-    }else{
-      field=`<input data-new-key="${esc(k)}" value="" placeholder="">`;
-    }
+      </select>
+    </div>
 
-    wrap.innerHTML=`<label>${esc(label)}</label>${field}`;
-    box.appendChild(wrap);
-  });
+    <div class="full">
+      <label>Umístění</label>
+      <input data-new-key="Umístění">
+    </div>
+
+    <div>
+      <label>Cena FZ</label>
+      <input data-new-key="Cena FZ">
+    </div>
+
+    <div>
+      <label>Perioda kontrol</label>
+      <select data-new-key="Perioda kontrol">
+        <option value="6">6 měsíců</option>
+        <option value="12" selected>12 měsíců</option>
+      </select>
+    </div>
+
+    <div class="full">
+      <label>Hlídáme kontroly sami</label>
+      <select data-new-key="Hlídáme kontroly sami" data-special="watch-self">
+        <option value="ne" selected>ne</option>
+        <option value="ano">ano</option>
+      </select>
+    </div>
+
+    <div class="full notes-red-row" style="padding:10px;border-radius:12px;">
+      <label>Důležité poznámky</label>
+      <textarea data-new-key="Důležitá poznámka"></textarea>
+    </div>
+  `;
 }
+
 
 function collectNewSiteAllFields(){
   const raw={};
@@ -1650,6 +1752,7 @@ function openNewSiteForm(){
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
   renderNewSiteAllFields();
+  hideLegacyNewSiteFields();
   clearNewSiteAllFields();
   
 ["newName","newAddress","newRegion","newSource","newSerial","newBatteries","newCapacity","newSets","newExtra","newAllData"].forEach(id=>{
@@ -2159,6 +2262,8 @@ function hideDataUser(k){
   if(n.includes("gps") && n!=="adresa gps") return true;
   if(n==="kontakt mapy") return true;
   if(n==="hlavni kontakt") return true;
+  if(n==="poznamky mapy") return true;
+  if(n==="umisteni") return true;
   if(n==="jaky zdroj") return true;
   if(n==="stav kontroly") return true;
   if(n==="stav pro mapu") return true;
@@ -2237,6 +2342,8 @@ function hideDataFixed(k){
   if(n.includes("gps") && n!=="adresa gps") return true;
   if(n==="kontakt mapy") return true;
   if(n==="hlavni kontakt") return true;
+  if(n==="poznamky mapy") return true;
+  if(n==="umisteni") return true;
   if(n==="jaky zdroj") return true;
   if(n==="stav kontroly") return true;
   if(n==="stav pro mapu") return true;
