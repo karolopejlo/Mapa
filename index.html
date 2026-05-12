@@ -1715,70 +1715,45 @@ async function dataGpsToAddress(){
 }
 
 function editableDataTable(r){
-  const raw = r.raw || {};
-  const priority=[
-    "Název","Adresa_GPS","Umístění","Umístění zdroje","Kraj",
-    "Popis_zdroje","Výrobní číslo","Výrobní č.","SN","Serial",
-    "Kontakt","Hlavní kontakt",
-    "Serviska","Hlídáme sami termín","Rok výroby",
-    "Faktura na","Protokol na","Smlouva ano/ne",
-    "Poznámky","DŮLEŽITÁ POZNÁMKA"
-  ];
-
-  const used=new Set();
+  const raw=r.raw || {};
   const rows=[];
 
-  function add(k){
-    if(!k || used.has(k) || raw[k]===undefined || shouldHideDataRow(k)) return;
-    if(String(k).trim().toLowerCase()==="zdroj") return;
-
+  orderedDataKeys(raw).forEach(k=>{
+    if(hideDataKey(k)) return;
     const v=safe(raw[k]);
-    if(!v && /^Sloupec_\d+$/i.test(k)) return;
-
-    const label=displayLabelForData(k);
-    const labelKey=String(label).trim().toLowerCase();
-    if(used.has(labelKey) && !isImportantNoteKey(k)) return;
-    used.add(k); used.add(labelKey);
+    if(!v) return;
 
     const id="dataEdit_"+btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
-    const keyNorm=String(k).trim().toLowerCase();
+    const n=dataKeyNorm(k);
     let field;
 
-    if(keyNorm==="serviska"){
-      const val=safe(v).toLowerCase();
+    if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva_ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
+      const val=v.toLowerCase();
       field=`<select data-key="${esc(k)}" id="${id}">
         <option value="">Vyber</option>
         <option value="ano" ${val==="ano"?"selected":""}>ano</option>
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
-    }else if(keyNorm==="hlídáme sami termín" || keyNorm==="hlidame sami termin" || keyNorm==="hlídáme_sami_termín" || keyNorm==="hlidame_sami_termin"){
-      const val=safe(v).toLowerCase();
+    }else if(n==="hlidame sami termin" || n==="hlidame_sami_termin"){
+      const val=v.toLowerCase();
       field=`<select data-key="${esc(k)}" id="${id}" data-special="watch-self">
         <option value="">Vyber</option>
         <option value="ano" ${val==="ano"?"selected":""}>ano</option>
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
-    }else if(keyNorm==="smlouva ano/ne" || keyNorm==="smlouva_ano/ne" || keyNorm==="smlouva ano ne" || keyNorm==="smlouva"){
-      const val=safe(v).toLowerCase();
-      field=`<select data-key="${esc(k)}" id="${id}">
-        <option value="">Vyber</option>
-        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
-        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
-      </select>`;
     }else{
-      field = String(v).length > 70 || isImportantNoteKey(k)
+      field=v.length>70 || isImportantNoteDataKey(k)
         ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
         : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
     }
 
-    rows.push(`<tr class="${isImportantNoteKey(k) ? "important-note-row" : ""}"><td>${esc(label)}</td><td>${field}</td></tr>`);
-  }
+    rows.push(`<tr class="${isImportantNoteDataKey(k) ? "important-note-row" : ""}">
+      <td>${esc(dataLabel(k))}</td>
+      <td>${field}</td>
+    </tr>`);
+  });
 
-  priority.forEach(add);
-  Object.keys(raw).forEach(add);
-
-  if(!rows.length) return "<tr><td>Data</td><td>Bez údajů</td></tr>";
-  return rows.join("");
+  return rows.join("") || "<tr><td>Data</td><td>Bez údajů</td></tr>";
 }
 
 async function saveAllDataEdits(){
@@ -1863,57 +1838,86 @@ function isImportantNoteKey(k){
   return key==="důležitá poznámka" || key==="dulezita poznamka" || key==="důležitá_poznámka" || key==="dulezita_poznamka";
 }
 
+
+function dataKeyNorm(k){
+  return String(k||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/\s+/g," ");
+}
+
+function dataLabel(k){
+  const n=dataKeyNorm(k);
+  if(n==="popis_zdroje" || n==="popis zdroje" || n==="jaky zdroj") return "Typ zdroje";
+  if(n==="vyrobni c." || n==="vyrobni cislo" || n==="seriove cislo" || n==="sn" || n==="serial" || n==="vyr. c.") return "Výrobní číslo";
+  return k;
+}
+
+function isSerialDataKey(k){
+  const n=dataKeyNorm(k);
+  return ["vyrobni c.","vyrobni cislo","seriove cislo","sn","serial","vyr. c."].includes(n);
+}
+
+function isImportantNoteDataKey(k){
+  const n=dataKeyNorm(k);
+  return n==="dulezita poznamka" || n==="dulezita_poznamka";
+}
+
+function hideDataKey(k){
+  const n=dataKeyNorm(k);
+  if(!n) return true;
+  if(n.includes("gps")) return true;
+  if(n==="zdroj") return true;
+  if(n==="klic adresy" || n==="klic_adresy") return true;
+  if(n==="zdrojovy soubor" || n==="zdrojovy_soubor") return true;
+  if(n==="zdrojovy radek" || n==="zdrojovy_radek") return true;
+  if(n==="vsechny terminy" || n==="vsechny_terminy") return true;
+  if(n==="pocet terminu" || n==="pocet_terminu") return true;
+  if(n==="barva bodu" || n==="barva_bodu") return true;
+  if(n==="dni do kontroly" || n==="dni_do_kontroly") return true;
+  if(n==="stav kontroly" || n==="stav_kontroly" || n==="stav pro mapu") return true;
+  if(n==="pristi kontrola" || n==="pristi_kontrola" || n==="pristi planovana kontrola") return true;
+  if(n==="cena fz v kc" || n==="cena fz" || n==="cena_fz") return true;
+  if(n==="protokol s fakturou na" || n==="protokol_s_fakturou_na") return true;
+  if(/^mesic[_\s-]*\d*$/.test(n)) return true;
+  if(/^\d{1,2}$/.test(n)) return true;
+  if(n==="firebase_doc_id" || n==="id mista") return true;
+  return false;
+}
+
+function orderedDataKeys(raw){
+  const keys=Object.keys(raw||{});
+  const typIndex=keys.findIndex(k=>["popis_zdroje","popis zdroje","jaky zdroj"].includes(dataKeyNorm(k)));
+  const serialKey=keys.find(k=>isSerialDataKey(k) && safe(raw[k]));
+  if(typIndex>=0 && serialKey){
+    const without=keys.filter(k=>k!==serialKey);
+    const idx=without.findIndex(k=>["popis_zdroje","popis zdroje","jaky zdroj"].includes(dataKeyNorm(k)));
+    without.splice(idx+1,0,serialKey);
+    return without;
+  }
+  return keys;
+}
+
 function detailTable(r){
   const raw={...r.raw};
-  raw["Další kontrola podle periody"] = displayNext(r);
-  raw["Perioda kontroly"] = periodMonths(r) === 12 ? "12 měsíců" : "6 měsíců";
+  const out=[];
+  const important=[];
 
-  const priority=[
-    "Název","Adresa_GPS","Umístění","Umístění zdroje","Kraj",
-    "Popis_zdroje","Výrobní číslo","Výrobní č.","SN","Serial",
-    "Kontakt","Hlavní kontakt",
-    "Serviska","Hlídáme sami termín","Rok výroby",
-    "Faktura na","Protokol na","Smlouva ano/ne",
-    "Poznámky"
-  ];
-
-  const usedKeys=new Set(), usedValues=new Set(), out=[];
-  let importantRows=[];
-
-  function add(k){
-    if(!k || raw[k]===undefined || k==="GPS_raw" || shouldHideDataRow(k)) return;
-
-    const v=niceValue ? niceValue(k, raw[k]) : safe(raw[k]);
+  orderedDataKeys(raw).forEach(k=>{
+    if(hideDataKey(k)) return;
+    const v=safe(raw[k]);
     if(!v) return;
 
-    const label = displayLabelForData(k);
-    const keyNorm = String(label).trim().toLowerCase();
+    const row=`<tr class="${isImportantNoteDataKey(k) ? "important-note-row" : ""}">
+      <td>${esc(dataLabel(k))}</td>
+      <td>${esc(v)}</td>
+    </tr>`;
 
-    // zdroj samotný nechceme, typ zdroje bereme z Popis_zdroje/Jaký zdroj
-    if(String(k).trim().toLowerCase()==="zdroj") return;
-
-    // při duplicitách necháme první, ale výrobní číslo a důležité poznámky mají samostatné zacházení
-    const valKey=v.toLowerCase();
-    if(usedKeys.has(keyNorm) && !isSerialKey(k) && !isImportantNoteKey(k)) return;
-    if(usedValues.has(valKey) && !k.startsWith("Upraven") && !isImportantNoteKey(k)) return;
-
-    usedKeys.add(keyNorm);
-    usedValues.add(valKey);
-
-    const row=`<tr class="${isImportantNoteKey(k) ? "important-note-row" : ""}"><td>${esc(label)}</td><td>${esc(v)}</td></tr>`;
-    if(isImportantNoteKey(k)) importantRows.push(row);
+    if(isImportantNoteDataKey(k)) important.push(row);
     else out.push(row);
-  }
+  });
 
-  priority.forEach(add);
-
-  // pokud v datech není výrobní číslo jako známý klíč, nic nevymýšlíme
-  Object.keys(raw).forEach(add);
-
-  // důležité poznámky až úplně na konec červeně
-  out.push(...importantRows);
-
-  return out.join("")||"<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
+  out.push(...important);
+  return out.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
 }
 
 window.openDetail=function(i){
