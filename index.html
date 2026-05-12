@@ -1721,39 +1721,17 @@ async function dataGpsToAddress(){
 
 function editableDataTable(r){
   const raw=r.raw || {};
-  const priority=[
-    "Název","Adresa_GPS","Umístění","Umístění zdroje","Kraj",
-    "Popis_zdroje","Jaký zdroj","Výrobní číslo","Výrobní č.","SN","Serial",
-    "Kontakt","Hlavní kontakt","Serviska","Hlídáme sami termín","Rok výroby",
-    "Faktura na","Protokol na","Smlouva ano/ne","Poznámky","DŮLEŽITÁ POZNÁMKA"
-  ];
-  const used=new Set();
   const rows=[];
 
-  function norm(k){return String(k||"").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/_/g," ").replace(/\s+/g," ")}
-  function labelFor(k){
-    const n=norm(k);
-    if(n==="popis zdroje" || n==="jaky zdroj") return "Typ zdroje";
-    if(["vyrobni cislo","vyrobni c.","seriove cislo","sn","serial","vyr. c."].includes(n)) return "Výrobní číslo";
-    return k;
-  }
-  function important(k){return norm(k)==="dulezita poznamka"}
-  function hide(k){
-    const n=norm(k);
-    if(!n) return true;
-    if(n.includes("gps")) return true;
-    if(["zdroj","klic adresy","zdrojovy kod","zdrojovy soubor","zdrojovy radek","vsechny terminy","pocet terminu","barva bodu","dni do kontroly","stav kontroly","stav pro mapu","pristi kontrola","pristi planovana kontrola","dalsi kontrola podle periody","cena fz v kc","cena fz","protokol s fakturou na","firebase doc id","id mista"].includes(n)) return true;
-    if(/^mesic\s*\d*$/.test(n) || /^\d{1,2}$/.test(n)) return true;
-    return false;
-  }
-  function add(k){
-    if(!k || used.has(k) || raw[k]===undefined || hide(k)) return;
+  orderedAllDataKeys(raw).forEach(k=>{
+    if(hideOnlyInternalData(k)) return;
     const v=safe(raw[k]);
     if(!v) return;
-    used.add(k);
+
     const id="dataEdit_"+btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
-    const n=norm(k);
+    const n=dataNormAll(k);
     let field;
+
     if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
       const val=v.toLowerCase();
       field=`<select data-key="${esc(k)}" id="${id}">
@@ -1769,15 +1747,17 @@ function editableDataTable(r){
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
     }else{
-      field=v.length>70 || important(k)
+      field=v.length>70 || isImportantDataAll(k)
         ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
         : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
     }
-    rows.push(`<tr class="${important(k) ? "important-note-row" : ""}"><td>${esc(labelFor(k))}</td><td>${field}</td></tr>`);
-  }
 
-  priority.forEach(add);
-  Object.keys(raw).forEach(add);
+    rows.push(`<tr class="${isImportantDataAll(k) ? "important-note-row" : ""}">
+      <td>${esc(dataLabelAll(k))}</td>
+      <td>${field}</td>
+    </tr>`);
+  });
+
   return rows.join("") || "<tr><td>Data</td><td>Bez údajů</td></tr>";
 }
 
@@ -1826,73 +1806,62 @@ async function saveAllDataEdits(){
   }
 }
 
+
+function dataNormAll(k){
+  return String(k||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/_/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+function dataLabelAll(k){
+  const n=dataNormAll(k);
+  if(n==="popis zdroje" || n==="jaky zdroj") return "Typ zdroje";
+  if(["vyrobni cislo","vyrobni c.","seriove cislo","sn","serial","vyr. c."].includes(n)) return "Výrobní číslo";
+  return k;
+}
+function isImportantDataAll(k){
+  return dataNormAll(k)==="dulezita poznamka";
+}
+function hideOnlyInternalData(k){
+  const n=dataNormAll(k);
+  if(!n) return true;
+
+  // pryč pouze interní / technické věci, které nemají být v uživatelských datech
+  if(n.includes("gps")) return true;
+  if(n==="firebase doc id") return true;
+  if(n==="id mista") return true;
+  if(n==="klic adresy") return true;
+  if(n==="zdrojovy kod") return true;
+
+  return false;
+}
+function orderedAllDataKeys(raw){
+  // přesně zachová původní pořadí sloupců z CSV/Excelu
+  return Object.keys(raw || {});
+}
+
 function detailTable(r){
   const raw={...r.raw};
-  raw["Další kontrola podle periody"] = displayNext(r);
-  raw["Perioda kontroly"] = periodMonths(r) === 12 ? "12 měsíců" : "6 měsíců";
-  if(r.edit){
-    raw["Upravený název"]=r.edit.name||"";
-    raw["Upravený kontakt"]=r.edit.contact||"";
-    raw["Upravený zdroj"]=r.edit.source||"";
-    raw["Upravené poznámky"]=r.edit.notes||"";
-  }
+  const normalRows=[];
+  const importantRows=[];
 
-  // Tyto řádky v detailu nechceme zobrazovat.
-  const bannedLabels = new Set([
-    "jaký zdroj","jaky zdroj","kontakt_mapy","kontakt mapy","poznámky_mapy","poznamky_mapy","poznámky mapy","poznamky mapy",
-    "všechny_termíny","vsechny_terminy","všechny termíny","vsechny terminy",
-    "zdrojový_řádek","zdrojovy_radek","zdrojový řádek","zdrojovy radek",
-    "důležitá poznámka","dulezita poznamka","důležitá_poznámka","dulezita_poznamka",
-    "počet_termínů","pocet_terminu","počet termínů","pocet terminu",
-    "počet_termínů","počet termínů","pocet_terminu","pocet terminu",
-    "měsíc","mesic",
-    "zdrojový_řádek","zdrojovy_radek","zdrojový řádek","zdrojovy radek",
-    "všechny_termíny","vsechny_terminy","všechny termíny","vsechny terminy"
-  ]);
+  orderedAllDataKeys(raw).forEach(k=>{
+    if(hideOnlyInternalData(k)) return;
+    const v=safe(raw[k]);
+    if(!v) return;
 
-  const priority=[
-    "Název","Adresa_GPS","Umístění","Umístění zdroje","Kraj",
-    "Popis_zdroje","Jaký zdroj",
-    "Kontakt_mapy","Hlavní kontakt",
-    "Poznámky_mapy","Poznámky",
-    "Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby",
-    "Perioda kontroly","Kontrola objednaná",
-    
-    "Upravený název","Upravený kontakt","Upravený zdroj","Upravená Adresa_GPS","Upravené GPS_lat","Upravené GPS_lon","Upravené poznámky"
-  ];
+    const row=`<tr class="${isImportantDataAll(k) ? "important-note-row" : ""}">
+      <td>${esc(dataLabelAll(k))}</td>
+      <td>${esc(v)}</td>
+    </tr>`;
 
-  const usedKeys=new Set(), usedValues=new Set(), out=[];
+    if(isImportantDataAll(k)) importantRows.push(row);
+    else normalRows.push(row);
+  });
 
-  function niceValue(k,v){
-    if(k==="Poslední_kontrola" || k==="Poslední proběhlá kontrola") return formatCzDate(v);
-    if(k==="Příští_kontrola" || k==="Příští plánovaná kontrola") return formatCzDate(v);
-    return safe(v);
-  }
-
-  function add(k){
-    if(!k||raw[k]===undefined||k==="GPS_raw"||shouldHideDataRow(k))return;
-    const labelNorm=String(k).trim().toLowerCase();
-    if(bannedLabels.has(labelNorm))return;
-    if(/^Měsíc_\d+$/i.test(k) || /^Mesic_\d+$/i.test(k))return;
-
-    const ck=canonicalKey(k);
-    if(bannedLabels.has(String(ck).trim().toLowerCase()))return;
-
-    const v=niceValue(k, raw[k]);
-    if(!v)return;
-
-    const valKey=v.toLowerCase();
-    if(usedKeys.has(ck))return;
-    if(usedValues.has(valKey) && !k.startsWith("Upraven"))return;
-
-    usedKeys.add(ck);
-    usedValues.add(valKey);
-    out.push(`<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`);
-  }
-
-  priority.forEach(add);
-  Object.keys(raw).forEach(add);
-  return out.join("")||"<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
+  normalRows.push(...importantRows);
+  return normalRows.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
 }
 
 window.openDetail=function(i){
