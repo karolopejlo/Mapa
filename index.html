@@ -1755,68 +1755,59 @@ async function dataGpsToAddress(){
 function editableDataTable(r){
   const raw = r.raw || {};
   const rows = [];
-  const noteRows = [];
-  const seenLabelValue = new Set();
-  let hasWatchRow=false;
+  const seen = new Set();
 
-  function makeWatchField(k,v){
-    const val = String(v||"").trim().toLowerCase();
-    return `<select data-key="${esc(k)}" data-special="watch-self">
-      <option value="">Vyber</option>
-      <option value="ano" ${val==="ano" || val==="true" || val==="1" ? "selected" : ""}>ano</option>
-      <option value="ne" ${val==="ne" || val==="false" || val==="0" ? "selected" : ""}>ne</option>
-    </select>`;
-  }
+  function inputField(k,v,label){
+    const n=dataNormFixed(k);
+    if(n==="adresa gps"){
+      return `<input data-key="${esc(k)}" value="">`;
+    }
 
-  orderedDataUser(raw).forEach(k=>{
-    if(hideDataUser(k)) return;
-
-    const v = safe(raw[k]);
-    if(!v) return;
-
-    let label = dataLabelUser(k);
-    const n = dataNormUser(k);
-    const labelNorm=dataNormUser(label);
-
-    const pairKey = labelNorm + "::" + dataValueKeyUser(v);
-    if(seenLabelValue.has(pairKey) && !isNoteUser(k)) return;
-    seenLabelValue.add(pairKey);
-
-    let field;
-    if(labelNorm==="hlidame kontroly sami" || n==="hlidame sami termin"){
-      label="Hlídáme kontroly sami";
-      hasWatchRow=true;
-      field=makeWatchField("Hlídáme kontroly sami",v);
-    }else if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
-      const val = v.toLowerCase();
-      field = `<select data-key="${esc(k)}">
+    if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
+      const val=String(v||"").toLowerCase();
+      return `<select data-key="${esc(k)}">
         <option value="">Vyber</option>
         <option value="ano" ${val==="ano"?"selected":""}>ano</option>
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
-    }else{
-      field = (v.length > 70 || isNoteUser(k))
-        ? `<textarea data-key="${esc(k)}">${esc(v)}</textarea>`
-        : `<input data-key="${esc(k)}" value="${esc(v)}">`;
     }
 
-    const row = `<tr class="${isNoteUser(k) ? "notes-red-row" : ""}">
-      <td>${esc(label)}</td>
-      <td>${field}</td>
-    </tr>`;
-
-    if(isNoteUser(k)) noteRows.push(row);
-    else rows.push(row);
-  });
-
-  if(!hasWatchRow){
-    rows.push(`<tr>
-      <td>Hlídáme kontroly sami</td>
-      <td>${makeWatchField("Hlídáme kontroly sami", getWatchSelfValue(raw) || "ne")}</td>
-    </tr>`);
+    return String(v||"").length>70
+      ? `<textarea data-key="${esc(k)}">${esc(v)}</textarea>`
+      : `<input data-key="${esc(k)}" value="${esc(v)}">`;
   }
 
-  rows.push(...noteRows);
+  orderedFixedKeys(raw).forEach(k=>{
+    if(hideDataFixed(k)) return;
+
+    let v=safe(raw[k]);
+    const label=dataLabelFixed(k);
+    if(dataNormFixed(k)==="adresa gps") v="";
+    if(!v && dataNormFixed(k)!=="adresa gps") return;
+
+    const key=dataNormFixed(label)+"::"+valNormFixed(v);
+    if(seen.has(key)) return;
+    seen.add(key);
+
+    rows.push(`<tr><td>${esc(label)}</td><td>${inputField(k,v,label)}</td></tr>`);
+  });
+
+  const watchVal=String(getWatchFixed(raw)||"ne").toLowerCase();
+  rows.push(`<tr>
+    <td>Hlídáme kontroly sami</td>
+    <td><select data-key="Hlídáme kontroly sami" data-special="watch-self">
+      <option value="">Vyber</option>
+      <option value="ano" ${watchVal==="ano" || watchVal==="true" || watchVal==="1" ? "selected" : ""}>ano</option>
+      <option value="ne" ${watchVal==="ne" || watchVal==="false" || watchVal==="0" ? "selected" : ""}>ne</option>
+    </select></td>
+  </tr>`);
+
+  const noteVal=getImportantNoteFixed(raw);
+  rows.push(`<tr class="notes-red-row">
+    <td>Důležité poznámky</td>
+    <td><textarea data-key="Důležitá poznámka">${esc(noteVal)}</textarea></td>
+  </tr>`);
+
   return rows.join("") || "<tr><td>Data</td><td>Bez údajů</td></tr>";
 }
 
@@ -1869,9 +1860,11 @@ async function saveAllDataEdits(){
 
   document.querySelectorAll("#detailTable input[data-key], #detailTable textarea[data-key], #detailTable select[data-key]").forEach(el=>{
     const key=el.dataset.key;
-    const newValue=el.value;
     if(!key) return;
-    if(!newValue.trim()) return; // prázdné nově přidané řádky se po uložení nezobrazí
+    const newValue=el.value;
+
+    // prázdné řádky se po uložení nezobrazují
+    if(!String(newValue||"").trim()) return;
 
     editedRaw[key]=newValue;
 
@@ -1886,10 +1879,10 @@ async function saveAllDataEdits(){
   });
 
   const watchValue = Object.entries(editedRaw).find(([k,v])=>{
-    const key=dataNormUser(k);
-    return (key==="hlidame kontroly sami" || key==="hlidame sami termin") && String(v).toLowerCase()==="ano";
+    return dataNormFixed(k)==="hlidame kontroly sami" && String(v).toLowerCase()==="ano";
   });
 
+  // uložit jen jeden uživatelský řádek; interní růžové příznaky se do Data nezobrazují
   if(watchValue){
     editedRaw["Hlídáme kontroly sami"]="ano";
     editedRaw["Hlídáme sami termín"]="ano";
@@ -2034,46 +2027,148 @@ function getWatchSelfValue(raw){
   return "";
 }
 
+
+function dataNormFixed(k){
+  return String(k||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/_/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function hideDataFixed(k){
+  const n=dataNormFixed(k);
+  if(!n) return true;
+
+  if(n.includes("gps") && n!=="adresa gps") return true;
+  if(n==="kontakt mapy") return true;
+  if(n==="hlavni kontakt") return true;
+  if(n==="jaky zdroj") return true;
+  if(n==="stav kontroly") return true;
+  if(n==="stav pro mapu") return true;
+  if(n==="zdrojovy radek") return true;
+  if(n==="jezdit bez objednavky") return true;
+  if(n==="bez objednavky") return true;
+
+  if(n==="pristi planovana kontrola") return true;
+  if(n==="posledni probehla kontrola") return true;
+  if(n==="dni do kontroly") return true;
+  if(n==="barva bodu") return true;
+  if(n==="posledni kontrola") return true;
+  if(n==="pristi kontrola") return true;
+  if(n==="vsechny terminy") return true;
+  if(n==="zdrojovy soubor") return true;
+  if(n==="pocet terminu") return true;
+
+  if(n==="firebase doc id") return true;
+  if(n==="id mista") return true;
+  if(n==="klic adresy") return true;
+
+  if(/^mesic\s*\d*$/.test(n)) return true;
+  if(/^month\s*\d*$/.test(n)) return true;
+  if(["leden","unor","brezen","duben","kveten","cerven","cervenec","srpen","zari","rijen","listopad","prosinec"].includes(n)) return true;
+  if(/^\d{1,2}$/.test(n)) return true;
+
+  return false;
+}
+
+function dataLabelFixed(k){
+  const n=dataNormFixed(k);
+  if(n==="adresa gps") return "Umístění zdroje";
+  if(n==="zdroj") return "Výrobní číslo";
+  if(n==="dulezita poznamka") return "Důležité poznámky";
+  return k;
+}
+
+function isWatchFixed(k){
+  const n=dataNormFixed(k);
+  return n==="hlidame kontroly sami" || n==="hlidame sami termin";
+}
+
+function isNoteFixed(k){
+  const n=dataNormFixed(k);
+  return n==="dulezita poznamka" || n==="dulezite poznamky";
+}
+
+function valNormFixed(v){
+  return String(v||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/\s+/g," ");
+}
+
+function getWatchFixed(raw){
+  const keys=["Hlídáme kontroly sami","Hlídáme sami termín","Hlidame kontroly sami"];
+  for(const k of keys){
+    if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
+  }
+  return "ne";
+}
+
+function getImportantNoteFixed(raw){
+  const keys=["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky","dulezita poznamka"];
+  for(const k of keys){
+    if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
+  }
+  return "";
+}
+
+function orderedFixedKeys(raw){
+  const keys=Object.keys(raw||{});
+  const sourceKey=keys.find(k=>dataNormFixed(k)==="popis zdroje");
+  const serialKey=keys.find(k=>dataNormFixed(k)==="zdroj" && safe(raw[k]));
+  const out=[];
+  let serialInserted=false;
+
+  keys.forEach(k=>{
+    if(serialKey && k===serialKey) return;
+    if(isWatchFixed(k)) return;
+    if(isNoteFixed(k)) return;
+
+    out.push(k);
+
+    if(sourceKey && k===sourceKey && serialKey && !serialInserted){
+      out.push(serialKey);
+      serialInserted=true;
+    }
+  });
+
+  if(serialKey && !serialInserted){
+    out.push(serialKey);
+  }
+
+  return out;
+}
+
 function detailTable(r){
   const raw = r.raw || {};
   const rows = [];
-  const noteRows = [];
-  const seenLabelValue = new Set();
-  let hasWatchRow=false;
+  const seen = new Set();
 
-  orderedDataUser(raw).forEach(k=>{
-    if(hideDataUser(k)) return;
+  orderedFixedKeys(raw).forEach(k=>{
+    if(hideDataFixed(k)) return;
 
-    const v = safe(raw[k]);
-    if(!v) return;
+    let v = safe(raw[k]);
+    const label = dataLabelFixed(k);
 
-    const label = dataLabelUser(k);
-    const n=dataNormUser(label);
-    if(n==="hlidame kontroly sami" || n==="hlidame sami termin"){
-      hasWatchRow=true;
-    }
+    // Umístění zdroje má zůstat prázdné, i když v Adresa_GPS něco je
+    if(dataNormFixed(k)==="adresa gps") v = "";
 
-    const pairKey = dataNormUser(label) + "::" + dataValueKeyUser(v);
+    // Výrobní číslo z řádku Zdroj zobrazit pod Popis zdroje, ale pokud je prázdné, nic nevymýšlet
+    if(!v && dataNormFixed(k)!=="adresa gps") return;
 
-    // odstraní jen skutečné duplicity stejného názvu a stejné hodnoty
-    if(seenLabelValue.has(pairKey)) return;
-    seenLabelValue.add(pairKey);
+    const key = dataNormFixed(label)+"::"+valNormFixed(v);
+    if(seen.has(key)) return;
+    seen.add(key);
 
-    const row = `<tr class="${isNoteUser(k) ? "notes-red-row" : ""}">
-      <td>${esc(label)}</td>
-      <td>${esc(v)}</td>
-    </tr>`;
-
-    if(isNoteUser(k)) noteRows.push(row);
-    else rows.push(row);
+    rows.push(`<tr><td>${esc(label)}</td><td>${esc(v)}</td></tr>`);
   });
 
-  if(!hasWatchRow){
-    const watchVal=getWatchSelfValue(raw);
-    rows.push(`<tr><td>Hlídáme kontroly sami</td><td>${esc(watchVal || "ne")}</td></tr>`);
-  }
+  const watchVal=getWatchFixed(raw);
+  rows.push(`<tr><td>Hlídáme kontroly sami</td><td>${esc(watchVal || "ne")}</td></tr>`);
 
-  rows.push(...noteRows);
+  const noteVal=getImportantNoteFixed(raw);
+  rows.push(`<tr class="notes-red-row"><td>Důležité poznámky</td><td>${esc(noteVal)}</td></tr>`);
+
   return rows.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
 }
 
