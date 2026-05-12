@@ -756,16 +756,13 @@ button,input,select,textarea{
 }
 
 
-/* schovat původní staré formuláře přidání místa */
-.legacy-newsite-fields,
-#newSiteCard > input,
-#newSiteCard > textarea,
-#newSiteCard > select,
-#newSiteCard > .row:first-of-type{
+
+/* schovat jen staré původní bloky */
+.legacy-newsite-fields{
   display:none !important;
 }
 
-/* ponechat jen nové čisté pole */
+/* nové formuláře ponechat */
 #newAllFieldsBox{
   display:grid !important;
 }
@@ -1554,16 +1551,6 @@ function getAllKnownDataKeys(){
 
 
 
-function hideLegacyNewSiteFields(){
-  document.querySelectorAll("#newSiteCard input:not([data-new-key]), #newSiteCard textarea:not([data-new-key]), #newSiteCard select:not([data-new-key])").forEach(el=>{
-    const keep = el.closest("#newAllFieldsBox");
-    if(!keep){
-      const wrap = el.closest("div") || el;
-      wrap.style.display="none";
-    }
-  });
-}
-
 function renderNewSiteAllFields(){
   const box=document.getElementById("newAllFieldsBox");
   if(!box) return;
@@ -1752,7 +1739,6 @@ function openNewSiteForm(){
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
   renderNewSiteAllFields();
-  hideLegacyNewSiteFields();
   clearNewSiteAllFields();
   
 ["newName","newAddress","newRegion","newSource","newSerial","newBatteries","newCapacity","newSets","newExtra","newAllData"].forEach(id=>{
