@@ -652,6 +652,18 @@ button,input,select,textarea{
   font-size:14px;
 }
 
+
+/* UPRAVY PROTOKOLU A DAT 3 */
+.proto-device-select-wrap.hidden,.proto-device-input-wrap.hidden{display:none!important}
+#protocolForm .protocol-point{margin-top:22px!important;padding-top:16px!important;border-top:2px solid #e2e8f0!important}
+#protocolForm input,#protocolForm select{min-height:34px!important;padding:6px 8px!important}
+#protocolForm textarea{min-height:50px!important;padding:6px 8px!important}
+.data-edit-table input,.data-edit-table select,.data-edit-table textarea{min-height:32px!important;padding:6px 8px!important;font-size:13px!important}
+.data-edit-table textarea{min-height:48px!important}
+.address-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 10px}
+.address-tools button{min-height:38px}
+@media(max-width:600px){.address-tools{grid-template-columns:1fr}}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -709,8 +721,14 @@ button,input,select,textarea{
     <label>Datum provedení kontroly zdroje</label>
     <input type="date" id="protoDate" required>
 
-    <label>Kontrolované zařízení – typ</label>
-    <input id="protoDeviceType">
+    <div id="protoDeviceInputWrap" class="proto-device-input-wrap">
+      <label>Kontrolované zařízení – typ</label>
+      <input id="protoDeviceType">
+    </div>
+    <div id="protoDeviceSelectWrap2" class="proto-device-select-wrap hidden">
+      <label>Kontrolované zařízení – typ</label>
+      <select id="protoDeviceTypeSelect"><option value="">Vyber zařízení</option></select>
+    </div>
 
     <label>Výrobní č.</label>
     <input id="protoSerial">
@@ -858,7 +876,11 @@ button,input,select,textarea{
 </div>
 
 
-<div class="card"><h3>Data</h3><div class="data-edit-actions">
+<div class="card"><h3>Data</h3><div class="address-tools" id="addressToolsData" style="display:none">
+  <button class="secondary" type="button" onclick="dataAddressToGps()">Přepočítat adresu na GPS</button>
+  <button class="secondary" type="button" onclick="dataGpsToAddress()">Přepočítat GPS na adresu</button>
+</div>
+<div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="primary" type="button" id="saveDataEditsBtn" style="display:none">Uložit data</button>
   <button class="secondary" type="button" id="cancelDataEditBtn" style="display:none">Zrušit úpravy</button>
@@ -1280,8 +1302,8 @@ function applyEditToRow(r){
   const e=editCache[r.id];
   if(!e) return r;
 
-  const lat = num(e.gpsLat);
-  const lon = num(e.gpsLon);
+  const lat = num(e.gpsLat) ?? num((e.rawEdits||{})["GPS_lat"]);
+  const lon = num(e.gpsLon) ?? num((e.rawEdits||{})["GPS_lon"]);
   const updatedRaw = {...r.raw, ...(e.rawEdits || {})};
 
   if(e.name) updatedRaw["Upravený název"] = e.name;
@@ -1297,7 +1319,7 @@ function applyEditToRow(r){
 
   return {...r,
     raw: updatedRaw,
-    adresa:e.name || r.adresa,
+    adresa:e.name || (e.rawEdits && (e.rawEdits["Adresa_GPS"] || e.rawEdits["Adresa / umístění"] || e.rawEdits["Umístění"])) || r.adresa,
     kontakt:e.contact || r.kontakt,
     zdroj:e.source || r.zdroj,
     poznamky:e.notes || r.poznamky,
@@ -1323,7 +1345,7 @@ function normalize(data){
       adresa, zdroj, kontakt,
       kraj:first(raw,["Kraj"]),
       poznamky:first(raw,["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"]),
-      pristi:first(raw,["Příští plánovaná kontrola","Příští_kontrola"]),
+      pristi:first(raw,["Příští_kontrola"]),
       posledni:first(raw,["Poslední_kontrola"]),
       dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),
       stav:first(raw,["Stav_kontroly"]),
@@ -1601,7 +1623,7 @@ const duplicateValueAliases = [
   ["Popis_zdroje","Zdroj","Jaký zdroj"],
   ["Kontakt_mapy","Kontakt","Hlavní kontakt"],
   ["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"],
-  ["Příští plánovaná kontrola","Příští_kontrola"],
+  ["Příští_kontrola"],
   ["Poslední_kontrola"],
   ["Dní do kontroly","Dní_do_kontroly"],
   ["Stav_kontroly"],
@@ -1626,6 +1648,9 @@ function formatCzDate(v){
 
 
 const hiddenDataLabels = new Set([
+  "příští_kontrola","pristi_kontrola","příští kontrola","pristi kontrola","příští plánovaná kontrola",
+  "cena fz v kč","cena fz v kc","cena_fz","cena fz",
+  "protokol s fakturou na","protokol_s_fakturou_na","protokol s fakturou",
   "jaký zdroj","jaky zdroj",
   "kontakt_mapy","kontakt mapy",
   "poznámky_mapy","poznamky_mapy","poznámky mapy","poznamky mapy",
@@ -1656,6 +1681,27 @@ function shouldHideDataRow(k){
 }
 
 
+
+async function reverseGeocodeGpsGeneric(lat,lon){
+  const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+  const res=await fetch(url,{headers:{"Accept":"application/json"}});
+  if(!res.ok) throw new Error("Reverse geokódování selhalo");
+  const data=await res.json();
+  return data.display_name || "";
+}
+async function dataAddressToGps(){
+  const st=document.getElementById("editStatus");
+  const addrEl=document.querySelector('#detailTable [data-key="Adresa_GPS"], #detailTable [data-key="Adresa / umístění"], #detailTable [data-key="Umístění"]');
+  if(!addrEl || !addrEl.value.trim()){if(st)st.textContent="Vyplň adresu.";return;}
+  try{if(st)st.textContent="Dopočítávám GPS z adresy...";const r=await geocodeAddressGeneric(addrEl.value.trim());if(!r){if(st)st.textContent="Adresa nebyla nalezena.";return;}let latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');let lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');if(latEl)latEl.value=r.lat;if(lonEl)lonEl.value=r.lon;if(st)st.textContent="GPS doplněno.";}catch(e){if(st)st.textContent="Chyba: "+e.message;}
+}
+async function dataGpsToAddress(){
+  const st=document.getElementById("editStatus");
+  const latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');const lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');
+  if(!latEl||!lonEl||!latEl.value||!lonEl.value){if(st)st.textContent="Vyplň GPS lat/lon.";return;}
+  try{if(st)st.textContent="Dopočítávám adresu z GPS...";const addr=await reverseGeocodeGpsGeneric(latEl.value,lonEl.value);const addrEl=document.querySelector('#detailTable [data-key="Adresa_GPS"], #detailTable [data-key="Adresa / umístění"], #detailTable [data-key="Umístění"]');if(addrEl)addrEl.value=addr;if(st)st.textContent="Adresa doplněna z GPS.";}catch(e){if(st)st.textContent="Chyba: "+e.message;}
+}
+
 function editableDataTable(r){
   const raw = r.raw || {};
   const priority=[
@@ -1663,21 +1709,28 @@ function editableDataTable(r){
     "Popis_zdroje","Jaký zdroj",
     "Kontakt_mapy","Hlavní kontakt",
     "Poznámky_mapy","Poznámky",
-    "Cena FZ v Kč","Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby"
+    "Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby"
   ];
 
   const used=new Set();
   const rows=[];
 
   function add(k){
-    if(!k || used.has(k) || raw[k]===undefined || shouldHideDataRow(k)) return;
+    if(!k || used.has(k) || raw[k]===undefined || (shouldHideDataRow(k) && !["GPS_lat","GPS_lon","Adresa_GPS","Adresa / umístění","Umístění"].includes(k))) return;
     const v=safe(raw[k]);
     if(!v && /^Sloupec_\d+$/i.test(k)) return;
     used.add(k);
     const id="dataEdit_"+btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
     const keyNorm=String(k).trim().toLowerCase();
     let field;
-    if(keyNorm==="hlídáme sami termín" || keyNorm==="hlidame sami termin" || keyNorm==="hlídáme_sami_termín" || keyNorm==="hlidame_sami_termin"){
+    if(keyNorm==="serviska"){
+      const val=safe(v).toLowerCase();
+      field=`<select data-key="${esc(k)}" id="${id}">
+        <option value="">Vyber</option>
+        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
+        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
+      </select>`;
+    }else if(keyNorm==="hlídáme sami termín" || keyNorm==="hlidame sami termin" || keyNorm==="hlídáme_sami_termín" || keyNorm==="hlidame_sami_termin"){
       const val=safe(v).toLowerCase();
       field=`<select data-key="${esc(k)}" id="${id}" data-special="watch-self">
         <option value="">Vyber</option>
@@ -1780,8 +1833,8 @@ function detailTable(r){
     "Popis_zdroje","Jaký zdroj",
     "Kontakt_mapy","Hlavní kontakt",
     "Poznámky_mapy","Poznámky",
-    "Cena FZ v Kč","Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby",
-    "Perioda kontroly","Příští_kontrola","Kontrola objednaná",
+    "Faktura na","Protokol na","Serviska","Hlídáme sami termín","Rok výroby",
+    "Perioda kontroly","Kontrola objednaná",
     
     "Upravený název","Upravený kontakt","Upravený zdroj","Upravená Adresa_GPS","Upravené GPS_lat","Upravené GPS_lon","Upravené poznámky"
   ];
@@ -1832,6 +1885,7 @@ window.openDetail=function(i){
   const nextBox=document.getElementById("detailNextCheck");
   if(lastBox) lastBox.textContent=formatDateCz(parseDateValue(r.posledni)) || r.posledni || "-";
   if(nextBox) nextBox.textContent=displayNext(r) || r.pristi || "-";
+  const addressTools=document.getElementById("addressToolsData"); if(addressTools) addressTools.style.display="none";
   const editDataToggleBtn=document.getElementById("editDataToggleBtn");
   const saveDataBtn=document.getElementById("saveDataEditsBtn");
   const cancelDataEditBtn=document.getElementById("cancelDataEditBtn");
@@ -1845,6 +1899,7 @@ window.openDetail=function(i){
       editDataToggleBtn.style.display="none";
       if(saveDataBtn) saveDataBtn.style.display="block";
       if(cancelDataEditBtn) cancelDataEditBtn.style.display="block";
+      const addressTools=document.getElementById("addressToolsData"); if(addressTools) addressTools.style.display="grid";
     };
   }
   if(saveDataBtn){ saveDataBtn.style.display="none"; saveDataBtn.onclick=saveAllDataEdits; }
@@ -2201,37 +2256,26 @@ function sourceOptionsFromSite(site){
 }
 
 function populateProtocolDeviceSelect(){
-  const sel=document.getElementById("protoDeviceSelect");
-  const wrap=document.getElementById("protocolDeviceSelectWrap");
-  if(!sel || !selectedSite) return;
-
-  const rawSource = [
-    selectedSite?.zdroj,
-    selectedSite?.raw?.["Jaký zdroj"],
-    selectedSite?.raw?.["Zdroj"],
-    selectedSite?.raw?.["Popis_zdroje"]
-  ].filter(Boolean).join(" ");
-
-  const devices=sourceOptionsFromSite(selectedSite);
-  const hasPlus = rawSource.includes("+");
-  const showSelect = hasPlus && devices.length > 1;
-
-  if(wrap) wrap.classList.toggle("hidden", !showSelect);
-
-  sel.innerHTML='<option value="">Vyber zdroj</option>';
-  devices.forEach((d,idx)=>{
-    const o=document.createElement("option");
-    o.value=d;
-    o.textContent=d || `Zdroj ${idx+1}`;
-    sel.appendChild(o);
-  });
-
-  if(showSelect){
-    sel.value="";
-  }else if(devices.length){
-    sel.value=devices[0];
-    const type=document.getElementById("protoDeviceType");
-    if(type && !type.value) type.value=devices[0];
+  const oldWrap=document.getElementById("protocolDeviceSelectWrap");
+  if(oldWrap) oldWrap.style.display="none";
+  const inputWrap=document.getElementById("protoDeviceInputWrap");
+  const selectWrap=document.getElementById("protoDeviceSelectWrap2");
+  const select=document.getElementById("protoDeviceTypeSelect");
+  const input=document.getElementById("protoDeviceType");
+  if(!selectedSite || !input || !select) return;
+  const rawSource=[selectedSite?.zdroj, selectedSite?.raw?.["Jaký zdroj"], selectedSite?.raw?.["Zdroj"], selectedSite?.raw?.["Popis_zdroje"]].filter(Boolean).join(" ");
+  const hasPlus=rawSource.includes("+");
+  const devices=hasPlus ? rawSource.split("+").map(x=>x.trim()).filter(Boolean) : sourceOptionsFromSite(selectedSite);
+  select.innerHTML='<option value="">Vyber zařízení</option>';
+  devices.forEach((d,idx)=>{const o=document.createElement("option");o.value=d;o.textContent=d||`Zařízení ${idx+1}`;select.appendChild(o);});
+  if(hasPlus && devices.length>1){
+    if(inputWrap) inputWrap.classList.add("hidden");
+    if(selectWrap) selectWrap.classList.remove("hidden");
+    input.value="";
+  }else{
+    if(inputWrap) inputWrap.classList.remove("hidden");
+    if(selectWrap) selectWrap.classList.add("hidden");
+    input.value=devices[0]||selectedSite.zdroj||"";
   }
 }
 
@@ -2402,7 +2446,7 @@ function protocolPayload(){
     siteSource:selectedSite?.zdroj || "",
     technicianEmail:currentUser?.email || "",
     date:val("protoDate"),
-    selectedDevice:val("protoDeviceSelect"),
+    selectedDevice:val("protoDeviceTypeSelect") || val("protoDeviceSelect"),
     deviceType:val("protoDeviceType"),
     serial:val("protoSerial"),
     seal:val("protoSeal"),
@@ -2510,6 +2554,18 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   }
 });
 
+
+
+const protoDeviceTypeSelectEl=document.getElementById("protoDeviceTypeSelect");
+if(protoDeviceTypeSelectEl){
+  protoDeviceTypeSelectEl.addEventListener("change",()=>{
+    const input=document.getElementById("protoDeviceType");
+    resetProtocolTechnicalFieldsForNewDevice();
+    if(input) input.value=protoDeviceTypeSelectEl.value;
+    const st=document.getElementById("protocolStatus");
+    if(st) st.textContent="Vybráno zařízení – vyplň údaje pro tento zdroj.";
+  });
+}
 
 const protoDeviceSelectEl=document.getElementById("protoDeviceSelect");
 if(protoDeviceSelectEl){
