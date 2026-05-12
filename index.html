@@ -1722,47 +1722,40 @@ async function dataGpsToAddress(){
 }
 
 function editableDataTable(r){
-  const raw = r.raw || {};
+  const raw=r.raw || {};
   const rows=[];
 
-  orderKeysWithoutShuffle(raw).forEach(k=>{
-    if(hideOnlyRequestedDataRow(k)) return;
+  dataKeysFinal(raw).forEach(k=>{
+    if(hideDataRowFinal(k)) return;
     const v=safe(raw[k]);
     if(!v) return;
 
     const id="dataEdit_"+btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
-    const n=cleanKeyData(k);
+    const n=cleanDataKeyFinal(k);
     let field;
 
-    if(n==="serviska"){
+    if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
       const val=v.toLowerCase();
       field=`<select data-key="${esc(k)}" id="${id}">
         <option value="">Vyber</option>
         <option value="ano" ${val==="ano"?"selected":""}>ano</option>
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
-    }else if(n==="hlidame sami termin" || n==="hlidame_sami_termin"){
+    }else if(n==="hlidame sami termin" || n==="hlídáme sami termín"){
       const val=v.toLowerCase();
       field=`<select data-key="${esc(k)}" id="${id}" data-special="watch-self">
         <option value="">Vyber</option>
         <option value="ano" ${val==="ano"?"selected":""}>ano</option>
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
-    }else if(n==="smlouva ano/ne" || n==="smlouva_ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
-      const val=v.toLowerCase();
-      field=`<select data-key="${esc(k)}" id="${id}">
-        <option value="">Vyber</option>
-        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
-        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
-      </select>`;
     }else{
-      field=v.length>70 || isImportantDataNote(k)
+      field=v.length>70 || isImportantNoteFinal(k)
         ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
         : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
     }
 
-    rows.push(`<tr class="${isImportantDataNote(k) ? "important-note-row" : ""}">
-      <td>${esc(dataDisplayLabel(k))}</td>
+    rows.push(`<tr class="${isImportantNoteFinal(k) ? "important-note-row" : ""}">
+      <td>${esc(dataLabelFinal(k))}</td>
       <td>${field}</td>
     </tr>`);
   });
@@ -1906,29 +1899,99 @@ function orderKeysWithoutShuffle(raw){
   return result;
 }
 
+
+function cleanDataKeyFinal(k){
+  return String(k||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/_/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function hideDataRowFinal(k){
+  const n=cleanDataKeyFinal(k);
+  if(!n) return true;
+
+  if(n.includes("gps")) return true;
+  if(n==="zdroj") return true;
+  if(n==="klic adresy") return true;
+  if(n==="zdrojovy kod") return true;
+  if(n==="zdrojovy soubor") return true;
+  if(n==="zdrojovy radek") return true;
+  if(n==="vsechny terminy") return true;
+  if(n==="pocet terminu") return true;
+  if(n==="barva bodu") return true;
+  if(n==="dni do kontroly") return true;
+  if(n==="stav kontroly") return true;
+  if(n==="stav pro mapu") return true;
+  if(n==="pristi kontrola") return true;
+  if(n==="pristi planovana kontrola") return true;
+  if(n==="dalsi kontrola podle periody") return true;
+  if(n==="cena fz v kc") return true;
+  if(n==="cena fz") return true;
+  if(n==="protokol s fakturou na") return true;
+  if(n==="firebase doc id") return true;
+  if(n==="id mista") return true;
+
+  if(/^mesic\s*\d*$/.test(n)) return true;
+  if(/^month\s*\d*$/.test(n)) return true;
+  if(/^\d{1,2}$/.test(n)) return true;
+
+  return false;
+}
+
+function dataLabelFinal(k){
+  const n=cleanDataKeyFinal(k);
+  if(n==="popis zdroje" || n==="jaky zdroj" || n==="jaký zdroj") return "Typ zdroje";
+  if(n==="vyrobni cislo" || n==="vyrobni c." || n==="seriove cislo" || n==="sn" || n==="serial" || n==="vyr. c.") return "Výrobní číslo";
+  return k;
+}
+
+function isImportantNoteFinal(k){
+  return cleanDataKeyFinal(k)==="dulezita poznamka";
+}
+
+function dataKeysFinal(raw){
+  const keys=Object.keys(raw||{});
+  const serialKey=keys.find(k=>{
+    const n=cleanDataKeyFinal(k);
+    return ["vyrobni cislo","vyrobni c.","seriove cislo","sn","serial","vyr. c."].includes(n) && safe(raw[k]);
+  });
+  if(!serialKey) return keys;
+
+  const out=[];
+  for(const k of keys){
+    if(k===serialKey) continue;
+    out.push(k);
+    const n=cleanDataKeyFinal(k);
+    if(n==="popis zdroje" || n==="jaky zdroj" || n==="jaký zdroj"){
+      out.push(serialKey);
+    }
+  }
+  return out;
+}
+
 function detailTable(r){
   const raw={...r.raw};
-  const out=[];
-  const important=[];
+  const normalRows=[];
+  const importantRows=[];
 
-  orderKeysWithoutShuffle(raw).forEach(k=>{
-    if(hideOnlyRequestedDataRow(k)) return;
+  dataKeysFinal(raw).forEach(k=>{
+    if(hideDataRowFinal(k)) return;
     const v=safe(raw[k]);
     if(!v) return;
 
-    const row=`<tr class="${isImportantDataNote(k) ? "important-note-row" : ""}">
-      <td>${esc(dataDisplayLabel(k))}</td>
+    const row=`<tr class="${isImportantNoteFinal(k) ? "important-note-row" : ""}">
+      <td>${esc(dataLabelFinal(k))}</td>
       <td>${esc(v)}</td>
     </tr>`;
 
-    if(isImportantDataNote(k)) important.push(row);
-    else out.push(row);
+    if(isImportantNoteFinal(k)) importantRows.push(row);
+    else normalRows.push(row);
   });
 
-  // důležitá poznámka červeně na konec
-  out.push(...important);
-
-  return out.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
+  normalRows.push(...importantRows);
+  return normalRows.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
 }
 
 window.openDetail=function(i){
