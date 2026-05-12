@@ -706,6 +706,12 @@ button,input,select,textarea{
   .data-add-row{grid-template-columns:1fr}
 }
 
+
+.data-edit-table select[data-special="watch-self"]{
+  border-color:#ec4899;
+  background:#fdf2f8;
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -1751,6 +1757,16 @@ function editableDataTable(r){
   const rows = [];
   const noteRows = [];
   const seenLabelValue = new Set();
+  let hasWatchRow=false;
+
+  function makeWatchField(k,v){
+    const val = String(v||"").trim().toLowerCase();
+    return `<select data-key="${esc(k)}" data-special="watch-self">
+      <option value="">Vyber</option>
+      <option value="ano" ${val==="ano" || val==="true" || val==="1" ? "selected" : ""}>ano</option>
+      <option value="ne" ${val==="ne" || val==="false" || val==="0" ? "selected" : ""}>ne</option>
+    </select>`;
+  }
 
   orderedDataUser(raw).forEach(k=>{
     if(hideDataUser(k)) return;
@@ -1758,35 +1774,30 @@ function editableDataTable(r){
     const v = safe(raw[k]);
     if(!v) return;
 
-    const label = dataLabelUser(k);
-    const pairKey = dataNormUser(label) + "::" + dataValueKeyUser(v);
+    let label = dataLabelUser(k);
+    const n = dataNormUser(k);
+    const labelNorm=dataNormUser(label);
 
-    // odstraní jen skutečné duplicity stejného názvu a stejné hodnoty
-    if(seenLabelValue.has(pairKey)) return;
+    const pairKey = labelNorm + "::" + dataValueKeyUser(v);
+    if(seenLabelValue.has(pairKey) && !isNoteUser(k)) return;
     seenLabelValue.add(pairKey);
 
-    const id = "dataEdit_" + btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
-    const n = dataNormUser(k);
     let field;
-
-    if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
+    if(labelNorm==="hlidame kontroly sami" || n==="hlidame sami termin"){
+      label="Hlídáme kontroly sami";
+      hasWatchRow=true;
+      field=makeWatchField("Hlídáme kontroly sami",v);
+    }else if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
       const val = v.toLowerCase();
-      field = `<select data-key="${esc(k)}" id="${id}">
-        <option value="">Vyber</option>
-        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
-        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
-      </select>`;
-    }else if(n==="hlidame sami termin"){
-      const val = v.toLowerCase();
-      field = `<select data-key="${esc(k)}" id="${id}" data-special="watch-self">
+      field = `<select data-key="${esc(k)}">
         <option value="">Vyber</option>
         <option value="ano" ${val==="ano"?"selected":""}>ano</option>
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
     }else{
       field = (v.length > 70 || isNoteUser(k))
-        ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
-        : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
+        ? `<textarea data-key="${esc(k)}">${esc(v)}</textarea>`
+        : `<input data-key="${esc(k)}" value="${esc(v)}">`;
     }
 
     const row = `<tr class="${isNoteUser(k) ? "notes-red-row" : ""}">
@@ -1797,6 +1808,13 @@ function editableDataTable(r){
     if(isNoteUser(k)) noteRows.push(row);
     else rows.push(row);
   });
+
+  if(!hasWatchRow){
+    rows.push(`<tr>
+      <td>Hlídáme kontroly sami</td>
+      <td>${makeWatchField("Hlídáme kontroly sami", getWatchSelfValue(raw) || "ne")}</td>
+    </tr>`);
+  }
 
   rows.push(...noteRows);
   return rows.join("") || "<tr><td>Data</td><td>Bez údajů</td></tr>";
@@ -1847,19 +1865,36 @@ async function saveAllDataEdits(){
   if(!currentUser){ if(st) st.textContent="Nejdřív se přihlaš."; return; }
 
   const editedRaw={};
+  const originalRaw=selectedSite?.raw || {};
+
   document.querySelectorAll("#detailTable input[data-key], #detailTable textarea[data-key], #detailTable select[data-key]").forEach(el=>{
-    editedRaw[el.dataset.key]=el.value;
+    const key=el.dataset.key;
+    const newValue=el.value;
+    if(!key) return;
+    if(!newValue.trim()) return; // prázdné nově přidané řádky se po uložení nezobrazí
+
+    editedRaw[key]=newValue;
+
+    const oldValue=safe(originalRaw[key]);
+    if(oldValue){
+      Object.keys(originalRaw).forEach(k=>{
+        if(k!==key && safe(originalRaw[k])===oldValue){
+          editedRaw[k]=newValue;
+        }
+      });
+    }
   });
 
   const watchValue = Object.entries(editedRaw).find(([k,v])=>{
-    const key=String(k).trim().toLowerCase();
-    return (key==="hlídáme sami termín" || key==="hlidame sami termin" || key==="hlídáme_sami_termín" || key==="hlidame_sami_termin") && String(v).toLowerCase()==="ano";
+    const key=dataNormUser(k);
+    return (key==="hlidame kontroly sami" || key==="hlidame sami termin") && String(v).toLowerCase()==="ano";
   });
 
   if(watchValue){
-    editedRaw["Jezdit bez objednávky"] = "ANO";
-    editedRaw["Bez objednávky"] = "ANO";
-    editedRaw["Hlídáme sami termín"] = "ano";
+    editedRaw["Hlídáme kontroly sami"]="ano";
+    editedRaw["Hlídáme sami termín"]="ano";
+    editedRaw["Jezdit bez objednávky"]="ANO";
+    editedRaw["Bez objednávky"]="ANO";
   }
 
   try{
@@ -1934,11 +1969,17 @@ function hideDataUser(k){
   if(!n) return true;
 
   // skryté řádky podle zadání
+  if(n.includes("gps") && n!=="adresa gps") return true;
   if(n==="kontakt mapy") return true;
+  if(n==="hlavni kontakt") return true;
+  if(n==="jaky zdroj") return true;
+  if(n==="stav kontroly") return true;
+  if(n==="stav pro mapu") return true;
+  if(n==="zdrojovy radek") return true;
+
   if(n==="pristi planovana kontrola") return true;
   if(n==="posledni probehla kontrola") return true;
   if(n==="dni do kontroly") return true;
-  if(n==="stav pro mapu") return true;
   if(n==="barva bodu") return true;
   if(n==="posledni kontrola") return true;
   if(n==="pristi kontrola") return true;
@@ -1946,7 +1987,10 @@ function hideDataUser(k){
   if(n==="zdrojovy soubor") return true;
   if(n==="pocet terminu") return true;
 
-  // technické řádky, které se nemají ukazovat v datech
+  // výrobní číslo se už nemá doplňovat z řádku Zdroj
+  if(n==="zdroj") return true;
+
+  // technické řádky
   if(n==="firebase doc id") return true;
   if(n==="id mista") return true;
   if(n==="klic adresy") return true;
@@ -1962,7 +2006,7 @@ function hideDataUser(k){
 
 function dataLabelUser(k){
   const n=dataNormUser(k);
-  if(n==="zdroj") return "Výrobní číslo";
+  if(n==="adresa gps") return "Umístění zdroje";
   return k;
 }
 
@@ -1981,11 +2025,21 @@ function orderedDataUser(raw){
   return Object.keys(raw || {});
 }
 
+
+function getWatchSelfValue(raw){
+  const keys=["Hlídáme kontroly sami","Hlídáme sami termín","Hlidame kontroly sami","Jezdit bez objednávky","Bez objednávky"];
+  for(const k of keys){
+    if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
+  }
+  return "";
+}
+
 function detailTable(r){
   const raw = r.raw || {};
   const rows = [];
   const noteRows = [];
   const seenLabelValue = new Set();
+  let hasWatchRow=false;
 
   orderedDataUser(raw).forEach(k=>{
     if(hideDataUser(k)) return;
@@ -1994,6 +2048,11 @@ function detailTable(r){
     if(!v) return;
 
     const label = dataLabelUser(k);
+    const n=dataNormUser(label);
+    if(n==="hlidame kontroly sami" || n==="hlidame sami termin"){
+      hasWatchRow=true;
+    }
+
     const pairKey = dataNormUser(label) + "::" + dataValueKeyUser(v);
 
     // odstraní jen skutečné duplicity stejného názvu a stejné hodnoty
@@ -2008,6 +2067,11 @@ function detailTable(r){
     if(isNoteUser(k)) noteRows.push(row);
     else rows.push(row);
   });
+
+  if(!hasWatchRow){
+    const watchVal=getWatchSelfValue(raw);
+    rows.push(`<tr><td>Hlídáme kontroly sami</td><td>${esc(watchVal || "ne")}</td></tr>`);
+  }
 
   rows.push(...noteRows);
   return rows.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
