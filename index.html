@@ -712,6 +712,37 @@ button,input,select,textarea{
   background:#fdf2f8;
 }
 
+
+.new-data-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:8px;
+}
+.new-data-grid .full{
+  grid-column:1 / -1;
+}
+.new-data-grid label{
+  font-size:12px;
+  font-weight:800;
+  color:#475569;
+}
+.new-data-grid input,
+.new-data-grid select,
+.new-data-grid textarea{
+  min-height:36px;
+  padding:7px 9px;
+  font-size:14px;
+}
+@media(max-width:700px){
+  .new-data-grid{
+    grid-template-columns:1fr;
+  }
+  .new-data-grid .full{
+    grid-column:auto;
+  }
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -1432,6 +1463,128 @@ function daysBetweenToday(dateStr){
   return Math.round((d.getTime()-today.getTime())/86400000);
 }
 
+
+function newSiteFieldNorm(k){
+  return String(k||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/_/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function shouldSkipNewSiteField(k){
+  const n=newSiteFieldNorm(k);
+  if(!n) return true;
+  if(n.includes("gps") && n!=="adresa gps") return true;
+  if(n==="firebase doc id" || n==="id mista" || n==="klic adresy") return true;
+  if(n==="barva bodu" || n==="dni do kontroly" || n==="stav pro mapu" || n==="stav kontroly") return true;
+  if(n==="pristi kontrola" || n==="posledni kontrola" || n==="pristi planovana kontrola" || n==="posledni probehla kontrola") return true;
+  if(n==="zdrojovy soubor" || n==="zdrojovy radek" || n==="pocet terminu" || n==="vsechny terminy") return true;
+  if(/^mesic\s*\d*$/.test(n) || /^month\s*\d*$/.test(n) || /^\d{1,2}$/.test(n)) return true;
+  return false;
+}
+
+function newSiteFieldLabel(k){
+  const n=newSiteFieldNorm(k);
+  if(n==="adresa gps") return "Umístění zdroje";
+  if(n==="zdroj") return "Výrobní číslo";
+  return k;
+}
+
+function getAllKnownDataKeys(){
+  const keys=[];
+  const seen=new Set();
+
+  (rows||[]).forEach(r=>{
+    const raw=r.raw || {};
+    Object.keys(raw).forEach(k=>{
+      if(shouldSkipNewSiteField(k)) return;
+      const label=newSiteFieldLabel(k);
+      const norm=newSiteFieldNorm(label);
+      if(seen.has(norm)) return;
+      seen.add(norm);
+      keys.push(k);
+    });
+  });
+
+  const required=[
+    "Název","Adresa_GPS","Kraj","Popis_zdroje","Zdroj",
+    "Perioda kontrol","Hlídáme kontroly sami","Důležitá poznámka",
+    "Serviska","Smlouva ano/ne","Rok výroby","Poznámky"
+  ];
+
+  required.forEach(k=>{
+    const label=newSiteFieldLabel(k);
+    const norm=newSiteFieldNorm(label);
+    if(!seen.has(norm) && !shouldSkipNewSiteField(k)){
+      seen.add(norm);
+      keys.push(k);
+    }
+  });
+
+  return keys;
+}
+
+function renderNewSiteAllFields(){
+  const box=document.getElementById("newAllFieldsBox");
+  if(!box) return;
+
+  box.innerHTML="";
+  getAllKnownDataKeys().forEach(k=>{
+    const label=newSiteFieldLabel(k);
+    const n=newSiteFieldNorm(k);
+    const wrap=document.createElement("div");
+    if(n==="poznamky" || n==="dulezita poznamka" || n==="popis zdroje") wrap.className="full";
+
+    let field;
+    if(n==="perioda kontrol" || n==="perioda" || n==="cetnost" || n==="četnost"){
+      field=`<select data-new-key="${esc(k)}">
+        <option value="">Nevyplněno</option>
+        <option value="6">6 měsíců</option>
+        <option value="12">12 měsíců</option>
+      </select>`;
+    }else if(n==="hlidame kontroly sami" || n==="hlidame sami termin" || n==="serviska" || n==="smlouva ano/ne" || n==="smlouva"){
+      field=`<select data-new-key="${esc(k)}">
+        <option value="">Nevyplněno</option>
+        <option value="ano">ano</option>
+        <option value="ne">ne</option>
+      </select>`;
+    }else if(n==="poznamky" || n==="poznamka" || n==="dulezita poznamka"){
+      field=`<textarea data-new-key="${esc(k)}" placeholder=""></textarea>`;
+    }else{
+      field=`<input data-new-key="${esc(k)}" value="" placeholder="">`;
+    }
+
+    wrap.innerHTML=`<label>${esc(label)}</label>${field}`;
+    box.appendChild(wrap);
+  });
+}
+
+function collectNewSiteAllFields(){
+  const raw={};
+  document.querySelectorAll("#newAllFieldsBox [data-new-key]").forEach(el=>{
+    const key=el.dataset.newKey;
+    const val=String(el.value||"").trim();
+    if(!key || !val) return;
+    raw[key]=val;
+
+    const n=newSiteFieldNorm(key);
+    if(n==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
+      raw["Hlídáme sami termín"]="ano";
+      raw["Jezdit bez objednávky"]="ANO";
+      raw["Bez objednávky"]="ANO";
+    }
+    if(n==="perioda kontrol"){
+      raw["Perioda kontrol"]=val;
+    }
+  });
+  return raw;
+}
+
+function clearNewSiteAllFields(){
+  document.querySelectorAll("#newAllFieldsBox [data-new-key]").forEach(el=>{el.value="";});
+}
+
 function newSiteToRow(docId, d){
   const days = d.nextCheck ? daysBetweenToday(d.nextCheck) : "";
   const raw = {
@@ -1496,6 +1649,14 @@ function openNewSiteForm(){
   populateNewRegionOptions();
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
+  renderNewSiteAllFields();
+  clearNewSiteAllFields();
+  
+["newName","newAddress","newRegion","newSource","newSerial","newBatteries","newCapacity","newSets","newExtra","newAllData"].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.value="";
+});
+
 setTimeout(()=>{const n=document.getElementById("newName"); if(n){n.focus(); n.scrollIntoView({behavior:"smooth",block:"start"});}},100);
   document.getElementById("editCard").style.display="none";
   document.getElementById("detailTitle").textContent="Přidat nové místo";
@@ -2482,7 +2643,9 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     lastCheck:document.getElementById("newLastCheck").value,
     notes:document.getElementById("newNotes").value.trim(),
     extra:document.getElementById("newExtra").value.trim(),
-    allData:document.getElementById("newAllData").value.trim(),
+    allRawData:collectNewSiteAllFields(),
+    allData:document.getElementById("newAllData") ? document.getElementById("newAllData").value.trim() : "",
+    allRawData:collectNewSiteAllFields(),
     createdBy:currentUser.email,
     createdAt:new Date().toISOString(),
     updatedBy:currentUser.email,
@@ -2506,6 +2669,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     document.getElementById("newLastCheck").value="";
     document.getElementById("newNotes").value="";
     document.getElementById("newExtra").value="";
+    clearNewSiteAllFields();
     document.getElementById("newAllData").value="";
     await loadExtraSites();
     fit();
