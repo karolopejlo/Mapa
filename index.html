@@ -1722,14 +1722,26 @@ async function dataGpsToAddress(){
 function editableDataTable(r){
   const raw=r.raw || {};
   const rows=[];
+  const seenLabels=new Set();
+  const seenValues=new Set();
 
-  orderedAllDataKeys(raw).forEach(k=>{
-    if(hideOnlyInternalData(k)) return;
+  orderedCleanDataKeys(raw).forEach(k=>{
+    if(hideDataClean(k)) return;
     const v=safe(raw[k]);
     if(!v) return;
 
+    const label=dataLabelClean(k);
+    const labelNorm=dataNormClean(label);
+    const valueNorm=cleanComparableValue(v);
+
+    if(seenLabels.has(labelNorm) && !isImportantDataClean(k)) return;
+    if(seenValues.has(valueNorm) && !isImportantDataClean(k)) return;
+
+    seenLabels.add(labelNorm);
+    seenValues.add(valueNorm);
+
     const id="dataEdit_"+btoa(unescape(encodeURIComponent(k))).replaceAll("=","");
-    const n=dataNormAll(k);
+    const n=dataNormClean(k);
     let field;
 
     if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
@@ -1747,13 +1759,13 @@ function editableDataTable(r){
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
     }else{
-      field=v.length>70 || isImportantDataAll(k)
+      field=v.length>70 || isImportantDataClean(k)
         ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
         : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
     }
 
-    rows.push(`<tr class="${isImportantDataAll(k) ? "important-note-row" : ""}">
-      <td>${esc(dataLabelAll(k))}</td>
+    rows.push(`<tr class="${isImportantDataClean(k) ? "important-note-row" : ""}">
+      <td>${esc(label)}</td>
       <td>${field}</td>
     </tr>`);
   });
@@ -1841,22 +1853,101 @@ function orderedAllDataKeys(raw){
   return Object.keys(raw || {});
 }
 
+
+function dataNormClean(k){
+  return String(k||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/_/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function dataLabelClean(k){
+  const n=dataNormClean(k);
+  if(n==="zdroj") return "Výrobní číslo";
+  if(n==="popis zdroje" || n==="jaky zdroj") return "Typ zdroje";
+  if(["vyrobni cislo","vyrobni c.","seriove cislo","sn","serial","vyr. c."].includes(n)) return "Výrobní číslo";
+  return k;
+}
+
+function isImportantDataClean(k){
+  return dataNormClean(k)==="dulezita poznamka";
+}
+
+function hideDataClean(k){
+  const n=dataNormClean(k);
+  if(!n) return true;
+
+  if(n.includes("gps")) return true;
+  if(n==="kontakt mapy") return true;
+
+  // datumy a stavy jsou už nahoře v barevných políčkách
+  if(n==="pristi planovana kontrola") return true;
+  if(n==="posledni probehla kontrola") return true;
+  if(n==="posledni kontrola") return true;
+  if(n==="pristi kontrola") return true;
+  if(n==="dni do kontroly") return true;
+  if(n==="stav pro mapu") return true;
+  if(n==="barva bodu") return true;
+
+  // pomocné řádky
+  if(n==="vsechny terminy") return true;
+  if(n==="zdrojovy soubor") return true;
+  if(n==="zdrojovy radek") return true;
+  if(n==="pocet terminu") return true;
+  if(n==="klic adresy") return true;
+  if(n==="zdrojovy kod") return true;
+  if(n==="firebase doc id") return true;
+  if(n==="id mista") return true;
+
+  // měsíce
+  if(/^mesic\s*\d*$/.test(n)) return true;
+  if(/^month\s*\d*$/.test(n)) return true;
+  if(/^\d{1,2}$/.test(n)) return true;
+
+  return false;
+}
+
+function cleanComparableValue(v){
+  return String(v||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/\s+/g," ");
+}
+
+function orderedCleanDataKeys(raw){
+  const keys=Object.keys(raw||{});
+  return keys;
+}
+
 function detailTable(r){
   const raw={...r.raw};
   const normalRows=[];
   const importantRows=[];
+  const seenLabels=new Set();
+  const seenValues=new Set();
 
-  orderedAllDataKeys(raw).forEach(k=>{
-    if(hideOnlyInternalData(k)) return;
+  orderedCleanDataKeys(raw).forEach(k=>{
+    if(hideDataClean(k)) return;
     const v=safe(raw[k]);
     if(!v) return;
 
-    const row=`<tr class="${isImportantDataAll(k) ? "important-note-row" : ""}">
-      <td>${esc(dataLabelAll(k))}</td>
+    const label=dataLabelClean(k);
+    const labelNorm=dataNormClean(label);
+    const valueNorm=cleanComparableValue(v);
+
+    // zabrání duplicitám stejných informací
+    if(seenLabels.has(labelNorm) && !isImportantDataClean(k)) return;
+    if(seenValues.has(valueNorm) && !isImportantDataClean(k)) return;
+
+    seenLabels.add(labelNorm);
+    seenValues.add(valueNorm);
+
+    const row=`<tr class="${isImportantDataClean(k) ? "important-note-row" : ""}">
+      <td>${esc(label)}</td>
       <td>${esc(v)}</td>
     </tr>`;
 
-    if(isImportantDataAll(k)) importantRows.push(row);
+    if(isImportantDataClean(k)) importantRows.push(row);
     else normalRows.push(row);
   });
 
