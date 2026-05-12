@@ -1759,7 +1759,13 @@ function editableDataTable(r){
 
   function inputField(k,v,label){
     const n=dataNormFixed(k);
+
     if(n==="adresa gps"){
+      return `<input data-key="${esc(k)}" value="">`;
+    }
+
+    // výrobní číslo prázdné
+    if(dataNormFixed(label)==="vyrobni cislo"){
       return `<input data-key="${esc(k)}" value="">`;
     }
 
@@ -1782,8 +1788,11 @@ function editableDataTable(r){
 
     let v=safe(raw[k]);
     const label=dataLabelFixed(k);
+
     if(dataNormFixed(k)==="adresa gps") v="";
-    if(!v && dataNormFixed(k)!=="adresa gps") return;
+    if(dataNormFixed(label)==="vyrobni cislo") v="";
+
+    if(!v && dataNormFixed(k)!=="adresa gps" && dataNormFixed(label)!=="vyrobni cislo") return;
 
     const key=dataNormFixed(label)+"::"+valNormFixed(v);
     if(seen.has(key)) return;
@@ -1791,6 +1800,17 @@ function editableDataTable(r){
 
     rows.push(`<tr><td>${esc(label)}</td><td>${inputField(k,v,label)}</td></tr>`);
   });
+
+  const period = detectControlPeriod(raw);
+  rows.push(`<tr>
+    <td>Perioda kontrol</td>
+    <td>
+      <select data-key="Perioda kontrol">
+        <option value="6" ${period==="6" ? "selected" : ""}>6 měsíců</option>
+        <option value="12" ${period==="12" ? "selected" : ""}>12 měsíců</option>
+      </select>
+    </td>
+  </tr>`);
 
   const watchVal=String(getWatchFixed(raw)||"ne").toLowerCase();
   rows.push(`<tr>
@@ -2139,6 +2159,26 @@ function orderedFixedKeys(raw){
   return out;
 }
 
+
+function detectControlPeriod(raw){
+  const keys = ["Perioda","Perioda kontrol","Cetnost","Četnost","Kontrola","Interval"];
+  for(const k of keys){
+    if(raw && raw[k]!==undefined){
+      const v=String(raw[k]).toLowerCase();
+      if(v.includes("12")) return "12";
+      if(v.includes("6")) return "6";
+    }
+  }
+
+  // fallback podle původních dat
+  const joined = JSON.stringify(raw||{}).toLowerCase();
+  if(joined.includes("12 mes")) return "12";
+  if(joined.includes("1 rok")) return "12";
+  if(joined.includes("6 mes")) return "6";
+
+  return "12";
+}
+
 function detailTable(r){
   const raw = r.raw || {};
   const rows = [];
@@ -2150,11 +2190,13 @@ function detailTable(r){
     let v = safe(raw[k]);
     const label = dataLabelFixed(k);
 
-    // Umístění zdroje má zůstat prázdné, i když v Adresa_GPS něco je
+    // Umístění zdroje prázdné
     if(dataNormFixed(k)==="adresa gps") v = "";
 
-    // Výrobní číslo z řádku Zdroj zobrazit pod Popis zdroje, ale pokud je prázdné, nic nevymýšlet
-    if(!v && dataNormFixed(k)!=="adresa gps") return;
+    // Výrobní číslo vždy prázdné
+    if(dataNormFixed(label)==="vyrobni cislo") v = "";
+
+    if(!v && dataNormFixed(k)!=="adresa gps" && dataNormFixed(label)!=="vyrobni cislo") return;
 
     const key = dataNormFixed(label)+"::"+valNormFixed(v);
     if(seen.has(key)) return;
@@ -2162,6 +2204,9 @@ function detailTable(r){
 
     rows.push(`<tr><td>${esc(label)}</td><td>${esc(v)}</td></tr>`);
   });
+
+  const period = detectControlPeriod(raw);
+  rows.push(`<tr><td>Perioda kontrol</td><td>${period} měsíců</td></tr>`);
 
   const watchVal=getWatchFixed(raw);
   rows.push(`<tr><td>Hlídáme kontroly sami</td><td>${esc(watchVal || "ne")}</td></tr>`);
