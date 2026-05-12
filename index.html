@@ -684,6 +684,13 @@ button,input,select,textarea{
   min-height:48px !important;
 }
 
+
+.data-add-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin:10px 0;align-items:end}
+.data-add-row input{min-height:38px}
+.notes-red-row{background:#fee2e2!important;border:1px solid #fecaca!important}
+.notes-red-row td:first-child,.notes-red-row td:nth-child(2){color:#991b1b!important;font-weight:800}
+@media(max-width:700px){.data-add-row{grid-template-columns:1fr}}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -900,6 +907,11 @@ button,input,select,textarea{
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="primary" type="button" id="saveDataEditsBtn" style="display:none">Uložit data</button>
   <button class="secondary" type="button" id="cancelDataEditBtn" style="display:none">Zrušit úpravy</button>
+</div>
+<div class="data-add-row" id="addDataRowBox" style="display:none">
+  <div><label>Název nového údaje</label><input id="newDataKey" placeholder="např. Smlouva, Kontakt, Poznámky"></div>
+  <div><label>Hodnota</label><input id="newDataValue" placeholder="Hodnota údaje"></div>
+  <button class="secondary" type="button" id="addDataRowBtn">Přidat řádek</button>
 </div><div class="control-dates-strong" id="controlDatesRow">
   <div class="control-date-box control-date-last"><span>Poslední kontrola</span><b id="detailLastCheck">-</b></div>
   <div class="control-date-box control-date-next"><span>Další kontrola</span><b id="detailNextCheck">-</b></div>
@@ -1721,9 +1733,8 @@ async function dataGpsToAddress(){
 
 function editableDataTable(r){
   const raw=r.raw || {};
-  const rows=[];
-  const seenLabels=new Set();
-  const seenValues=new Set();
+  const rows=[], noteRows=[];
+  const seenLabels=new Set(), seenValues=new Set();
 
   orderedCleanDataKeys(raw).forEach(k=>{
     if(hideDataClean(k)) return;
@@ -1734,8 +1745,8 @@ function editableDataTable(r){
     const labelNorm=dataNormClean(label);
     const valueNorm=cleanComparableValue(v);
 
-    if(seenLabels.has(labelNorm) && !isImportantDataClean(k)) return;
-    if(seenValues.has(valueNorm) && !isImportantDataClean(k)) return;
+    if(seenLabels.has(labelNorm) && !isNotesDataFinal(k)) return;
+    if(seenValues.has(valueNorm) && !isNotesDataFinal(k)) return;
 
     seenLabels.add(labelNorm);
     seenValues.add(valueNorm);
@@ -1759,18 +1770,43 @@ function editableDataTable(r){
         <option value="ne" ${val==="ne"?"selected":""}>ne</option>
       </select>`;
     }else{
-      field=v.length>70 || isImportantDataClean(k)
+      field=v.length>70 || isNotesDataFinal(k)
         ? `<textarea data-key="${esc(k)}" id="${id}">${esc(v)}</textarea>`
         : `<input data-key="${esc(k)}" id="${id}" value="${esc(v)}">`;
     }
 
-    rows.push(`<tr class="${isImportantDataClean(k) ? "important-note-row" : ""}">
+    const row=`<tr class="${isNotesDataFinal(k) ? "notes-red-row" : ""}">
       <td>${esc(label)}</td>
       <td>${field}</td>
-    </tr>`);
+    </tr>`;
+
+    if(isNotesDataFinal(k)) noteRows.push(row);
+    else rows.push(row);
   });
 
+  rows.push(...noteRows);
   return rows.join("") || "<tr><td>Data</td><td>Bez údajů</td></tr>";
+}
+
+
+function addNewDataRowToTable(){
+  const keyEl=document.getElementById("newDataKey");
+  const valEl=document.getElementById("newDataValue");
+  const table=document.getElementById("detailTable");
+  if(!keyEl || !valEl || !table) return;
+  const key=keyEl.value.trim(), val=valEl.value.trim();
+  if(!key){alert("Vyplň název nového údaje.");keyEl.focus();return}
+  if(!val){alert("Vyplň hodnotu nového údaje.");valEl.focus();return}
+  const isNote=isNotesDataFinal(key);
+  const row=document.createElement("tr");
+  row.className=isNote ? "notes-red-row" : "";
+  row.innerHTML=`<td>${esc(key)}</td><td><input data-key="${esc(key)}" value="${esc(val)}"></td>`;
+  if(isNote) table.appendChild(row);
+  else{
+    const firstNote=table.querySelector(".notes-red-row");
+    if(firstNote) table.insertBefore(row,firstNote); else table.appendChild(row);
+  }
+  keyEl.value=""; valEl.value=""; keyEl.focus();
 }
 
 async function saveAllDataEdits(){
@@ -1919,12 +1955,16 @@ function orderedCleanDataKeys(raw){
   return keys;
 }
 
+
+function isNotesDataFinal(k){
+  const n=dataNormClean(k);
+  return n==="poznamky" || n==="poznamka" || n==="poznamky mapy" || n==="dulezita poznamka";
+}
+
 function detailTable(r){
   const raw={...r.raw};
-  const normalRows=[];
-  const importantRows=[];
-  const seenLabels=new Set();
-  const seenValues=new Set();
+  const normalRows=[], noteRows=[];
+  const seenLabels=new Set(), seenValues=new Set();
 
   orderedCleanDataKeys(raw).forEach(k=>{
     if(hideDataClean(k)) return;
@@ -1935,23 +1975,22 @@ function detailTable(r){
     const labelNorm=dataNormClean(label);
     const valueNorm=cleanComparableValue(v);
 
-    // zabrání duplicitám stejných informací
-    if(seenLabels.has(labelNorm) && !isImportantDataClean(k)) return;
-    if(seenValues.has(valueNorm) && !isImportantDataClean(k)) return;
+    if(seenLabels.has(labelNorm) && !isNotesDataFinal(k)) return;
+    if(seenValues.has(valueNorm) && !isNotesDataFinal(k)) return;
 
     seenLabels.add(labelNorm);
     seenValues.add(valueNorm);
 
-    const row=`<tr class="${isImportantDataClean(k) ? "important-note-row" : ""}">
+    const row=`<tr class="${isNotesDataFinal(k) ? "notes-red-row" : ""}">
       <td>${esc(label)}</td>
       <td>${esc(v)}</td>
     </tr>`;
 
-    if(isImportantDataClean(k)) importantRows.push(row);
+    if(isNotesDataFinal(k)) noteRows.push(row);
     else normalRows.push(row);
   });
 
-  normalRows.push(...importantRows);
+  normalRows.push(...noteRows);
   return normalRows.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
 }
 
@@ -1967,6 +2006,7 @@ window.openDetail=function(i){
   const nextBox=document.getElementById("detailNextCheck");
   if(lastBox) lastBox.textContent=formatDateCz(parseDateValue(r.posledni)) || r.posledni || "-";
   if(nextBox) nextBox.textContent=displayNext(r) || r.pristi || "-";
+  const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
   const editDataToggleBtn=document.getElementById("editDataToggleBtn");
   const saveDataBtn=document.getElementById("saveDataEditsBtn");
   const cancelDataEditBtn=document.getElementById("cancelDataEditBtn");
@@ -1980,6 +2020,7 @@ window.openDetail=function(i){
       editDataToggleBtn.style.display="none";
       if(saveDataBtn) saveDataBtn.style.display="block";
       if(cancelDataEditBtn) cancelDataEditBtn.style.display="block";
+      const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="grid";
       
     };
   }
@@ -1988,6 +2029,8 @@ window.openDetail=function(i){
     cancelDataEditBtn.style.display="none";
     cancelDataEditBtn.onclick=()=>openDetail(selectedSite.i);
   }
+  const addDataRowBtn=document.getElementById("addDataRowBtn");
+  if(addDataRowBtn) addDataRowBtn.onclick=addNewDataRowToTable;
   const pf=document.getElementById("protocolForm"); if(pf){ pf.style.display="none"; } const tb=document.getElementById("toggleProtocolBtn"); if(tb) tb.textContent="Vyplnit protokol";;
   document.getElementById("editName").value=r.adresa||"";
   document.getElementById("editContact").value=r.kontakt||"";
