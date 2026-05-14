@@ -3660,37 +3660,298 @@ setTimeout(()=>{
 </style>
 
 
+
+
+
 <script>
 (function(){
-  function safeBindAddButtonFinal(){
+  let onlyNewTempMarker=null;
+
+  function escAdd(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  function normAdd(s){
+    return String(s||"").trim().toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  }
+
+  function collectAddRaw(){
+    const raw={};
+    document.querySelectorAll("#newSiteOnlyCard [data-new-key]").forEach(el=>{
+      const key=el.dataset.newKey;
+      const val=String(el.value||"").trim();
+      if(!key || !val) return;
+      raw[key]=val;
+
+      if(normAdd(key)==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
+        raw["Hlídáme sami termín"]="ano";
+        raw["Jezdit bez objednávky"]="ANO";
+        raw["Bez objednávky"]="ANO";
+      }
+    });
+    return raw;
+  }
+
+  function buildRowFromRaw(raw){
+    const lat=parseFloat(String(raw["GPS_lat"]||"").replace(",","."));
+    const lon=parseFloat(String(raw["GPS_lon"]||"").replace(",","."));
+    const id="site_"+Date.now();
+
+    const name=raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "Nové místo";
+    const addr=raw["Adresa / umístění"] || raw["Adresa_GPS"] || name;
+    const noOrder=String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano";
+
+    return {
+      id,
+      i:Array.isArray(window.rows) ? window.rows.length : 0,
+      nazev:name,
+      adresa:addr,
+      kraj:raw["Kraj"] || "",
+      zdroj:raw["Popis_zdroje"] || raw["Zdroj"] || "",
+      kontakt:raw["Kontakt"] || "",
+      pristi:"",
+      posledni:"",
+      lat:Number.isFinite(lat) ? lat : null,
+      lon:Number.isFinite(lon) ? lon : null,
+      ordered:false,
+      noOrder,
+      raw:{...raw}
+    };
+  }
+
+  async function calcAddGps(){
+    const st=document.getElementById("onlyNewStatus");
+    const address=String(document.getElementById("onlyNewAddress")?.value || document.querySelector('#newSiteOnlyCard [data-new-key="Adresa_GPS"]')?.value || "").trim();
+    const latEl=document.getElementById("onlyNewGpsLat");
+    const lonEl=document.getElementById("onlyNewGpsLon");
+
+    if(!address){
+      if(st) st.textContent="Vyplň adresu / umístění.";
+      return;
+    }
+
+    try{
+      if(st) st.textContent="Dopočítávám GPS...";
+      let g=null;
+
+      if(typeof geocodeAddressGeneric==="function"){
+        g=await geocodeAddressGeneric(address);
+      }else{
+        const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address);
+        const res=await fetch(url,{headers:{"Accept":"application/json"}});
+        const data=await res.json();
+        if(data && data[0]) g={lat:data[0].lat, lon:data[0].lon};
+      }
+
+      if(!g){
+        if(st) st.textContent="Adresa nebyla nalezena.";
+        return;
+      }
+
+      if(latEl) latEl.value=g.lat;
+      if(lonEl) lonEl.value=g.lon;
+      if(st) st.textContent="GPS doplněno.";
+    }catch(e){
+      if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
+    }
+  }
+
+  function findAddOnMap(){
+    const st=document.getElementById("onlyNewStatus");
+    const lat=parseFloat(String(document.getElementById("onlyNewGpsLat")?.value || "").replace(",","."));
+    const lon=parseFloat(String(document.getElementById("onlyNewGpsLon")?.value || "").replace(",","."));
+
+    if(!Number.isFinite(lat) || !Number.isFinite(lon)){
+      if(st) st.textContent="Nejdřív vyplň nebo dopočítej GPS.";
+      return;
+    }
+    if(!window.map || !window.L){
+      if(st) st.textContent="Mapa ještě není načtená.";
+      return;
+    }
+
+    const latlng=[lat,lon];
+    try{
+      if(onlyNewTempMarker) window.map.removeLayer(onlyNewTempMarker);
+      onlyNewTempMarker=L.circleMarker(latlng,{
+        radius:10,
+        color:"#111827",
+        weight:2,
+        fillColor:"#2563eb",
+        fillOpacity:.95
+      }).addTo(window.map);
+      onlyNewTempMarker.bindPopup("Nový bod - náhled").openPopup();
+      window.map.setView(latlng,15);
+      window.map.invalidateSize(true);
+      if(st) st.textContent="Bod nalezen na mapě podle GPS.";
+    }catch(e){
+      if(st) st.textContent="Chyba zobrazení bodu: "+e.message;
+    }
+  }
+
+  function openAddForm(){
+    const drawer=document.getElementById("drawer");
+    if(!drawer) return;
+
+    drawer.classList.add("open");
+    drawer.innerHTML=`
+      <div class="drawer-head">
+        <div>
+          <h2>Přidat nové místo</h2>
+          <p class="small">Vyplň údaje a ulož bod.</p>
+        </div>
+        <button class="secondary x" type="button" id="closeOnlyNew">Zavřít</button>
+      </div>
+
+      <div class="card" id="newSiteOnlyCard">
+        <div class="new-only-grid">
+          <div><label>Název</label><input data-new-key="Název" id="onlyNewName"></div>
+          <div><label>Adresa / umístění</label><input data-new-key="Adresa / umístění" id="onlyNewAddress"></div>
+
+          <div class="full gps-actions">
+            <button class="secondary" type="button" id="calcOnlyGps">Dopočítat GPS</button>
+            <button class="primary" type="button" id="findOnlyGps">Vyhledat na mapě</button>
+          </div>
+
+          <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
+          <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
+
+          <div class="full"><label>Umístění zdroje</label><input data-new-key="Adresa_GPS"></div>
+          <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje"></div>
+          <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj"></div>
+
+          <div><label>Kontakt</label><input data-new-key="Kontakt"></div>
+          <div><label>Kraj</label><input data-new-key="Kraj"></div>
+
+          <div class="full"><label>Poznámky</label><input data-new-key="Poznámky"></div>
+
+          <div><label>Rok výroby</label><input data-new-key="Rok výroby"></div>
+          <div><label>Serviska</label><select data-new-key="Serviska"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
+
+          <div><label>Cena FZ</label><input data-new-key="Cena FZ"></div>
+          <div><label>Perioda kontrol</label><select data-new-key="Perioda kontrol"><option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option></select></div>
+
+          <div class="full"><label>Hlídáme kontroly sami</label><select data-new-key="Hlídáme kontroly sami"><option value="ne" selected>ne</option><option value="ano">ano</option></select></div>
+
+          <div class="full only-red"><label>Důležité poznámky</label><textarea data-new-key="Důležitá poznámka"></textarea></div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <button class="primary" type="button" id="saveOnlyNew">Uložit nové místo</button>
+          <button class="secondary" type="button" id="cancelOnlyNew">Zrušit</button>
+        </div>
+        <p class="small" id="onlyNewStatus"></p>
+      </div>`;
+
+    document.getElementById("closeOnlyNew").onclick=()=>drawer.classList.remove("open");
+    document.getElementById("cancelOnlyNew").onclick=()=>drawer.classList.remove("open");
+    document.getElementById("calcOnlyGps").onclick=calcAddGps;
+    document.getElementById("findOnlyGps").onclick=findAddOnMap;
+    document.getElementById("saveOnlyNew").onclick=saveAddSite;
+    setTimeout(()=>document.getElementById("onlyNewName")?.focus(),100);
+  }
+
+  async function saveAddSite(){
+    const st=document.getElementById("onlyNewStatus");
+    const raw=collectAddRaw();
+
+    if(!raw["Název"] && !raw["Adresa / umístění"]){
+      if(st) st.textContent="Vyplň alespoň Název nebo Adresa / umístění.";
+      return;
+    }
+
+    let row=buildRowFromRaw(raw);
+
+    if(!Number.isFinite(row.lat) || !Number.isFinite(row.lon)){
+      try{
+        const address=raw["Adresa / umístění"] || raw["Adresa_GPS"] || "";
+        if(address && typeof geocodeAddressGeneric==="function"){
+          if(st) st.textContent="Dopočítávám GPS...";
+          const g=await geocodeAddressGeneric(address);
+          if(g){
+            row.lat=Number(g.lat);
+            row.lon=Number(g.lon);
+            row.raw["GPS_lat"]=row.lat;
+            row.raw["GPS_lon"]=row.lon;
+          }
+        }
+      }catch(e){}
+    }
+
+    if(!Number.isFinite(row.lat) || !Number.isFinite(row.lon)){
+      if(st) st.textContent="Bod nemá GPS. Doplň GPS nebo použij Dopočítat GPS.";
+      return;
+    }
+
+    try{
+      if(window.firebaseReady && window.db && window.fb && fb.fsMod){
+        const {doc,setDoc}=fb.fsMod;
+        await setDoc(doc(db,"sites",row.id),{
+          raw:row.raw,
+          noOrder:row.noOrder,
+          createdAt:new Date().toISOString(),
+          createdBy:(window.currentUser && currentUser.email) || ""
+        },{merge:true});
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
+      return;
+    }
+
+    if(Array.isArray(window.rows)){
+      row.i=window.rows.length;
+      window.rows.push(row);
+    }
+
+    if(st) st.textContent="Nové místo uloženo.";
+
+    try{
+      if(typeof render==="function") render();
+
+      const latlng=[row.lat,row.lon];
+      if(window.map){
+        setTimeout(()=>window.map.setView(latlng,14),100);
+        setTimeout(()=>window.map.invalidateSize(true),250);
+      }
+
+      // nový bod se chová jako ostatní: detail se otevře přes původní openDetail
+      if(typeof window.openDetail==="function"){
+        setTimeout(()=>window.openDetail(row.i),250);
+      }
+    }catch(e){
+      location.reload();
+    }
+  }
+
+  function bindAddOnly(){
     const btn=document.getElementById("addSiteBtn");
     if(!btn) return;
     btn.onclick=function(e){
       if(e) e.preventDefault();
-      if(typeof openOnlyNewSite==="function") openOnlyNewSite(true);
+      openAddForm();
     };
   }
 
-  // Rebind after the original page renders, but do not touch detail clicks.
-  document.addEventListener("DOMContentLoaded", safeBindAddButtonFinal);
-  setTimeout(safeBindAddButtonFinal,300);
-  setTimeout(safeBindAddButtonFinal,1200);
-
-  // If a detail opens, it must use the original drawer content, not the add form.
-  if(typeof window.openDetail==="function" && !window.openDetail.__safeDetailPatched){
-    const originalOpenDetail=window.openDetail;
-    const patched=function(i){
-      const drawer=document.getElementById("drawer");
-      if(drawer){
-        drawer.classList.remove("adding-new-site");
-      }
-      return originalOpenDetail.apply(this, arguments);
-    };
-    patched.__safeDetailPatched=true;
-    window.openDetail=patched;
-  }
+  document.addEventListener("DOMContentLoaded",bindAddOnly);
+  setTimeout(bindAddOnly,300);
+  setTimeout(bindAddOnly,1200);
+  setTimeout(bindAddOnly,2500);
 })();
 </script>
+<style>
+.new-only-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.new-only-grid .full{grid-column:1 / -1}
+.new-only-grid label{font-size:12px;font-weight:800;color:#475569}
+.new-only-grid input,.new-only-grid select,.new-only-grid textarea{width:100%;min-height:38px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box}
+.new-only-grid textarea{min-height:90px}
+.gps-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.only-red{background:#fee2e2;border:1px solid #fecaca;border-radius:12px;padding:10px}
+.only-red label{color:#991b1b!important}
+@media(max-width:700px){.new-only-grid{grid-template-columns:1fr}.new-only-grid .full{grid-column:auto}.gps-actions{grid-template-columns:1fr}}
+</style>
 
 </body>
 </html>
