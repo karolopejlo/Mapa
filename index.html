@@ -3393,7 +3393,8 @@ setTimeout(()=>{
           <div><label>Adresa / umístění</label><input data-new-key="Adresa / umístění" id="onlyNewAddress"></div>
           <div>
             <label>GPS</label>
-            <button class="secondary" type="button" id="calcOnlyGpsBtn" style="width:100%">Dopočítat GPS</button>
+            <button class="secondary" type="button" id="calcOnlyGpsBtn" style="width:100%;margin-bottom:6px">Dopočítat GPS</button>
+            <button class="primary" type="button" id="findOnlyGpsBtn" style="width:100%">Vyhledat na mapě</button>
           </div>
           <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
           <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
@@ -3421,6 +3422,8 @@ setTimeout(()=>{
     document.getElementById("saveOnlyNew").onclick=saveOnlyNewSite;
     const gpsBtn=document.getElementById("calcOnlyGpsBtn");
     if(gpsBtn) gpsBtn.onclick=calcOnlyNewGps;
+    const findGpsBtn=document.getElementById("findOnlyGpsBtn");
+    if(findGpsBtn) findGpsBtn.onclick=findOnlyNewGpsOnMap;
     setTimeout(()=>{const f=document.getElementById("onlyNewName"); if(f) f.focus();},100);
   }
 
@@ -3481,6 +3484,52 @@ setTimeout(()=>{
     }
   }
 
+  
+  let onlyNewTempMarker = null;
+
+  function findOnlyNewGpsOnMap(){
+    const st=document.getElementById("onlyNewStatus");
+    const latEl=document.getElementById("onlyNewGpsLat");
+    const lonEl=document.getElementById("onlyNewGpsLon");
+
+    const lat=parseFloat(String(latEl?.value||"").replace(",","."));
+    const lon=parseFloat(String(lonEl?.value||"").replace(",","."));
+
+    if(!Number.isFinite(lat) || !Number.isFinite(lon)){
+      if(st) st.textContent="Nejdřív vyplň nebo dopočítej GPS lat/lon.";
+      return;
+    }
+
+    if(!window.map || !window.L){
+      if(st) st.textContent="Mapa ještě není načtená.";
+      return;
+    }
+
+    const latlng=[lat,lon];
+
+    try{
+      if(onlyNewTempMarker){
+        window.map.removeLayer(onlyNewTempMarker);
+      }
+
+      onlyNewTempMarker=L.circleMarker(latlng,{
+        radius:10,
+        color:"#111827",
+        weight:2,
+        fillColor:"#2563eb",
+        fillOpacity:.95
+      }).addTo(window.map);
+
+      onlyNewTempMarker.bindPopup("Nový bod - náhled").openPopup();
+      window.map.setView(latlng,15);
+      window.map.invalidateSize(true);
+
+      if(st) st.textContent="Bod nalezen na mapě podle GPS.";
+    }catch(e){
+      if(st) st.textContent="Chyba zobrazení bodu na mapě: "+e.message;
+    }
+  }
+
   async function saveOnlyNewSite(){
     const st=document.getElementById("onlyNewStatus");
     const raw=collectOnlyNewRaw();
@@ -3490,8 +3539,8 @@ setTimeout(()=>{
     }
 
     const id="site_"+Date.now();
-    let latManual=parseFloat(raw["GPS_lat"]||"");
-    let lonManual=parseFloat(raw["GPS_lon"]||"");
+    let latManual=parseFloat(String(raw["GPS_lat"]||"").replace(",","."));
+    let lonManual=parseFloat(String(raw["GPS_lon"]||"").replace(",","."));
     let row={
       id:id,
       i:Array.isArray(window.rows)?window.rows.length:0,
@@ -3514,7 +3563,7 @@ setTimeout(()=>{
       if(address && typeof geocodeAddressGeneric==="function"){
         if(st) st.textContent="Dopočítávám GPS...";
         const g=await geocodeAddressGeneric(address);
-        if(g){row.lat=g.lat; row.lon=g.lon; row.raw["GPS_lat"]=g.lat; row.raw["GPS_lon"]=g.lon;}
+        if(g){row.lat=Number(g.lat); row.lon=Number(g.lon); row.raw["GPS_lat"]=row.lat; row.raw["GPS_lon"]=row.lon;}
       }
     }catch(e){}
 
@@ -3533,15 +3582,53 @@ setTimeout(()=>{
       return;
     }
 
-    if(Array.isArray(window.rows)) window.rows.push(row);
-    if(st) st.textContent="Nové místo uloženo.";
+    // vložit bod do hlavního seznamu tak, aby ho render() hned zobrazil na mapě
+    if(Array.isArray(window.rows)){
+      row.i = window.rows.length;
+      row.lat = Number(row.lat);
+      row.lon = Number(row.lon);
+      row.raw = row.raw || {};
+      row.raw["GPS_lat"] = row.lat;
+      row.raw["GPS_lon"] = row.lon;
+      row.raw["Název"] = row.nazev || row.raw["Název"] || "";
+      row.raw["Adresa_GPS"] = row.adresa || row.raw["Adresa_GPS"] || "";
+      window.rows.push(row);
+    }
+
+    if(st) st.textContent="Nové místo uloženo a zobrazeno na mapě.";
+
     try{
       if(typeof render==="function") render();
-      if(row.lat && row.lon && window.map){
-        setTimeout(()=>{try{window.map.setView([row.lat,row.lon],13);}catch(e){}},200);
+
+      const hasGps = Number.isFinite(row.lat) && Number.isFinite(row.lon);
+      if(hasGps){
+        const latlng=[row.lat,row.lon];
+
+        // přidat bod okamžitě i bez čekání na render
+        try{
+          if(window.L && window.map){
+            const marker=L.circleMarker(latlng,{
+              radius:8,
+              color:"#111827",
+              weight:2,
+              fillColor: row.noOrder ? "#ec4899" : "#22c55e",
+              fillOpacity:.95
+            }).addTo(window.map);
+            marker.bindPopup(row.nazev || "Nové místo");
+            marker.on("click",()=>{ if(typeof openDetail==="function") openDetail(row.i); });
+          }
+        }catch(e){}
+
+        if(window.map){
+          setTimeout(()=>{try{window.map.setView(latlng,14);}catch(e){}},150);
+          setTimeout(()=>{try{window.map.invalidateSize(true);}catch(e){}},300);
+        }
       }
-      if(typeof openDetail==="function") openDetail(row.i);
-    }catch(e){ location.reload(); }
+
+      if(typeof openDetail==="function") setTimeout(()=>openDetail(row.i),250);
+    }catch(e){
+      location.reload();
+    }
   }
 
   function bindOnlyNew(){
