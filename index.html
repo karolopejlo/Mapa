@@ -3370,5 +3370,150 @@ setTimeout(()=>{
 },2000);
 
 </script>
+
+<script>
+(function(){
+  function openOnlyNewSite(){
+    const drawer=document.getElementById("drawer");
+    if(!drawer) return;
+    drawer.classList.add("open");
+    drawer.innerHTML=`
+      <div class="drawer-head">
+        <div>
+          <h2>Přidat nové místo</h2>
+          <p class="small">Vyplň údaje a ulož bod do Firebase.</p>
+        </div>
+        <button class="secondary x" type="button" id="closeOnlyNew">Zavřít</button>
+      </div>
+
+      <div class="card" id="newSiteOnlyCard">
+        <div class="new-only-grid">
+          <div><label>Název</label><input data-new-key="Název" id="onlyNewName"></div>
+          <div><label>Adresa / umístění</label><input data-new-key="Adresa / umístění"></div>
+          <div class="full"><label>Umístění zdroje</label><input data-new-key="Adresa_GPS"></div>
+          <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje"></div>
+          <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj"></div>
+          <div><label>Kontakt</label><input data-new-key="Kontakt"></div>
+          <div><label>Kraj</label><input data-new-key="Kraj"></div>
+          <div class="full"><label>Poznámky</label><input data-new-key="Poznámky"></div>
+          <div><label>Rok výroby</label><input data-new-key="Rok výroby"></div>
+          <div><label>Serviska</label><select data-new-key="Serviska"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
+          <div><label>Cena FZ</label><input data-new-key="Cena FZ"></div>
+          <div><label>Perioda kontrol</label><select data-new-key="Perioda kontrol"><option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option></select></div>
+          <div class="full"><label>Hlídáme kontroly sami</label><select data-new-key="Hlídáme kontroly sami"><option value="ne" selected>ne</option><option value="ano">ano</option></select></div>
+          <div class="full only-red"><label>Důležité poznámky</label><textarea data-new-key="Důležitá poznámka"></textarea></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="primary" type="button" id="saveOnlyNew">Uložit nové místo</button>
+          <button class="secondary" type="button" id="cancelOnlyNew">Zrušit</button>
+        </div>
+        <p class="small" id="onlyNewStatus"></p>
+      </div>`;
+    document.getElementById("closeOnlyNew").onclick=()=>drawer.classList.remove("open");
+    document.getElementById("cancelOnlyNew").onclick=()=>drawer.classList.remove("open");
+    document.getElementById("saveOnlyNew").onclick=saveOnlyNewSite;
+    setTimeout(()=>{const f=document.getElementById("onlyNewName"); if(f) f.focus();},100);
+  }
+
+  function collectOnlyNewRaw(){
+    const raw={};
+    document.querySelectorAll("#newSiteOnlyCard [data-new-key]").forEach(el=>{
+      const key=el.dataset.newKey;
+      const val=String(el.value||"").trim();
+      if(!key || !val) return;
+      raw[key]=val;
+      const norm=key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+      if(norm==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
+        raw["Hlídáme sami termín"]="ano";
+        raw["Jezdit bez objednávky"]="ANO";
+        raw["Bez objednávky"]="ANO";
+      }
+    });
+    return raw;
+  }
+
+  async function saveOnlyNewSite(){
+    const st=document.getElementById("onlyNewStatus");
+    const raw=collectOnlyNewRaw();
+    if(!raw["Název"] && !raw["Adresa / umístění"]){
+      if(st) st.textContent="Vyplň alespoň Název nebo Adresa / umístění.";
+      return;
+    }
+
+    const id="site_"+Date.now();
+    let row={
+      id:id,
+      i:Array.isArray(window.rows)?window.rows.length:0,
+      nazev:raw["Název"]||raw["Adresa / umístění"]||"Nové místo",
+      adresa:raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",
+      kraj:raw["Kraj"]||"",
+      zdroj:raw["Popis_zdroje"]||"",
+      kontakt:raw["Kontakt"]||"",
+      pristi:"",
+      posledni:"",
+      lat:null,
+      lon:null,
+      ordered:false,
+      noOrder:String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano",
+      raw:raw
+    };
+
+    try{
+      const address=raw["Adresa / umístění"]||raw["Adresa_GPS"]||"";
+      if(address && typeof geocodeAddressGeneric==="function"){
+        if(st) st.textContent="Dopočítávám GPS...";
+        const g=await geocodeAddressGeneric(address);
+        if(g){row.lat=g.lat; row.lon=g.lon; row.raw["GPS_lat"]=g.lat; row.raw["GPS_lon"]=g.lon;}
+      }
+    }catch(e){}
+
+    try{
+      if(window.firebaseReady && window.db && window.fb && fb.fsMod){
+        const {doc,setDoc}=fb.fsMod;
+        await setDoc(doc(db,"sites",id),{
+          raw:raw,
+          createdAt:new Date().toISOString(),
+          createdBy:(window.currentUser&&currentUser.email)||"",
+          noOrder:row.noOrder
+        },{merge:true});
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
+      return;
+    }
+
+    if(Array.isArray(window.rows)) window.rows.push(row);
+    if(st) st.textContent="Nové místo uloženo.";
+    try{
+      if(typeof render==="function") render();
+      if(typeof openDetail==="function") openDetail(row.i);
+    }catch(e){ location.reload(); }
+  }
+
+  function bindOnlyNew(){
+    const btn=document.getElementById("addSiteBtn");
+    if(btn){
+      btn.onclick=openOnlyNewSite;
+      btn.dataset.onlyNewBound="1";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded",bindOnlyNew);
+  setTimeout(bindOnlyNew,300);
+  setTimeout(bindOnlyNew,1000);
+  setTimeout(bindOnlyNew,2500);
+})();
+</script>
+<style>
+.new-only-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.new-only-grid .full{grid-column:1 / -1}
+.new-only-grid label{font-size:12px;font-weight:800;color:#475569}
+.new-only-grid input,.new-only-grid select,.new-only-grid textarea{width:100%;min-height:38px;padding:8px;border:1px solid #cbd5e1;border-radius:10px;box-sizing:border-box}
+.new-only-grid textarea{min-height:90px}
+.only-red{background:#fee2e2;border:1px solid #fecaca;border-radius:12px;padding:10px}
+.only-red label{color:#991b1b!important}
+@media(max-width:700px){.new-only-grid{grid-template-columns:1fr}.new-only-grid .full{grid-column:auto}}
+</style>
+
 </body>
 </html>
