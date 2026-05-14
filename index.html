@@ -790,6 +790,47 @@ button,input,select,textarea{
   padding-top:10px;
 }
 
+
+.new-point-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.new-point-grid .full{grid-column:1 / -1}
+.new-point-grid label{
+  font-size:12px;
+  font-weight:800;
+  color:#475569;
+}
+.new-point-grid input,
+.new-point-grid select,
+.new-point-grid textarea{
+  width:100%;
+  min-height:40px;
+  padding:8px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  box-sizing:border-box;
+}
+.new-point-grid textarea{min-height:90px}
+.new-point-red{
+  background:#fee2e2;
+  border:1px solid #fecaca;
+  border-radius:12px;
+  padding:10px;
+}
+.new-point-red label{color:#991b1b!important}
+.gps-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+@media(max-width:700px){
+  .new-point-grid{grid-template-columns:1fr}
+  .new-point-grid .full{grid-column:auto}
+  .gps-actions{grid-template-columns:1fr}
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -823,6 +864,7 @@ button,input,select,textarea{
 <label>Hledat</label><input id="search" placeholder="název, adresa, zdroj, kontakt...">
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
+  <button class="primary" id="addPointBtnFinal" style="margin-top:8px">Přidat nové místo</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
@@ -4083,6 +4125,283 @@ setTimeout(()=>{
 
   // Po uložení nového místa se openDetail taky nejdřív vrátí na normální šablonu.
   window.__restoreDrawerTemplateForDetail = restoreDrawerTemplate;
+})();
+</script>
+
+
+<script>
+/* Funkční přidání bodu + zavírání panelu */
+(function(){
+  let previewMarker = null;
+
+  function escNew(s){
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  function closeDrawerFinal(){
+    const d=document.getElementById("drawer");
+    if(d) d.classList.remove("open");
+  }
+
+  function bindCloseFinal(){
+    const btn=document.getElementById("closeDrawer");
+    if(btn && !btn.__finalCloseBound){
+      btn.__finalCloseBound=true;
+      btn.onclick=function(e){
+        if(e) e.preventDefault();
+        closeDrawerFinal();
+      };
+    }
+  }
+
+  function openAddPointForm(){
+    const drawer=document.getElementById("drawer");
+    if(!drawer) return;
+
+    drawer.classList.add("open");
+    drawer.innerHTML=`
+      <div class="drawer-head">
+        <div>
+          <h2>Přidat nové místo</h2>
+          <p class="small">Vyplň údaje nového bodu.</p>
+        </div>
+        <button class="secondary x" id="closeDrawer">Zavřít</button>
+      </div>
+
+      <div class="card">
+        <div class="new-point-grid">
+          <div><label>Název</label><input id="npName"></div>
+          <div><label>Adresa / umístění</label><input id="npAddress"></div>
+
+          <div class="full gps-actions">
+            <button class="secondary" type="button" id="npCalcGps">Dopočítat GPS</button>
+            <button class="primary" type="button" id="npFindMap">Vyhledat na mapě</button>
+          </div>
+
+          <div><label>GPS lat</label><input id="npLat" placeholder="49.123456"></div>
+          <div><label>GPS lon</label><input id="npLon" placeholder="16.123456"></div>
+
+          <div class="full"><label>Umístění zdroje</label><input id="npSourcePlace"></div>
+          <div class="full"><label>Popis zdroje</label><input id="npSourceDesc"></div>
+          <div class="full"><label>Výrobní číslo</label><input id="npSerial"></div>
+
+          <div><label>Kontakt</label><input id="npContact"></div>
+          <div><label>Kraj</label><input id="npRegion"></div>
+
+          <div class="full"><label>Poznámky</label><input id="npNotes"></div>
+
+          <div><label>Rok výroby</label><input id="npYear"></div>
+          <div><label>Serviska</label><select id="npService"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
+
+          <div><label>Cena FZ</label><input id="npPrice"></div>
+          <div><label>Perioda kontrol</label><select id="npPeriod"><option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option></select></div>
+
+          <div class="full"><label>Hlídáme kontroly sami</label><select id="npWatch"><option value="ne" selected>ne</option><option value="ano">ano</option></select></div>
+
+          <div class="full new-point-red">
+            <label>Důležité poznámky</label>
+            <textarea id="npImportant"></textarea>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <button class="primary" type="button" id="npSave">Uložit nové místo</button>
+          <button class="secondary" type="button" id="npCancel">Zrušit</button>
+        </div>
+        <p class="small" id="npStatus"></p>
+      </div>
+    `;
+
+    bindCloseFinal();
+
+    document.getElementById("npCancel").onclick=closeDrawerFinal;
+    document.getElementById("npCalcGps").onclick=calcGpsNewPoint;
+    document.getElementById("npFindMap").onclick=findNewPointOnMap;
+    document.getElementById("npSave").onclick=saveNewPointFinal;
+
+    setTimeout(()=>document.getElementById("npName")?.focus(),100);
+  }
+
+  async function calcGpsNewPoint(){
+    const st=document.getElementById("npStatus");
+    const addr=String(document.getElementById("npAddress")?.value || document.getElementById("npSourcePlace")?.value || "").trim();
+    if(!addr){
+      if(st) st.textContent="Vyplň adresu / umístění.";
+      return;
+    }
+
+    try{
+      if(st) st.textContent="Dopočítávám GPS...";
+      const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(addr);
+      const res=await fetch(url,{headers:{"Accept":"application/json"}});
+      const data=await res.json();
+
+      if(data && data[0]){
+        document.getElementById("npLat").value=data[0].lat;
+        document.getElementById("npLon").value=data[0].lon;
+        if(st) st.textContent="GPS doplněno.";
+      }else{
+        if(st) st.textContent="Adresa nebyla nalezena.";
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
+    }
+  }
+
+  function findNewPointOnMap(){
+    const st=document.getElementById("npStatus");
+    const lat=parseFloat(String(document.getElementById("npLat")?.value || "").replace(",","."));
+    const lon=parseFloat(String(document.getElementById("npLon")?.value || "").replace(",","."));
+
+    if(!Number.isFinite(lat) || !Number.isFinite(lon)){
+      if(st) st.textContent="Nejdřív vyplň nebo dopočítej GPS.";
+      return;
+    }
+
+    try{
+      if(previewMarker && window.map) window.map.removeLayer(previewMarker);
+      if(window.L && window.map){
+        previewMarker=L.circleMarker([lat,lon],{
+          radius:10,color:"#111827",weight:2,fillColor:"#2563eb",fillOpacity:.95
+        }).addTo(window.map);
+        previewMarker.bindPopup("Nový bod - náhled").openPopup();
+        window.map.setView([lat,lon],15);
+        if(st) st.textContent="Bod zobrazen na mapě.";
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba zobrazení na mapě: "+e.message;
+    }
+  }
+
+  function rawNewPoint(){
+    const raw={
+      "Název":document.getElementById("npName")?.value.trim() || "",
+      "Adresa / umístění":document.getElementById("npAddress")?.value.trim() || "",
+      "GPS_lat":document.getElementById("npLat")?.value.trim() || "",
+      "GPS_lon":document.getElementById("npLon")?.value.trim() || "",
+      "Adresa_GPS":document.getElementById("npSourcePlace")?.value.trim() || "",
+      "Popis_zdroje":document.getElementById("npSourceDesc")?.value.trim() || "",
+      "Zdroj":document.getElementById("npSerial")?.value.trim() || "",
+      "Kontakt":document.getElementById("npContact")?.value.trim() || "",
+      "Kraj":document.getElementById("npRegion")?.value.trim() || "",
+      "Poznámky":document.getElementById("npNotes")?.value.trim() || "",
+      "Rok výroby":document.getElementById("npYear")?.value.trim() || "",
+      "Serviska":document.getElementById("npService")?.value.trim() || "",
+      "Cena FZ":document.getElementById("npPrice")?.value.trim() || "",
+      "Perioda kontrol":document.getElementById("npPeriod")?.value.trim() || "",
+      "Hlídáme kontroly sami":document.getElementById("npWatch")?.value.trim() || "",
+      "Důležitá poznámka":document.getElementById("npImportant")?.value.trim() || ""
+    };
+
+    Object.keys(raw).forEach(k=>{ if(!raw[k]) delete raw[k]; });
+
+    if(String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano"){
+      raw["Hlídáme sami termín"]="ano";
+      raw["Jezdit bez objednávky"]="ANO";
+      raw["Bez objednávky"]="ANO";
+    }
+
+    return raw;
+  }
+
+  function makeRowFromRaw(raw){
+    const lat=parseFloat(String(raw["GPS_lat"]||"").replace(",","."));
+    const lon=parseFloat(String(raw["GPS_lon"]||"").replace(",","."));
+    const id="new_"+Date.now();
+
+    const adresa=raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "Nové místo";
+    const zdroj=raw["Popis_zdroje"] || raw["Zdroj"] || "";
+
+    return {
+      id:id,
+      i:Array.isArray(window.rows)?window.rows.length:0,
+      raw:raw,
+      kraj:raw["Kraj"] || "",
+      adresa:adresa,
+      zdroj:zdroj,
+      kontakt:raw["Kontakt"] || "",
+      posledni:"",
+      pristi:"",
+      dni:"",
+      stav:String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano" ? "Hlídáme termín sami" : "Nové místo",
+      poznamky:raw["Poznámky"] || raw["Důležitá poznámka"] || "",
+      lat:Number.isFinite(lat)?lat:NaN,
+      lon:Number.isFinite(lon)?lon:NaN
+    };
+  }
+
+  async function saveNewPointFinal(){
+    const st=document.getElementById("npStatus");
+    const raw=rawNewPoint();
+
+    if(!raw["Název"] && !raw["Adresa / umístění"]){
+      if(st) st.textContent="Vyplň alespoň Název nebo Adresa / umístění.";
+      return;
+    }
+
+    let row=makeRowFromRaw(raw);
+
+    if(!Number.isFinite(row.lat) || !Number.isFinite(row.lon)){
+      if(st) st.textContent="Doplň GPS nebo použij Dopočítat GPS.";
+      return;
+    }
+
+    try{
+      // Uložit i do Firebase, pokud je stránka přihlášená a db existuje.
+      if(window.firebaseReady && window.db && window.fb && fb.fsMod){
+        const {doc,setDoc}=fb.fsMod;
+        await setDoc(doc(db,"sites",row.id),{
+          raw:row.raw,
+          createdAt:new Date().toISOString(),
+          createdBy:(window.currentUser && currentUser.email) || "",
+          noOrder:String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano"
+        },{merge:true});
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
+      return;
+    }
+
+    try{
+      if(Array.isArray(window.rows)){
+        row.i=window.rows.length;
+        window.rows.push(row);
+      }
+      if(previewMarker && window.map){
+        try{window.map.removeLayer(previewMarker);}catch(e){}
+        previewMarker=null;
+      }
+      if(typeof window.render==="function") window.render();
+      if(window.map) window.map.setView([row.lat,row.lon],14);
+
+      // Normální detail stejné funkce jako ostatní body.
+      if(typeof window.openSiteDetail==="function"){
+        setTimeout(()=>window.openSiteDetail(row.id),150);
+      }
+
+      if(st) st.textContent="Nové místo uloženo.";
+    }catch(e){
+      if(st) st.textContent="Uloženo, ale detail se nepodařilo otevřít: "+e.message;
+    }
+  }
+
+  function bindFinal(){
+    bindCloseFinal();
+
+    const add=document.getElementById("addPointBtnFinal") || document.getElementById("addSiteBtn");
+    if(add && !add.__newPointFinalBound){
+      add.__newPointFinalBound=true;
+      add.onclick=function(e){
+        if(e) e.preventDefault();
+        openAddPointForm();
+      };
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded",bindFinal);
+  setInterval(bindFinal,1000);
 })();
 </script>
 
