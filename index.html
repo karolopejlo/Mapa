@@ -4178,5 +4178,58 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* OPRAVA: po uložení nového bodu otevřít jeho detail */
+(function(){
+  function openNewestDetailAfterSave(){
+    if(!Array.isArray(window.rows) || !window.rows.length) return;
+
+    const idx = window.rows.length - 1;
+    const drawer = document.getElementById("drawer");
+
+    if(drawer){
+      drawer.classList.remove("adding-new-site");
+      drawer.classList.add("open");
+    }
+
+    if(typeof window.openDetail === "function"){
+      setTimeout(()=>window.openDetail(idx), 150);
+      setTimeout(()=>window.openDetail(idx), 500);
+      setTimeout(()=>window.openDetail(idx), 1000);
+    }
+  }
+
+  function patchSaveButtons(){
+    document.querySelectorAll("#saveNewSiteBtn, #saveOnlyNew, #saveOnlyNewBtn").forEach(btn=>{
+      if(btn.__openDetailAfterSaveBound) return;
+      btn.__openDetailAfterSaveBound = true;
+
+      btn.addEventListener("click", function(){
+        const before = Array.isArray(window.rows) ? window.rows.length : 0;
+        let tries = 0;
+
+        const timer = setInterval(()=>{
+          tries++;
+          const after = Array.isArray(window.rows) ? window.rows.length : 0;
+
+          if(after > before){
+            clearInterval(timer);
+            openNewestDetailAfterSave();
+          }
+
+          if(tries > 24){
+            clearInterval(timer);
+          }
+        }, 250);
+      }, true);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", patchSaveButtons);
+  setInterval(patchSaveButtons, 1000);
+})();
+</script>
+
 </body>
 </html>
