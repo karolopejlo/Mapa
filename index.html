@@ -3373,7 +3373,8 @@ setTimeout(()=>{
 
 <script>
 (function(){
-  function openOnlyNewSite(){
+  function openOnlyNewSite(fromAddButton){
+    if(fromAddButton !== true) return;
     const drawer=document.getElementById("drawer");
     if(!drawer) return;
     drawer.classList.add("open");
@@ -3546,7 +3547,10 @@ setTimeout(()=>{
   function bindOnlyNew(){
     const btn=document.getElementById("addSiteBtn");
     if(btn){
-      btn.onclick=openOnlyNewSite;
+      btn.onclick=function(e){
+        if(e) e.preventDefault();
+        openOnlyNewSite(true);
+      };
       btn.dataset.onlyNewBound="1";
     }
   }
@@ -3567,6 +3571,39 @@ setTimeout(()=>{
 .only-red label{color:#991b1b!important}
 @media(max-width:700px){.new-only-grid{grid-template-columns:1fr}.new-only-grid .full{grid-column:auto}}
 </style>
+
+
+<script>
+(function(){
+  function safeBindAddButtonFinal(){
+    const btn=document.getElementById("addSiteBtn");
+    if(!btn) return;
+    btn.onclick=function(e){
+      if(e) e.preventDefault();
+      if(typeof openOnlyNewSite==="function") openOnlyNewSite(true);
+    };
+  }
+
+  // Rebind after the original page renders, but do not touch detail clicks.
+  document.addEventListener("DOMContentLoaded", safeBindAddButtonFinal);
+  setTimeout(safeBindAddButtonFinal,300);
+  setTimeout(safeBindAddButtonFinal,1200);
+
+  // If a detail opens, it must use the original drawer content, not the add form.
+  if(typeof window.openDetail==="function" && !window.openDetail.__safeDetailPatched){
+    const originalOpenDetail=window.openDetail;
+    const patched=function(i){
+      const drawer=document.getElementById("drawer");
+      if(drawer){
+        drawer.classList.remove("adding-new-site");
+      }
+      return originalOpenDetail.apply(this, arguments);
+    };
+    patched.__safeDetailPatched=true;
+    window.openDetail=patched;
+  }
+})();
+</script>
 
 </body>
 </html>
