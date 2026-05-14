@@ -3954,325 +3954,66 @@ setTimeout(()=>{
 </style>
 
 
-<script>
-(function(){
-  function closeAddFormIfOpen(){
-    const drawer=document.getElementById("drawer");
-    if(!drawer) return;
-    const addCard=document.getElementById("newSiteOnlyCard");
-    if(addCard){
-      drawer.classList.remove("adding-new-site");
-    }
-  }
 
-  function patchOpenDetail(){
-    if(typeof window.openDetail==="function" && !window.openDetail.__clearAddPatched){
-      const original=window.openDetail;
-      const patched=function(){
-        closeAddFormIfOpen();
-        return original.apply(this, arguments);
-      };
-      patched.__clearAddPatched=true;
-      window.openDetail=patched;
-    }
-  }
 
-  document.addEventListener("click", function(e){
-    const addBtn=e.target.closest && e.target.closest("#addSiteBtn");
-    if(addBtn) return;
 
-    const detailLike=e.target.closest && e.target.closest(".item, .leaflet-marker-icon, .leaflet-interactive, .leaflet-popup");
-    if(detailLike){
-      closeAddFormIfOpen();
-      setTimeout(patchOpenDetail,0);
-    }
-  }, true);
 
-  document.addEventListener("DOMContentLoaded", patchOpenDetail);
-  setTimeout(patchOpenDetail,200);
-  setTimeout(patchOpenDetail,800);
-  setTimeout(patchOpenDetail,2000);
-})();
-</script>
+
+
+
+
+
+
+
+
+
 
 
 <script>
-/* FINAL FIX: Přidat nové místo už nesmí přepsat normální detail */
+/* CLEAN FIX: nový bod po uložení otevře normální detail a nerozbíjí zavírání */
 (function(){
-  function drawer(){
-    return document.getElementById("drawer");
-  }
+  let lastAddSaveStarted = false;
 
-  function saveDrawerTemplate(){
-    const d = drawer();
-    if(!d) return;
-    if(!window.__normalDrawerTemplate || !window.__normalDrawerTemplate.includes('id="detailTable"')){
-      if(!d.querySelector("#newSiteOnlyCard")){
-        window.__normalDrawerTemplate = d.innerHTML;
-      }
-    }
-  }
-
-  function restoreDrawerTemplate(){
-    const d = drawer();
-    if(!d) return false;
-
-    const isAddForm = !!d.querySelector("#newSiteOnlyCard");
-    if(isAddForm && window.__normalDrawerTemplate){
-      d.innerHTML = window.__normalDrawerTemplate;
-      d.classList.remove("adding-new-site");
-      return true;
-    }
-    return false;
-  }
-
-  function patchOpenDetailFinal(){
-    if(typeof window.openDetail !== "function") return;
-    if(window.openDetail.__finalRestorePatched) return;
-
-    const originalOpenDetail = window.openDetail;
-    const patchedOpenDetail = function(){
-      restoreDrawerTemplate();
-      return originalOpenDetail.apply(this, arguments);
-    };
-
-    patchedOpenDetail.__finalRestorePatched = true;
-    window.openDetail = patchedOpenDetail;
-  }
-
-  function bindAddButtonFinal(){
-    const btn = document.getElementById("addSiteBtn");
-    if(!btn || btn.__finalAddBound) return;
-
-    const oldClick = btn.onclick;
-    btn.onclick = function(e){
-      saveDrawerTemplate();
-      if(typeof oldClick === "function"){
-        return oldClick.call(this, e);
-      }
-    };
-    btn.__finalAddBound = true;
-  }
-
-  function initFinalFix(){
-    saveDrawerTemplate();
-    patchOpenDetailFinal();
-    bindAddButtonFinal();
-  }
-
-  document.addEventListener("DOMContentLoaded", initFinalFix);
-  setTimeout(initFinalFix, 100);
-  setTimeout(initFinalFix, 500);
-  setTimeout(initFinalFix, 1500);
-  setTimeout(initFinalFix, 3000);
-
-  // Když klikneš na položku nebo marker, vždy obnov normální detail před spuštěním handleru.
-  document.addEventListener("click", function(e){
-    const addBtn = e.target.closest && e.target.closest("#addSiteBtn");
-    if(addBtn){
-      saveDrawerTemplate();
-      return;
-    }
-
-    const detailClick = e.target.closest && e.target.closest(".item, .leaflet-interactive, .leaflet-marker-icon, .leaflet-popup");
-    if(detailClick){
-      restoreDrawerTemplate();
-      patchOpenDetailFinal();
-    }
-  }, true);
-
-  // Po uložení nového místa se openDetail taky nejdřív vrátí na normální šablonu.
-  window.__restoreDrawerTemplateForDetail = restoreDrawerTemplate;
-})();
-</script>
-
-
-<script>
-/* OPRAVA: po Přidat nové místo jde znovu otevřít a zavřít normální detail */
-(function(){
-  function drawerEl(){
-    return document.getElementById("drawer");
+  function closeAllLeafletPopups(){
+    try{
+      if(window.map && window.map.closePopup) window.map.closePopup();
+      document.querySelectorAll(".leaflet-popup").forEach(p=>p.remove());
+    }catch(e){}
   }
 
   function closeDrawer(){
-    const d = drawerEl();
-    if(!d) return;
-    d.classList.remove("open");
-    d.classList.remove("adding-new-site");
-  }
-
-  function clearAddMode(){
-    const d = drawerEl();
-    if(!d) return;
-    d.classList.remove("adding-new-site");
-    const newCard = document.getElementById("newSiteCard");
-    if(newCard) newCard.style.display = "none";
-  }
-
-  function bindCloseButtons(){
-    document.querySelectorAll("#drawer button, #drawer .x").forEach(btn=>{
-      const txt=(btn.textContent||"").trim().toLowerCase();
-      if(txt==="zavřít" || txt==="zavrit"){
-        if(btn.__fixedCloseBound) return;
-        btn.__fixedCloseBound=true;
-        btn.addEventListener("click", function(e){
-          e.preventDefault();
-          e.stopPropagation();
-          closeDrawer();
-        }, true);
-      }
-    });
-  }
-
-  function patchOpenDetail(){
-    if(typeof window.openDetail !== "function") return;
-    if(window.openDetail.__addModeCloseFixed) return;
-
-    const originalOpenDetail = window.openDetail;
-    const patched = function(){
-      clearAddMode();
-      const result = originalOpenDetail.apply(this, arguments);
-      setTimeout(bindCloseButtons, 50);
-      setTimeout(bindCloseButtons, 300);
-      return result;
-    };
-
-    patched.__addModeCloseFixed = true;
-    window.openDetail = patched;
-  }
-
-  function initFix(){
-    patchOpenDetail();
-    bindCloseButtons();
-  }
-
-  document.addEventListener("DOMContentLoaded", initFix);
-  setTimeout(initFix, 100);
-  setTimeout(initFix, 500);
-  setTimeout(initFix, 1500);
-
-  document.addEventListener("click", function(e){
-    const addBtn = e.target.closest && e.target.closest("#addSiteBtn");
-    if(addBtn) return;
-
-    const closeBtn = e.target.closest && e.target.closest("#drawer button, #drawer .x");
-    if(closeBtn){
-      const txt=(closeBtn.textContent||"").trim().toLowerCase();
-      if(txt==="zavřít" || txt==="zavrit"){
-        e.preventDefault();
-        e.stopPropagation();
-        closeDrawer();
-        return;
-      }
-    }
-
-    const existingPointClick = e.target.closest && e.target.closest(".item, .leaflet-interactive, .leaflet-marker-icon, .leaflet-popup");
-    if(existingPointClick){
-      clearAddMode();
-      patchOpenDetail();
-      setTimeout(bindCloseButtons, 100);
-    }
-  }, true);
-
-  setInterval(initFix, 1200);
-})();
-</script>
-
-
-<script>
-/* OPRAVA: po uložení nového bodu otevřít jeho detail */
-(function(){
-  function openNewestDetailAfterSave(){
-    if(!Array.isArray(window.rows) || !window.rows.length) return;
-
-    const idx = window.rows.length - 1;
-    const drawer = document.getElementById("drawer");
-
-    if(drawer){
-      drawer.classList.remove("adding-new-site");
-      drawer.classList.add("open");
-    }
-
-    if(typeof window.openDetail === "function"){
-      setTimeout(()=>window.openDetail(idx), 150);
-      setTimeout(()=>window.openDetail(idx), 500);
-      setTimeout(()=>window.openDetail(idx), 1000);
-    }
-  }
-
-  function patchSaveButtons(){
-    document.querySelectorAll("#saveNewSiteBtn, #saveOnlyNew, #saveOnlyNewBtn").forEach(btn=>{
-      if(btn.__openDetailAfterSaveBound) return;
-      btn.__openDetailAfterSaveBound = true;
-
-      btn.addEventListener("click", function(){
-        const before = Array.isArray(window.rows) ? window.rows.length : 0;
-        let tries = 0;
-
-        const timer = setInterval(()=>{
-          tries++;
-          const after = Array.isArray(window.rows) ? window.rows.length : 0;
-
-          if(after > before){
-            clearInterval(timer);
-            openNewestDetailAfterSave();
-          }
-
-          if(tries > 24){
-            clearInterval(timer);
-          }
-        }, 250);
-      }, true);
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded", patchSaveButtons);
-  setInterval(patchSaveButtons, 1000);
-})();
-</script>
-
-
-<script>
-/* SILNÁ OPRAVA: po uložení nového bodu otevřít detail podle ID */
-(function(){
-  function getRowId(r){
-    return r && (r.id || r.firebaseId || r.docId || (r.raw && (r.raw.firebase_doc_id || r.raw.id)));
-  }
-
-  function findNewRowIndex(beforeIds){
-    if(!Array.isArray(window.rows)) return -1;
-
-    for(let i=window.rows.length-1;i>=0;i--){
-      const id=getRowId(window.rows[i]);
-      if(id && !beforeIds.has(id)) return i;
-    }
-
-    if(window.rows.length){
-      return window.rows.length-1;
-    }
-
-    return -1;
-  }
-
-  function openDetailIndex(idx){
-    if(idx < 0) return false;
-
     const drawer=document.getElementById("drawer");
-    if(drawer){
-      drawer.classList.remove("adding-new-site");
-      drawer.style.display="";
-      drawer.classList.add("open");
-    }
+    if(!drawer) return;
+    drawer.classList.remove("open");
+    drawer.classList.remove("adding-new-site");
+  }
 
-    if(typeof window.render==="function"){
-      try{ window.render(); }catch(e){}
+  function normalizeDrawerForDetail(){
+    const drawer=document.getElementById("drawer");
+    if(!drawer) return;
+    drawer.style.display="";
+    drawer.classList.remove("adding-new-site");
+    drawer.classList.add("open");
+  }
+
+  function openDetailByIndex(idx){
+    if(!Array.isArray(window.rows) || idx < 0 || idx >= window.rows.length) return false;
+    closeAllLeafletPopups();
+    normalizeDrawerForDetail();
+
+    const row=window.rows[idx];
+    if(row && row.id && typeof window.openSiteDetail==="function"){
+      try{
+        window.openSiteDetail(row.id);
+        setTimeout(()=>window.openSiteDetail(row.id),300);
+        return true;
+      }catch(e){}
     }
 
     if(typeof window.openDetail==="function"){
       try{
         window.openDetail(idx);
         setTimeout(()=>window.openDetail(idx),300);
-        setTimeout(()=>window.openDetail(idx),900);
         return true;
       }catch(e){}
     }
@@ -4280,255 +4021,119 @@ setTimeout(()=>{
     return false;
   }
 
-  function snapshotIds(){
-    const s=new Set();
-    if(Array.isArray(window.rows)){
-      window.rows.forEach(r=>{
-        const id=getRowId(r);
-        if(id) s.add(id);
-      });
-    }
-    return s;
-  }
-
-  function afterSaveOpenDetail(beforeIds){
-    let tries=0;
-    const timer=setInterval(()=>{
-      tries++;
-
-      const idx=findNewRowIndex(beforeIds);
-      if(idx >= 0 && Array.isArray(window.rows) && window.rows.length > beforeIds.size){
-        clearInterval(timer);
-        openDetailIndex(idx);
-        return;
-      }
-
-      if(tries > 40){
-        clearInterval(timer);
-        const idx2=Array.isArray(window.rows) ? window.rows.length-1 : -1;
-        openDetailIndex(idx2);
-      }
-    },250);
-  }
-
-  function wrapFunction(name){
-    const fn=window[name];
-    if(typeof fn!=="function" || fn.__openDetailWrapped) return;
-
-    const wrapped=async function(){
-      const before=snapshotIds();
-      const beforeLen=Array.isArray(window.rows) ? window.rows.length : 0;
-
-      const result=fn.apply(this, arguments);
-
-      try{
-        if(result && typeof result.then==="function"){
-          await result;
-        }
-      }catch(e){
-        throw e;
-      }finally{
-        setTimeout(()=>{
-          const afterLen=Array.isArray(window.rows) ? window.rows.length : 0;
-          if(afterLen >= beforeLen){
-            afterSaveOpenDetail(before);
-          }
-        },200);
-      }
-
-      return result;
-    };
-
-    wrapped.__openDetailWrapped=true;
-    window[name]=wrapped;
-  }
-
-  function patchSaveFunctions(){
-    [
-      "saveOnlyNewSite",
-      "saveAddSite",
-      "saveNewSite",
-      "saveNewSiteToFirebase",
-      "createNewSite"
-    ].forEach(wrapFunction);
-  }
-
-  function bindButtonsFallback(){
-    document.querySelectorAll("#saveNewSiteBtn,#saveOnlyNew,#saveOnlyNewBtn").forEach(btn=>{
-      if(btn.__strongOpenDetailFallback) return;
-      btn.__strongOpenDetailFallback=true;
-      btn.addEventListener("click",()=>{
-        const before=snapshotIds();
-        setTimeout(()=>afterSaveOpenDetail(before),500);
-      },true);
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded",()=>{
-    patchSaveFunctions();
-    bindButtonsFallback();
-  });
-
-  setInterval(()=>{
-    patchSaveFunctions();
-    bindButtonsFallback();
-  },700);
-})();
-</script>
-
-
-<script>
-/* FINÁLNÍ OPRAVA NOVÉHO BODU: odstranit náhled, přepnout na normální detail, zavírání detailu */
-(function(){
-  function removeNewPreviewMarker(){
-    try{
-      // odstraní vrstvy/popupy s textem "Nový bod - náhled"
-      document.querySelectorAll(".leaflet-popup").forEach(p=>{
-        if((p.textContent||"").includes("Nový bod - náhled")){
-          const close=p.querySelector(".leaflet-popup-close-button");
-          if(close) close.click();
-          else p.remove();
-        }
-      });
-
-      // zkus odstranit globální dočasný marker, pokud je dostupný
-      if(window.onlyNewTempMarker && window.map){
-        try{ window.map.removeLayer(window.onlyNewTempMarker); }catch(e){}
-        window.onlyNewTempMarker=null;
-      }
-    }catch(e){}
-  }
-
-  function closeDrawerClean(){
+  function bindClose(){
     const drawer=document.getElementById("drawer");
     if(!drawer) return;
-    drawer.classList.remove("open");
-    drawer.classList.remove("adding-new-site");
-  }
 
-  function ensureCloseButtonWorks(){
-    document.querySelectorAll("#drawer button, #drawer .x").forEach(btn=>{
+    drawer.querySelectorAll("button,.x").forEach(btn=>{
       const txt=(btn.textContent||"").trim().toLowerCase();
       if(txt==="zavřít" || txt==="zavrit"){
-        if(btn.__finalCloseOk) return;
-        btn.__finalCloseOk=true;
+        if(btn.__cleanCloseBound) return;
+        btn.__cleanCloseBound=true;
         btn.addEventListener("click",function(e){
           e.preventDefault();
           e.stopPropagation();
-          closeDrawerClean();
+          closeDrawer();
         },true);
       }
     });
   }
 
-  function getRowId(r){
-    return r && (r.id || r.firebaseId || r.docId || (r.raw && (r.raw.firebase_doc_id || r.raw.id)));
-  }
-
-  function latestRowIndex(){
-    if(!Array.isArray(window.rows) || !window.rows.length) return -1;
-    return window.rows.length - 1;
-  }
-
-  function openNormalDetail(idx){
-    if(idx < 0) return;
-    removeNewPreviewMarker();
-
-    const drawer=document.getElementById("drawer");
-    if(drawer){
-      drawer.classList.remove("adding-new-site");
-      drawer.style.display="";
-      drawer.classList.add("open");
+  function patchOpenSiteDetail(){
+    if(typeof window.openSiteDetail==="function" && !window.openSiteDetail.__cleanPatched){
+      const original=window.openSiteDetail;
+      const patched=function(){
+        closeAllLeafletPopups();
+        normalizeDrawerForDetail();
+        const result=original.apply(this,arguments);
+        setTimeout(bindClose,80);
+        setTimeout(bindClose,350);
+        return result;
+      };
+      patched.__cleanPatched=true;
+      window.openSiteDetail=patched;
     }
 
-    if(typeof window.render==="function"){
-      try{ window.render(); }catch(e){}
+    if(typeof window.openDetail==="function" && !window.openDetail.__cleanPatched){
+      const original=window.openDetail;
+      const patched=function(){
+        closeAllLeafletPopups();
+        normalizeDrawerForDetail();
+        const result=original.apply(this,arguments);
+        setTimeout(bindClose,80);
+        setTimeout(bindClose,350);
+        return result;
+      };
+      patched.__cleanPatched=true;
+      window.openDetail=patched;
     }
-
-    if(typeof window.openDetail==="function"){
-      try{
-        window.openDetail(idx);
-        setTimeout(()=>window.openDetail(idx),250);
-        setTimeout(()=>window.openDetail(idx),700);
-      }catch(e){}
-    }
-
-    setTimeout(ensureCloseButtonWorks,300);
-    setTimeout(ensureCloseButtonWorks,900);
   }
 
-  function patchOpenDetail(){
-    if(typeof window.openDetail!=="function" || window.openDetail.__finalNormalDetailPatch) return;
-    const original=window.openDetail;
-    const patched=function(){
-      removeNewPreviewMarker();
-      const drawer=document.getElementById("drawer");
-      if(drawer){
-        drawer.classList.remove("adding-new-site");
-        drawer.style.display="";
-      }
-      const res=original.apply(this,arguments);
-      setTimeout(ensureCloseButtonWorks,100);
-      setTimeout(ensureCloseButtonWorks,400);
-      return res;
-    };
-    patched.__finalNormalDetailPatch=true;
-    window.openDetail=patched;
-  }
-
-  function bindSaveButtons(){
+  function bindSaveNewButtons(){
     document.querySelectorAll("#saveNewSiteBtn,#saveOnlyNew,#saveOnlyNewBtn").forEach(btn=>{
-      if(btn.__finalOpenDetailAfterSave) return;
-      btn.__finalOpenDetailAfterSave=true;
+      if(btn.__cleanSaveBound) return;
+      btn.__cleanSaveBound=true;
 
       btn.addEventListener("click",function(){
         const beforeLen=Array.isArray(window.rows) ? window.rows.length : 0;
+        lastAddSaveStarted = true;
+
         let tries=0;
-        const t=setInterval(()=>{
+        const timer=setInterval(()=>{
           tries++;
           const afterLen=Array.isArray(window.rows) ? window.rows.length : 0;
-          if(afterLen>beforeLen){
-            clearInterval(t);
-            openNormalDetail(afterLen-1);
+
+          if(afterLen > beforeLen){
+            clearInterval(timer);
+            lastAddSaveStarted = false;
+            openDetailByIndex(afterLen-1);
           }
-          if(tries>40){
-            clearInterval(t);
-            removeNewPreviewMarker();
-            openNormalDetail(latestRowIndex());
+
+          if(tries > 50){
+            clearInterval(timer);
+            lastAddSaveStarted = false;
+            if(afterLen) openDetailByIndex(afterLen-1);
           }
-        },250);
+        },200);
       },true);
     });
   }
 
-  function init(){
-    patchOpenDetail();
-    bindSaveButtons();
-    ensureCloseButtonWorks();
+  function bindExistingDetailClicks(){
+    document.addEventListener("click",function(e){
+      const addBtn=e.target.closest && e.target.closest("#addSiteBtn");
+      if(addBtn) return;
+
+      const closeBtn=e.target.closest && e.target.closest("#drawer button,#drawer .x");
+      if(closeBtn){
+        const txt=(closeBtn.textContent||"").trim().toLowerCase();
+        if(txt==="zavřít" || txt==="zavrit"){
+          e.preventDefault();
+          e.stopPropagation();
+          closeDrawer();
+          return;
+        }
+      }
+
+      const existing=e.target.closest && e.target.closest(".item,.leaflet-interactive,.leaflet-marker-icon");
+      if(existing && !lastAddSaveStarted){
+        closeAllLeafletPopups();
+        patchOpenSiteDetail();
+        setTimeout(bindClose,200);
+      }
+    },true);
   }
 
-  document.addEventListener("DOMContentLoaded",init);
-  document.addEventListener("click",function(e){
-    const addBtn=e.target.closest && e.target.closest("#addSiteBtn");
-    if(addBtn) return;
+  function init(){
+    patchOpenSiteDetail();
+    bindSaveNewButtons();
+    bindClose();
+  }
 
-    const detailClick=e.target.closest && e.target.closest(".item,.leaflet-interactive,.leaflet-marker-icon,.leaflet-popup");
-    if(detailClick){
-      removeNewPreviewMarker();
-      patchOpenDetail();
-      setTimeout(ensureCloseButtonWorks,100);
-    }
-
-    const closeBtn=e.target.closest && e.target.closest("#drawer button,#drawer .x");
-    if(closeBtn){
-      const txt=(closeBtn.textContent||"").trim().toLowerCase();
-      if(txt==="zavřít" || txt==="zavrit"){
-        e.preventDefault();
-        e.stopPropagation();
-        closeDrawerClean();
-      }
-    }
-  },true);
+  document.addEventListener("DOMContentLoaded",function(){
+    init();
+    bindExistingDetailClicks();
+  });
 
   setInterval(init,1000);
 })();
