@@ -4086,5 +4086,97 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* OPRAVA: po Přidat nové místo jde znovu otevřít a zavřít normální detail */
+(function(){
+  function drawerEl(){
+    return document.getElementById("drawer");
+  }
+
+  function closeDrawer(){
+    const d = drawerEl();
+    if(!d) return;
+    d.classList.remove("open");
+    d.classList.remove("adding-new-site");
+  }
+
+  function clearAddMode(){
+    const d = drawerEl();
+    if(!d) return;
+    d.classList.remove("adding-new-site");
+    const newCard = document.getElementById("newSiteCard");
+    if(newCard) newCard.style.display = "none";
+  }
+
+  function bindCloseButtons(){
+    document.querySelectorAll("#drawer button, #drawer .x").forEach(btn=>{
+      const txt=(btn.textContent||"").trim().toLowerCase();
+      if(txt==="zavřít" || txt==="zavrit"){
+        if(btn.__fixedCloseBound) return;
+        btn.__fixedCloseBound=true;
+        btn.addEventListener("click", function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          closeDrawer();
+        }, true);
+      }
+    });
+  }
+
+  function patchOpenDetail(){
+    if(typeof window.openDetail !== "function") return;
+    if(window.openDetail.__addModeCloseFixed) return;
+
+    const originalOpenDetail = window.openDetail;
+    const patched = function(){
+      clearAddMode();
+      const result = originalOpenDetail.apply(this, arguments);
+      setTimeout(bindCloseButtons, 50);
+      setTimeout(bindCloseButtons, 300);
+      return result;
+    };
+
+    patched.__addModeCloseFixed = true;
+    window.openDetail = patched;
+  }
+
+  function initFix(){
+    patchOpenDetail();
+    bindCloseButtons();
+  }
+
+  document.addEventListener("DOMContentLoaded", initFix);
+  setTimeout(initFix, 100);
+  setTimeout(initFix, 500);
+  setTimeout(initFix, 1500);
+
+  document.addEventListener("click", function(e){
+    const addBtn = e.target.closest && e.target.closest("#addSiteBtn");
+    if(addBtn) return;
+
+    const closeBtn = e.target.closest && e.target.closest("#drawer button, #drawer .x");
+    if(closeBtn){
+      const txt=(closeBtn.textContent||"").trim().toLowerCase();
+      if(txt==="zavřít" || txt==="zavrit"){
+        e.preventDefault();
+        e.stopPropagation();
+        closeDrawer();
+        return;
+      }
+    }
+
+    const existingPointClick = e.target.closest && e.target.closest(".item, .leaflet-interactive, .leaflet-marker-icon, .leaflet-popup");
+    if(existingPointClick){
+      clearAddMode();
+      patchOpenDetail();
+      setTimeout(bindCloseButtons, 100);
+    }
+  }, true);
+
+  setInterval(initFix, 1200);
+})();
+</script>
+
 </body>
 </html>
