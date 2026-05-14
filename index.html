@@ -3417,8 +3417,8 @@ setTimeout(()=>{
         </div>
         <p class="small" id="onlyNewStatus"></p>
       </div>`;
-    document.getElementById("closeOnlyNew").onclick=()=>drawer.classList.remove("open");
-    document.getElementById("cancelOnlyNew").onclick=()=>drawer.classList.remove("open");
+    document.getElementById("closeOnlyNew").onclick=()=>{drawer.classList.remove("open");};
+    document.getElementById("cancelOnlyNew").onclick=()=>{drawer.classList.remove("open");};
     document.getElementById("saveOnlyNew").onclick=saveOnlyNewSite;
     const gpsBtn=document.getElementById("calcOnlyGpsBtn");
     if(gpsBtn) gpsBtn.onclick=calcOnlyNewGps;
@@ -3846,8 +3846,8 @@ setTimeout(()=>{
         <p class="small" id="onlyNewStatus"></p>
       </div>`;
 
-    document.getElementById("closeOnlyNew").onclick=()=>drawer.classList.remove("open");
-    document.getElementById("cancelOnlyNew").onclick=()=>drawer.classList.remove("open");
+    document.getElementById("closeOnlyNew").onclick=()=>{drawer.classList.remove("open");};
+    document.getElementById("cancelOnlyNew").onclick=()=>{drawer.classList.remove("open");};
     document.getElementById("calcOnlyGps").onclick=calcAddGps;
     document.getElementById("findOnlyGps").onclick=findAddOnMap;
     document.getElementById("saveOnlyNew").onclick=saveAddSite;
@@ -3952,6 +3952,48 @@ setTimeout(()=>{
 .only-red label{color:#991b1b!important}
 @media(max-width:700px){.new-only-grid{grid-template-columns:1fr}.new-only-grid .full{grid-column:auto}.gps-actions{grid-template-columns:1fr}}
 </style>
+
+
+<script>
+(function(){
+  function closeAddFormIfOpen(){
+    const drawer=document.getElementById("drawer");
+    if(!drawer) return;
+    const addCard=document.getElementById("newSiteOnlyCard");
+    if(addCard){
+      drawer.classList.remove("adding-new-site");
+    }
+  }
+
+  function patchOpenDetail(){
+    if(typeof window.openDetail==="function" && !window.openDetail.__clearAddPatched){
+      const original=window.openDetail;
+      const patched=function(){
+        closeAddFormIfOpen();
+        return original.apply(this, arguments);
+      };
+      patched.__clearAddPatched=true;
+      window.openDetail=patched;
+    }
+  }
+
+  document.addEventListener("click", function(e){
+    const addBtn=e.target.closest && e.target.closest("#addSiteBtn");
+    if(addBtn) return;
+
+    const detailLike=e.target.closest && e.target.closest(".item, .leaflet-marker-icon, .leaflet-interactive, .leaflet-popup");
+    if(detailLike){
+      closeAddFormIfOpen();
+      setTimeout(patchOpenDetail,0);
+    }
+  }, true);
+
+  document.addEventListener("DOMContentLoaded", patchOpenDetail);
+  setTimeout(patchOpenDetail,200);
+  setTimeout(patchOpenDetail,800);
+  setTimeout(patchOpenDetail,2000);
+})();
+</script>
 
 </body>
 </html>
