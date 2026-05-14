@@ -3995,5 +3995,96 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* FINAL FIX: Přidat nové místo už nesmí přepsat normální detail */
+(function(){
+  function drawer(){
+    return document.getElementById("drawer");
+  }
+
+  function saveDrawerTemplate(){
+    const d = drawer();
+    if(!d) return;
+    if(!window.__normalDrawerTemplate || !window.__normalDrawerTemplate.includes('id="detailTable"')){
+      if(!d.querySelector("#newSiteOnlyCard")){
+        window.__normalDrawerTemplate = d.innerHTML;
+      }
+    }
+  }
+
+  function restoreDrawerTemplate(){
+    const d = drawer();
+    if(!d) return false;
+
+    const isAddForm = !!d.querySelector("#newSiteOnlyCard");
+    if(isAddForm && window.__normalDrawerTemplate){
+      d.innerHTML = window.__normalDrawerTemplate;
+      d.classList.remove("adding-new-site");
+      return true;
+    }
+    return false;
+  }
+
+  function patchOpenDetailFinal(){
+    if(typeof window.openDetail !== "function") return;
+    if(window.openDetail.__finalRestorePatched) return;
+
+    const originalOpenDetail = window.openDetail;
+    const patchedOpenDetail = function(){
+      restoreDrawerTemplate();
+      return originalOpenDetail.apply(this, arguments);
+    };
+
+    patchedOpenDetail.__finalRestorePatched = true;
+    window.openDetail = patchedOpenDetail;
+  }
+
+  function bindAddButtonFinal(){
+    const btn = document.getElementById("addSiteBtn");
+    if(!btn || btn.__finalAddBound) return;
+
+    const oldClick = btn.onclick;
+    btn.onclick = function(e){
+      saveDrawerTemplate();
+      if(typeof oldClick === "function"){
+        return oldClick.call(this, e);
+      }
+    };
+    btn.__finalAddBound = true;
+  }
+
+  function initFinalFix(){
+    saveDrawerTemplate();
+    patchOpenDetailFinal();
+    bindAddButtonFinal();
+  }
+
+  document.addEventListener("DOMContentLoaded", initFinalFix);
+  setTimeout(initFinalFix, 100);
+  setTimeout(initFinalFix, 500);
+  setTimeout(initFinalFix, 1500);
+  setTimeout(initFinalFix, 3000);
+
+  // Když klikneš na položku nebo marker, vždy obnov normální detail před spuštěním handleru.
+  document.addEventListener("click", function(e){
+    const addBtn = e.target.closest && e.target.closest("#addSiteBtn");
+    if(addBtn){
+      saveDrawerTemplate();
+      return;
+    }
+
+    const detailClick = e.target.closest && e.target.closest(".item, .leaflet-interactive, .leaflet-marker-icon, .leaflet-popup");
+    if(detailClick){
+      restoreDrawerTemplate();
+      patchOpenDetailFinal();
+    }
+  }, true);
+
+  // Po uložení nového místa se openDetail taky nejdřív vrátí na normální šablonu.
+  window.__restoreDrawerTemplateForDetail = restoreDrawerTemplate;
+})();
+</script>
+
 </body>
 </html>
