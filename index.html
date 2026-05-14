@@ -3389,7 +3389,13 @@ setTimeout(()=>{
       <div class="card" id="newSiteOnlyCard">
         <div class="new-only-grid">
           <div><label>Název</label><input data-new-key="Název" id="onlyNewName"></div>
-          <div><label>Adresa / umístění</label><input data-new-key="Adresa / umístění"></div>
+          <div><label>Adresa / umístění</label><input data-new-key="Adresa / umístění" id="onlyNewAddress"></div>
+          <div>
+            <label>GPS</label>
+            <button class="secondary" type="button" id="calcOnlyGpsBtn" style="width:100%">Dopočítat GPS</button>
+          </div>
+          <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
+          <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
           <div class="full"><label>Umístění zdroje</label><input data-new-key="Adresa_GPS"></div>
           <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje"></div>
           <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj"></div>
@@ -3412,6 +3418,8 @@ setTimeout(()=>{
     document.getElementById("closeOnlyNew").onclick=()=>drawer.classList.remove("open");
     document.getElementById("cancelOnlyNew").onclick=()=>drawer.classList.remove("open");
     document.getElementById("saveOnlyNew").onclick=saveOnlyNewSite;
+    const gpsBtn=document.getElementById("calcOnlyGpsBtn");
+    if(gpsBtn) gpsBtn.onclick=calcOnlyNewGps;
     setTimeout(()=>{const f=document.getElementById("onlyNewName"); if(f) f.focus();},100);
   }
 
@@ -3432,6 +3440,46 @@ setTimeout(()=>{
     return raw;
   }
 
+  
+  async function calcOnlyNewGps(){
+    const st=document.getElementById("onlyNewStatus");
+    const addrEl=document.getElementById("onlyNewAddress");
+    const latEl=document.getElementById("onlyNewGpsLat");
+    const lonEl=document.getElementById("onlyNewGpsLon");
+    const address=addrEl ? String(addrEl.value||"").trim() : "";
+
+    if(!address){
+      if(st) st.textContent="Vyplň adresu / umístění.";
+      return;
+    }
+
+    try{
+      if(st) st.textContent="Dopočítávám GPS...";
+      if(typeof geocodeAddressGeneric==="function"){
+        const g=await geocodeAddressGeneric(address);
+        if(g){
+          if(latEl) latEl.value=g.lat;
+          if(lonEl) lonEl.value=g.lon;
+          if(st) st.textContent="GPS doplněno.";
+          return;
+        }
+      }
+
+      const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address);
+      const res=await fetch(url,{headers:{"Accept":"application/json"}});
+      const data=await res.json();
+      if(data && data[0]){
+        if(latEl) latEl.value=data[0].lat;
+        if(lonEl) lonEl.value=data[0].lon;
+        if(st) st.textContent="GPS doplněno.";
+      }else{
+        if(st) st.textContent="Adresa nebyla nalezena.";
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
+    }
+  }
+
   async function saveOnlyNewSite(){
     const st=document.getElementById("onlyNewStatus");
     const raw=collectOnlyNewRaw();
@@ -3441,6 +3489,8 @@ setTimeout(()=>{
     }
 
     const id="site_"+Date.now();
+    let latManual=parseFloat(raw["GPS_lat"]||"");
+    let lonManual=parseFloat(raw["GPS_lon"]||"");
     let row={
       id:id,
       i:Array.isArray(window.rows)?window.rows.length:0,
@@ -3451,8 +3501,8 @@ setTimeout(()=>{
       kontakt:raw["Kontakt"]||"",
       pristi:"",
       posledni:"",
-      lat:null,
-      lon:null,
+      lat:Number.isFinite(latManual)?latManual:null,
+      lon:Number.isFinite(lonManual)?lonManual:null,
       ordered:false,
       noOrder:String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano",
       raw:raw
@@ -3486,6 +3536,9 @@ setTimeout(()=>{
     if(st) st.textContent="Nové místo uloženo.";
     try{
       if(typeof render==="function") render();
+      if(row.lat && row.lon && window.map){
+        setTimeout(()=>{try{window.map.setView([row.lat,row.lon],13);}catch(e){}},200);
+      }
       if(typeof openDetail==="function") openDetail(row.i);
     }catch(e){ location.reload(); }
   }
