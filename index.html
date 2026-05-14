@@ -4231,5 +4231,150 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* SILNÁ OPRAVA: po uložení nového bodu otevřít detail podle ID */
+(function(){
+  function getRowId(r){
+    return r && (r.id || r.firebaseId || r.docId || (r.raw && (r.raw.firebase_doc_id || r.raw.id)));
+  }
+
+  function findNewRowIndex(beforeIds){
+    if(!Array.isArray(window.rows)) return -1;
+
+    for(let i=window.rows.length-1;i>=0;i--){
+      const id=getRowId(window.rows[i]);
+      if(id && !beforeIds.has(id)) return i;
+    }
+
+    if(window.rows.length){
+      return window.rows.length-1;
+    }
+
+    return -1;
+  }
+
+  function openDetailIndex(idx){
+    if(idx < 0) return false;
+
+    const drawer=document.getElementById("drawer");
+    if(drawer){
+      drawer.classList.remove("adding-new-site");
+      drawer.style.display="";
+      drawer.classList.add("open");
+    }
+
+    if(typeof window.render==="function"){
+      try{ window.render(); }catch(e){}
+    }
+
+    if(typeof window.openDetail==="function"){
+      try{
+        window.openDetail(idx);
+        setTimeout(()=>window.openDetail(idx),300);
+        setTimeout(()=>window.openDetail(idx),900);
+        return true;
+      }catch(e){}
+    }
+
+    return false;
+  }
+
+  function snapshotIds(){
+    const s=new Set();
+    if(Array.isArray(window.rows)){
+      window.rows.forEach(r=>{
+        const id=getRowId(r);
+        if(id) s.add(id);
+      });
+    }
+    return s;
+  }
+
+  function afterSaveOpenDetail(beforeIds){
+    let tries=0;
+    const timer=setInterval(()=>{
+      tries++;
+
+      const idx=findNewRowIndex(beforeIds);
+      if(idx >= 0 && Array.isArray(window.rows) && window.rows.length > beforeIds.size){
+        clearInterval(timer);
+        openDetailIndex(idx);
+        return;
+      }
+
+      if(tries > 40){
+        clearInterval(timer);
+        const idx2=Array.isArray(window.rows) ? window.rows.length-1 : -1;
+        openDetailIndex(idx2);
+      }
+    },250);
+  }
+
+  function wrapFunction(name){
+    const fn=window[name];
+    if(typeof fn!=="function" || fn.__openDetailWrapped) return;
+
+    const wrapped=async function(){
+      const before=snapshotIds();
+      const beforeLen=Array.isArray(window.rows) ? window.rows.length : 0;
+
+      const result=fn.apply(this, arguments);
+
+      try{
+        if(result && typeof result.then==="function"){
+          await result;
+        }
+      }catch(e){
+        throw e;
+      }finally{
+        setTimeout(()=>{
+          const afterLen=Array.isArray(window.rows) ? window.rows.length : 0;
+          if(afterLen >= beforeLen){
+            afterSaveOpenDetail(before);
+          }
+        },200);
+      }
+
+      return result;
+    };
+
+    wrapped.__openDetailWrapped=true;
+    window[name]=wrapped;
+  }
+
+  function patchSaveFunctions(){
+    [
+      "saveOnlyNewSite",
+      "saveAddSite",
+      "saveNewSite",
+      "saveNewSiteToFirebase",
+      "createNewSite"
+    ].forEach(wrapFunction);
+  }
+
+  function bindButtonsFallback(){
+    document.querySelectorAll("#saveNewSiteBtn,#saveOnlyNew,#saveOnlyNewBtn").forEach(btn=>{
+      if(btn.__strongOpenDetailFallback) return;
+      btn.__strongOpenDetailFallback=true;
+      btn.addEventListener("click",()=>{
+        const before=snapshotIds();
+        setTimeout(()=>afterSaveOpenDetail(before),500);
+      },true);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded",()=>{
+    patchSaveFunctions();
+    bindButtonsFallback();
+  });
+
+  setInterval(()=>{
+    patchSaveFunctions();
+    bindButtonsFallback();
+  },700);
+})();
+</script>
+
 </body>
 </html>
