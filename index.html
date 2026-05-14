@@ -778,6 +778,18 @@ button,input,select,textarea{
   content:"";
 }
 
+
+#newSiteCard h4{
+  margin-top:14px;
+}
+#newAllFieldsBox{
+  margin-top:8px;
+}
+#newSiteCard .new-data-grid{
+  border-top:1px solid #e2e8f0;
+  padding-top:10px;
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -1071,7 +1083,8 @@ Protokol na: ...
 Cena FZ: ..."></textarea>
 
   <div class="row" style="margin-top:8px">
-    </div><button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
+    </div><div id="newAllFieldsBox"></div>
+<button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
     <button class="secondary" id="cancelNewSiteBtn">Zrušit</button>
   </div>
   <p id="newSiteStatus" class="small"></p>
@@ -1574,6 +1587,98 @@ function clearNewSiteMode(){
   if(drawerEl) drawerEl.classList.remove("adding-new-site");
 }
 
+
+
+function forceRenderNewSiteForm(){
+  const box=document.getElementById("newAllFieldsBox");
+  if(!box) return;
+
+  box.innerHTML = `
+  <div class="new-data-grid">
+
+    <div>
+      <label>Název</label>
+      <input data-new-key="Název">
+    </div>
+
+    <div>
+      <label>Adresa / umístění</label>
+      <input data-new-key="Adresa / umístění">
+    </div>
+
+    <div class="full">
+      <label>Umístění zdroje</label>
+      <input data-new-key="Adresa_GPS">
+    </div>
+
+    <div class="full">
+      <label>Popis zdroje</label>
+      <input data-new-key="Popis_zdroje">
+    </div>
+
+    <div class="full">
+      <label>Výrobní číslo</label>
+      <input data-new-key="Zdroj">
+    </div>
+
+    <div>
+      <label>Kontakt</label>
+      <input data-new-key="Kontakt">
+    </div>
+
+    <div>
+      <label>Kraj</label>
+      <input data-new-key="Kraj">
+    </div>
+
+    <div class="full">
+      <label>Poznámky</label>
+      <input data-new-key="Poznámky">
+    </div>
+
+    <div>
+      <label>Rok výroby</label>
+      <input data-new-key="Rok výroby">
+    </div>
+
+    <div>
+      <label>Serviska</label>
+      <select data-new-key="Serviska">
+        <option value=""></option>
+        <option value="ano">ano</option>
+        <option value="ne">ne</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Cena FZ</label>
+      <input data-new-key="Cena FZ">
+    </div>
+
+    <div>
+      <label>Perioda kontrol</label>
+      <select data-new-key="Perioda kontrol">
+        <option value="6">6 měsíců</option>
+        <option value="12" selected>12 měsíců</option>
+      </select>
+    </div>
+
+    <div class="full">
+      <label>Hlídáme kontroly sami</label>
+      <select data-new-key="Hlídáme kontroly sami">
+        <option value="ne" selected>ne</option>
+        <option value="ano">ano</option>
+      </select>
+    </div>
+
+    <div class="full notes-red-row" style="padding:10px;border-radius:12px;">
+      <label>Důležité poznámky</label>
+      <textarea data-new-key="Důležitá poznámka"></textarea>
+    </div>
+
+  </div>`;
+}
+
 function renderNewSiteAllFields(){
   const box=document.getElementById("newAllFieldsBox");
   if(!box) return;
@@ -1615,11 +1720,6 @@ function renderNewSiteAllFields(){
     </div>
 
     <div class="full">
-      <label>Poznámky_mapy</label>
-      <input data-new-key="Poznámky_mapy">
-    </div>
-
-    <div class="full">
       <label>Poznámky</label>
       <input data-new-key="Poznámky">
     </div>
@@ -1636,11 +1736,6 @@ function renderNewSiteAllFields(){
         <option value="ano">ano</option>
         <option value="ne">ne</option>
       </select>
-    </div>
-
-    <div class="full">
-      <label>Umístění</label>
-      <input data-new-key="Umístění">
     </div>
 
     <div>
@@ -1670,6 +1765,7 @@ function renderNewSiteAllFields(){
     </div>
   `;
 }
+
 
 
 function collectNewSiteAllFields(){
@@ -1761,6 +1857,7 @@ function openNewSiteForm(){
   populateNewRegionOptions();
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
+  forceRenderNewSiteForm();
   const drawerEl=document.getElementById("drawer");
   if(drawerEl) drawerEl.classList.add("adding-new-site");
   renderNewSiteAllFields();
