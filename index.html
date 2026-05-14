@@ -74,72 +74,42 @@ document.getElementById("search").addEventListener("input",render);document.getE
 
 
 <script>
-/* Oprava zavírání detail panelu */
+/* Jemná oprava tlačítka Zavřít v detail panelu */
 (function(){
-  function closeDrawerPanel(){
+  function closeDetailDrawer(){
     const drawer=document.getElementById("drawer");
     if(!drawer) return;
     drawer.classList.remove("open");
-    drawer.style.transform="translateX(105%)";
   }
 
-  function openDrawerPanel(){
-    const drawer=document.getElementById("drawer");
-    if(!drawer) return;
-    drawer.style.transform="";
-  }
-
-  function bindCloseButtons(){
-    document.querySelectorAll("#drawer .x, #drawer button").forEach(btn=>{
-      const txt=(btn.textContent||"").trim().toLowerCase();
-      if(txt==="zavřít" || txt==="zavrit"){
-        if(btn.__drawerCloseFixed) return;
-        btn.__drawerCloseFixed=true;
-        btn.addEventListener("click", function(e){
+  function bindDetailClose(){
+    document.querySelectorAll("#drawer button, #drawer .x").forEach(btn=>{
+      const t=(btn.textContent||"").trim().toLowerCase();
+      if(t==="zavřít" || t==="zavrit"){
+        if(btn.__closeOnlyFixed) return;
+        btn.__closeOnlyFixed=true;
+        btn.addEventListener("click",function(e){
           e.preventDefault();
           e.stopPropagation();
-          closeDrawerPanel();
-        }, true);
+          closeDetailDrawer();
+        });
       }
     });
   }
 
-  // Když se otevře detail, vrať normální transform, aby šel panel zase zobrazit.
-  function patchOpenDetailCloseFix(){
-    if(typeof window.openDetail==="function" && !window.openDetail.__closeFixPatched){
-      const original=window.openDetail;
-      const patched=function(){
-        openDrawerPanel();
-        const result=original.apply(this, arguments);
-        setTimeout(bindCloseButtons,50);
-        setTimeout(bindCloseButtons,300);
-        return result;
-      };
-      patched.__closeFixPatched=true;
-      window.openDetail=patched;
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", ()=>{
-    bindCloseButtons();
-    patchOpenDetailCloseFix();
-  });
-
-  document.addEventListener("click", function(e){
-    const btn=e.target.closest && e.target.closest("#drawer .x, #drawer button");
+  document.addEventListener("DOMContentLoaded",bindDetailClose);
+  document.addEventListener("click",function(e){
+    const btn=e.target.closest && e.target.closest("#drawer button, #drawer .x");
     if(!btn) return;
-    const txt=(btn.textContent||"").trim().toLowerCase();
-    if(txt==="zavřít" || txt==="zavrit"){
+    const t=(btn.textContent||"").trim().toLowerCase();
+    if(t==="zavřít" || t==="zavrit"){
       e.preventDefault();
       e.stopPropagation();
-      closeDrawerPanel();
+      closeDetailDrawer();
     }
-  }, true);
+  },true);
 
-  setInterval(()=>{
-    bindCloseButtons();
-    patchOpenDetailCloseFix();
-  },1000);
+  setInterval(bindDetailClose,1000);
 })();
 </script>
 
