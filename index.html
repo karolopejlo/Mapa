@@ -4447,5 +4447,270 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* FIX SAVE IN INDEPENDENT CSV PANEL */
+(function(){
+  let lastPreviewLat = null;
+  let lastPreviewLon = null;
+
+  function v(x){ return String(x ?? "").trim(); }
+  function n(x){
+    const num = parseFloat(String(x ?? "").replace(",", "."));
+    return Number.isFinite(num) ? num : NaN;
+  }
+  function status(msg, bad){
+    const s=document.getElementById("csvAddStatus");
+    if(s){
+      s.textContent=msg;
+      s.className = bad ? "csvAddNotice csvAddError" : "csvAddNotice";
+    }else{
+      alert(msg);
+    }
+  }
+  function field(k){
+    return document.querySelector(`#csvAddPanel [data-csv-key="${CSS.escape(k)}"]`);
+  }
+  function setField(k,val){
+    const el=field(k);
+    if(el) el.value=val;
+  }
+
+  function ensureTopActions(){
+    const panel=document.getElementById("csvAddPanel");
+    if(!panel || document.getElementById("csvTopSaveActions")) return;
+
+    const head=panel.querySelector(".csvAddHead");
+    const div=document.createElement("div");
+    div.id="csvTopSaveActions";
+    div.className="csvAddActions";
+    div.style.position="sticky";
+    div.style.top="64px";
+    div.style.zIndex="3";
+    div.style.background="#fff";
+    div.style.padding="8px 0";
+    div.innerHTML=`
+      <button class="csvPrimary" id="csvTopSaveBtn" type="button">Uložit bod do data.csv</button>
+      <button class="csvPrimary" id="csvTopDownloadBtn" type="button">Stáhnout data.csv</button>
+    `;
+    if(head && head.parentNode){
+      head.parentNode.insertBefore(div, head.nextSibling);
+    }else{
+      panel.prepend(div);
+    }
+  }
+
+  function collectRaw(){
+    const raw={};
+    document.querySelectorAll("#csvAddPanel [data-csv-key]").forEach(el=>{
+      const key=el.getAttribute("data-csv-key");
+      const val=v(el.value);
+      if(val) raw[key]=val;
+    });
+
+    if(raw["Adresa / umístění"] && !raw["Adresa_GPS"]) raw["Adresa_GPS"]=raw["Adresa / umístění"];
+    if(raw["Adresa_GPS"] && !raw["Adresa / umístění"]) raw["Adresa / umístění"]=raw["Adresa_GPS"];
+    if(raw["Adresa / umístění"] && !raw["Název"]) raw["Název"]=raw["Adresa / umístění"];
+    if(raw["Kontakt"] && !raw["Kontakt_mapy"]) raw["Kontakt_mapy"]=raw["Kontakt"];
+    if(raw["Popis_zdroje"] && !raw["Jaký zdroj"]) raw["Jaký zdroj"]=raw["Popis_zdroje"];
+    if(raw["Poznámky"] && !raw["Poznámky_mapy"]) raw["Poznámky_mapy"]=raw["Poznámky"];
+
+    if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="csv_manual_"+Date.now();
+    if(!raw["Zdroj_dat"]) raw["Zdroj_dat"]="Ručně přidáno v mapě";
+
+    const watch=String(raw["Hlídáme sami termín"]||"").toLowerCase();
+    if(watch==="ano"){
+      raw["Stav_kontroly"]="Hlídáme termín sami";
+      raw["Stav pro mapu"]="Hlídáme termín sami";
+      raw["Barva bodu"]="růžová";
+      raw["Barva_bodu"]="růžová";
+    }else if(!raw["Stav_kontroly"]){
+      raw["Stav_kontroly"]="OK / ostatní";
+    }
+    return raw;
+  }
+
+  function getGps(raw){
+    let lat=n(raw["GPS_lat"]);
+    let lon=n(raw["GPS_lon"]);
+
+    if(!Number.isFinite(lat) && Number.isFinite(lastPreviewLat)){
+      lat=lastPreviewLat;
+      raw["GPS_lat"]=String(lat);
+      setField("GPS_lat", String(lat));
+    }
+    if(!Number.isFinite(lon) && Number.isFinite(lastPreviewLon)){
+      lon=lastPreviewLon;
+      raw["GPS_lon"]=String(lon);
+      setField("GPS_lon", String(lon));
+    }
+
+    return {lat,lon};
+  }
+
+  function rememberPreviewFromFields(){
+    const raw=collectRaw();
+    const lat=n(raw["GPS_lat"]);
+    const lon=n(raw["GPS_lon"]);
+    if(Number.isFinite(lat)) lastPreviewLat=lat;
+    if(Number.isFinite(lon)) lastPreviewLon=lon;
+  }
+
+  function fixedSave(e){
+    if(e){
+      e.preventDefault();
+      e.stopPropagation();
+      if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+
+    const raw=collectRaw();
+    const gps=getGps(raw);
+
+    if(!raw["Název"] && !raw["Adresa / umístění"]){
+      status("Neuloženo: vyplň aspoň Název nebo Adresa / umístění.", true);
+      return false;
+    }
+    if(!Number.isFinite(gps.lat) || !Number.isFinite(gps.lon)){
+      status("Neuloženo: chybí GPS_lat nebo GPS_lon. Klikni Dopočítat GPS z adresy nebo doplň obě souřadnice.", true);
+      return false;
+    }
+
+    raw["GPS_lat"]=String(gps.lat);
+    raw["GPS_lon"]=String(gps.lon);
+
+    try{
+      // Uložit do globálního seznamu přidaných řádků, který používá stažení CSV.
+      if(!window.__csvSavedManualRows) window.__csvSavedManualRows=[];
+      window.__csvSavedManualRows.push(raw);
+
+      // Přidat do mapy a seznamu hned teď.
+      if(typeof normalize==="function" && typeof csvRows!=="undefined"){
+        const r=normalize([raw])[0];
+        r.i=csvRows.length;
+        csvRows.push(r);
+
+        if(typeof rows!=="undefined"){
+          rows=csvRows.map((x,i)=>{
+            x.i=i;
+            return typeof applyEditToRow==="function" ? applyEditToRow(x) : x;
+          });
+        }
+
+        if(typeof filters==="function") filters();
+        if(typeof render==="function") render();
+        if(typeof map!=="undefined") map.setView([gps.lat,gps.lon],14);
+      }
+
+      status("Bod uložen do dočasného data.csv. Teď klikni Stáhnout data.csv a nahraď jím původní soubor.", false);
+      return false;
+    }catch(err){
+      status("Chyba uložení bodu: "+err.message, true);
+      return false;
+    }
+  }
+
+  async function fixedDownload(e){
+    if(e){
+      e.preventDefault();
+      e.stopPropagation();
+      if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+    }
+
+    try{
+      let headers=[];
+      if(typeof CSV_HEADERS!=="undefined" && Array.isArray(CSV_HEADERS)){
+        headers=CSV_HEADERS.slice();
+      }
+      if(!headers.length && typeof csvRows!=="undefined"){
+        csvRows.forEach(r=>Object.keys(r.raw||{}).forEach(k=>{if(k&&!headers.includes(k))headers.push(k);}));
+      }
+
+      const data=[];
+      if(typeof csvRows!=="undefined"){
+        csvRows.forEach(r=>{
+          const o={};
+          headers.forEach(h=>o[h]=(r.raw && r.raw[h]!==undefined) ? r.raw[h] : "");
+          data.push(o);
+        });
+      }
+
+      // fallback: pokud se save uložil jen do __csvSavedManualRows
+      (window.__csvSavedManualRows||[]).forEach(raw=>{
+        const already=data.some(o=>o["Klíč_adresy"] && o["Klíč_adresy"]===raw["Klíč_adresy"]);
+        if(!already){
+          const o={};
+          headers.forEach(h=>o[h]=raw[h]||"");
+          data.push(o);
+        }
+      });
+
+      const csv=Papa.unparse(data,{columns:headers,delimiter:",",newline:"\r\n"});
+      const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download="data.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+
+      status("Staženo data.csv.", false);
+      return false;
+    }catch(err){
+      status("Chyba stažení CSV: "+err.message, true);
+      return false;
+    }
+  }
+
+  function rebind(){
+    ensureTopActions();
+
+    const saveBtns=[
+      document.getElementById("csvSavePointBtn"),
+      document.getElementById("csvTopSaveBtn")
+    ].filter(Boolean);
+    saveBtns.forEach(btn=>{
+      btn.onclick=fixedSave;
+      if(!btn.__fixedSaveBound){
+        btn.__fixedSaveBound=true;
+        btn.addEventListener("click",fixedSave,true);
+      }
+    });
+
+    const downloadBtns=[
+      document.getElementById("csvDownloadBtn"),
+      document.getElementById("csvTopDownloadBtn"),
+      document.getElementById("downloadCsvDataBtn"),
+      document.getElementById("downloadUpdatedCsvBtn")
+    ].filter(Boolean);
+    downloadBtns.forEach(btn=>{
+      btn.onclick=fixedDownload;
+      if(!btn.__fixedDownloadBound){
+        btn.__fixedDownloadBound=true;
+        btn.addEventListener("click",fixedDownload,true);
+      }
+    });
+
+    const find=document.getElementById("csvFindBtn");
+    if(find && !find.__rememberGpsBound){
+      find.__rememberGpsBound=true;
+      find.addEventListener("click",()=>setTimeout(rememberPreviewFromFields,300),true);
+    }
+
+    const gps=document.getElementById("csvGpsBtn");
+    if(gps && !gps.__rememberGpsBound){
+      gps.__rememberGpsBound=true;
+      gps.addEventListener("click",()=>setTimeout(rememberPreviewFromFields,700),true);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded",rebind);
+  setTimeout(rebind,100);
+  setTimeout(rebind,500);
+  setTimeout(rebind,1200);
+  setInterval(rebind,1000);
+})();
+</script>
+
 </body>
 </html>
