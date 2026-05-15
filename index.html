@@ -4068,5 +4068,75 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* FORCE ALL CSV FIELDS FIX */
+(function(){
+  function forceRenderFields(){
+    const box = document.getElementById("newAllFieldsBox");
+    if(!box) return;
+
+    // if already rendered and has inputs, keep it
+    if(box.querySelector("input, textarea, select")) return;
+
+    const headers = (window.CSV_ALL_HEADERS || []).length ? window.CSV_ALL_HEADERS : [
+      "Název","Adresa / umístění","GPS_lat","GPS_lon","Popis_zdroje",
+      "Zdroj","Kontakt","Kraj","Poznámky","Rok výroby",
+      "Serviska","Cena FZ","Perioda kontrol","Hlídáme sami termín",
+      "DŮLEŽITÁ POZNÁMKA"
+    ];
+
+    box.innerHTML = headers.map(h=>{
+      const lower = String(h).toLowerCase();
+
+      if(lower.includes("poznám")){
+        return `<div class="full"><label>${h}</label><textarea data-new-key="${h}"></textarea></div>`;
+      }
+
+      if(h==="Serviska" || h==="Hlídáme sami termín"){
+        return `<div><label>${h}</label>
+          <select data-new-key="${h}">
+            <option value=""></option>
+            <option value="ano">ano</option>
+            <option value="ne">ne</option>
+          </select>
+        </div>`;
+      }
+
+      if(h==="Perioda kontrol"){
+        return `<div><label>${h}</label>
+          <select data-new-key="${h}">
+            <option value="6">6</option>
+            <option value="12" selected>12</option>
+          </select>
+        </div>`;
+      }
+
+      return `<div><label>${h}</label><input data-new-key="${h}"></div>`;
+    }).join("");
+
+    box.style.display = "grid";
+    box.style.gridTemplateColumns = "1fr 1fr";
+    box.style.gap = "10px";
+  }
+
+  function bindForce(){
+    const addBtn = document.getElementById("addSiteBtn");
+    if(addBtn && !addBtn.__forceFieldsBound){
+      addBtn.__forceFieldsBound = true;
+      addBtn.addEventListener("click", ()=>{
+        setTimeout(forceRenderFields, 50);
+        setTimeout(forceRenderFields, 300);
+        setTimeout(forceRenderFields, 800);
+      }, true);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", bindForce);
+  setTimeout(bindForce, 200);
+  setInterval(bindForce, 1500);
+})();
+</script>
+
 </body>
 </html>
