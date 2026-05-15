@@ -790,11 +790,6 @@ button,input,select,textarea{
   padding-top:10px;
 }
 
-
-.csv-version-box{border:2px solid #16a34a;background:#dcfce7;color:#14532d;border-radius:14px;padding:10px;margin:10px 0;font-size:14px;font-weight:800}
-.csv-actions-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
-@media(max-width:700px){.csv-actions-row{grid-template-columns:1fr}}
-
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -816,7 +811,6 @@ button,input,select,textarea{
 
 <div class="app" id="mainApp" style="display:none"><aside>
 <h1>Servis záložních zdrojů - mapa FZ</h1>
-<div class="notice ok"><b>CSV VERZE – PŘIDÁVÁNÍ BODŮ DO DATA.CSV</b><br>Nový bod se nepíše do Firebase. Přidá se do dat v prohlížeči a potom stáhneš nové data.csv.</div>
 <button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
@@ -830,7 +824,6 @@ button,input,select,textarea{
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
-<button class="secondary" id="downloadCsvDataBtn" style="margin-top:8px">Stáhnout aktualizované data.csv</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
 <div class="legend">
@@ -1587,7 +1580,7 @@ function setNewSiteModeTitle(){
   const title=document.getElementById("drawerTitle");
   const sub=document.getElementById("drawerSub");
   if(title) title.textContent="Přidat nové místo";
-  if(sub) sub.textContent="Vyplň údaje a přidej do data.csv.";
+  if(sub) sub.textContent="Vyplň údaje a ulož do Firebase.";
 }
 function clearNewSiteMode(){
   const drawerEl=document.getElementById("drawer");
@@ -1879,8 +1872,8 @@ function openNewSiteForm(){
 setTimeout(()=>{const n=document.getElementById("newName"); if(n){n.focus(); n.scrollIntoView({behavior:"smooth",block:"start"});}},100);
   document.getElementById("editCard").style.display="none";
   document.getElementById("detailTitle").textContent="Přidat nové místo";
-  document.getElementById("detailSub").textContent="Vyplň údaje a přidej do data.csv.";
-  document.getElementById("detailTable").innerHTML="<tr><td>Nové místo</td><td>Po přidání se zobrazí v mapě a půjde stáhnout nové data.csv.</td></tr>";
+  document.getElementById("detailSub").textContent="Vyplň údaje a ulož do Firebase.";
+  document.getElementById("detailTable").innerHTML="<tr><td>Nové místo</td><td>Po uložení se zobrazí v mapě.</td></tr>";
   document.getElementById("newSiteStatus").textContent="";
 }
 
@@ -3378,7 +3371,283 @@ setTimeout(()=>{
 
 </script>
 
+<script>
+(function(){
+  function openOnlyNewSite(fromAddButton){
+    if(fromAddButton !== true) return;
+    const drawer=document.getElementById("drawer");
+    if(!drawer) return;
+    drawer.classList.add("open");
+    drawer.innerHTML=`
+      <div class="drawer-head">
+        <div>
+          <h2>Přidat nové místo</h2>
+          <p class="small">Vyplň údaje a ulož bod do Firebase.</p>
+        </div>
+        <button class="secondary x" type="button" id="closeOnlyNew">Zavřít</button>
+      </div>
 
+      <div class="card" id="newSiteOnlyCard">
+        <div class="new-only-grid">
+          <div><label>Název</label><input data-new-key="Název" id="onlyNewName"></div>
+          <div><label>Adresa / umístění</label><input data-new-key="Adresa / umístění" id="onlyNewAddress"></div>
+          <div>
+            <label>GPS</label>
+            <button class="secondary" type="button" id="calcOnlyGpsBtn" style="width:100%;margin-bottom:6px">Dopočítat GPS</button>
+            <button class="primary" type="button" id="findOnlyGpsBtn" style="width:100%">Vyhledat na mapě</button>
+          </div>
+          <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
+          <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
+          <div class="full"><label>Umístění zdroje</label><input data-new-key="Adresa_GPS"></div>
+          <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje"></div>
+          <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj"></div>
+          <div><label>Kontakt</label><input data-new-key="Kontakt"></div>
+          <div><label>Kraj</label><input data-new-key="Kraj"></div>
+          <div class="full"><label>Poznámky</label><input data-new-key="Poznámky"></div>
+          <div><label>Rok výroby</label><input data-new-key="Rok výroby"></div>
+          <div><label>Serviska</label><select data-new-key="Serviska"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
+          <div><label>Cena FZ</label><input data-new-key="Cena FZ"></div>
+          <div><label>Perioda kontrol</label><select data-new-key="Perioda kontrol"><option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option></select></div>
+          <div class="full"><label>Hlídáme kontroly sami</label><select data-new-key="Hlídáme kontroly sami"><option value="ne" selected>ne</option><option value="ano">ano</option></select></div>
+          <div class="full only-red"><label>Důležité poznámky</label><textarea data-new-key="Důležitá poznámka"></textarea></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="primary" type="button" id="saveOnlyNew">Uložit nové místo</button>
+          <button class="secondary" type="button" id="cancelOnlyNew">Zrušit</button>
+        </div>
+        <p class="small" id="onlyNewStatus"></p>
+      </div>`;
+    document.getElementById("closeOnlyNew").onclick=()=>{drawer.classList.remove("open");};
+    document.getElementById("cancelOnlyNew").onclick=()=>{drawer.classList.remove("open");};
+    document.getElementById("saveOnlyNew").onclick=saveOnlyNewSite;
+    const gpsBtn=document.getElementById("calcOnlyGpsBtn");
+    if(gpsBtn) gpsBtn.onclick=calcOnlyNewGps;
+    const findGpsBtn=document.getElementById("findOnlyGpsBtn");
+    if(findGpsBtn) findGpsBtn.onclick=findOnlyNewGpsOnMap;
+    setTimeout(()=>{const f=document.getElementById("onlyNewName"); if(f) f.focus();},100);
+  }
+
+  function collectOnlyNewRaw(){
+    const raw={};
+    document.querySelectorAll("#newSiteOnlyCard [data-new-key]").forEach(el=>{
+      const key=el.dataset.newKey;
+      const val=String(el.value||"").trim();
+      if(!key || !val) return;
+      raw[key]=val;
+      const norm=key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+      if(norm==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
+        raw["Hlídáme sami termín"]="ano";
+        raw["Jezdit bez objednávky"]="ANO";
+        raw["Bez objednávky"]="ANO";
+      }
+    });
+    return raw;
+  }
+
+  
+  async function calcOnlyNewGps(){
+    const st=document.getElementById("onlyNewStatus");
+    const addrEl=document.getElementById("onlyNewAddress");
+    const latEl=document.getElementById("onlyNewGpsLat");
+    const lonEl=document.getElementById("onlyNewGpsLon");
+    const address=addrEl ? String(addrEl.value||"").trim() : "";
+
+    if(!address){
+      if(st) st.textContent="Vyplň adresu / umístění.";
+      return;
+    }
+
+    try{
+      if(st) st.textContent="Dopočítávám GPS...";
+      if(typeof geocodeAddressGeneric==="function"){
+        const g=await geocodeAddressGeneric(address);
+        if(g){
+          if(latEl) latEl.value=g.lat;
+          if(lonEl) lonEl.value=g.lon;
+          if(st) st.textContent="GPS doplněno.";
+          return;
+        }
+      }
+
+      const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address);
+      const res=await fetch(url,{headers:{"Accept":"application/json"}});
+      const data=await res.json();
+      if(data && data[0]){
+        if(latEl) latEl.value=data[0].lat;
+        if(lonEl) lonEl.value=data[0].lon;
+        if(st) st.textContent="GPS doplněno.";
+      }else{
+        if(st) st.textContent="Adresa nebyla nalezena.";
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
+    }
+  }
+
+  
+  let onlyNewTempMarker = null;
+
+  function findOnlyNewGpsOnMap(){
+    const st=document.getElementById("onlyNewStatus");
+    const latEl=document.getElementById("onlyNewGpsLat");
+    const lonEl=document.getElementById("onlyNewGpsLon");
+
+    const lat=parseFloat(String(latEl?.value||"").replace(",","."));
+    const lon=parseFloat(String(lonEl?.value||"").replace(",","."));
+
+    if(!Number.isFinite(lat) || !Number.isFinite(lon)){
+      if(st) st.textContent="Nejdřív vyplň nebo dopočítej GPS lat/lon.";
+      return;
+    }
+
+    if(!window.map || !window.L){
+      if(st) st.textContent="Mapa ještě není načtená.";
+      return;
+    }
+
+    const latlng=[lat,lon];
+
+    try{
+      if(onlyNewTempMarker){
+        window.map.removeLayer(onlyNewTempMarker);
+      }
+
+      onlyNewTempMarker=L.circleMarker(latlng,{
+        radius:10,
+        color:"#111827",
+        weight:2,
+        fillColor:"#2563eb",
+        fillOpacity:.95
+      }).addTo(window.map);
+
+      onlyNewTempMarker.bindPopup("Nový bod - náhled").openPopup();
+      window.map.setView(latlng,15);
+      window.map.invalidateSize(true);
+
+      if(st) st.textContent="Bod nalezen na mapě podle GPS.";
+    }catch(e){
+      if(st) st.textContent="Chyba zobrazení bodu na mapě: "+e.message;
+    }
+  }
+
+  async function saveOnlyNewSite(){
+    const st=document.getElementById("onlyNewStatus");
+    const raw=collectOnlyNewRaw();
+    if(!raw["Název"] && !raw["Adresa / umístění"]){
+      if(st) st.textContent="Vyplň alespoň Název nebo Adresa / umístění.";
+      return;
+    }
+
+    const id="site_"+Date.now();
+    let latManual=parseFloat(String(raw["GPS_lat"]||"").replace(",","."));
+    let lonManual=parseFloat(String(raw["GPS_lon"]||"").replace(",","."));
+    let row={
+      id:id,
+      i:Array.isArray(window.rows)?window.rows.length:0,
+      nazev:raw["Název"]||raw["Adresa / umístění"]||"Nové místo",
+      adresa:raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",
+      kraj:raw["Kraj"]||"",
+      zdroj:raw["Popis_zdroje"]||"",
+      kontakt:raw["Kontakt"]||"",
+      pristi:"",
+      posledni:"",
+      lat:Number.isFinite(latManual)?latManual:null,
+      lon:Number.isFinite(lonManual)?lonManual:null,
+      ordered:false,
+      noOrder:String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano",
+      raw:raw
+    };
+
+    try{
+      const address=raw["Adresa / umístění"]||raw["Adresa_GPS"]||"";
+      if(address && typeof geocodeAddressGeneric==="function"){
+        if(st) st.textContent="Dopočítávám GPS...";
+        const g=await geocodeAddressGeneric(address);
+        if(g){row.lat=Number(g.lat); row.lon=Number(g.lon); row.raw["GPS_lat"]=row.lat; row.raw["GPS_lon"]=row.lon;}
+      }
+    }catch(e){}
+
+    try{
+      if(window.firebaseReady && window.db && window.fb && fb.fsMod){
+        const {doc,setDoc}=fb.fsMod;
+        await setDoc(doc(db,"sites",id),{
+          raw:raw,
+          createdAt:new Date().toISOString(),
+          createdBy:(window.currentUser&&currentUser.email)||"",
+          noOrder:row.noOrder
+        },{merge:true});
+      }
+    }catch(e){
+      if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
+      return;
+    }
+
+    // vložit bod do hlavního seznamu tak, aby ho render() hned zobrazil na mapě
+    if(Array.isArray(window.rows)){
+      row.i = window.rows.length;
+      row.lat = Number(row.lat);
+      row.lon = Number(row.lon);
+      row.raw = row.raw || {};
+      row.raw["GPS_lat"] = row.lat;
+      row.raw["GPS_lon"] = row.lon;
+      row.raw["Název"] = row.nazev || row.raw["Název"] || "";
+      row.raw["Adresa_GPS"] = row.adresa || row.raw["Adresa_GPS"] || "";
+      window.rows.push(row);
+    }
+
+    if(st) st.textContent="Nové místo uloženo a zobrazeno na mapě.";
+
+    try{
+      if(typeof render==="function") render();
+
+      const hasGps = Number.isFinite(row.lat) && Number.isFinite(row.lon);
+      if(hasGps){
+        const latlng=[row.lat,row.lon];
+
+        // přidat bod okamžitě i bez čekání na render
+        try{
+          if(window.L && window.map){
+            const marker=L.circleMarker(latlng,{
+              radius:8,
+              color:"#111827",
+              weight:2,
+              fillColor: row.noOrder ? "#ec4899" : "#22c55e",
+              fillOpacity:.95
+            }).addTo(window.map);
+            marker.bindPopup(row.nazev || "Nové místo");
+            marker.on("click",()=>{ if(typeof openDetail==="function") openDetail(row.i); });
+          }
+        }catch(e){}
+
+        if(window.map){
+          setTimeout(()=>{try{window.map.setView(latlng,14);}catch(e){}},150);
+          setTimeout(()=>{try{window.map.invalidateSize(true);}catch(e){}},300);
+        }
+      }
+
+      if(typeof openDetail==="function") setTimeout(()=>openDetail(row.i),250);
+    }catch(e){
+      location.reload();
+    }
+  }
+
+  function bindOnlyNew(){
+    const btn=document.getElementById("addSiteBtn");
+    if(btn){
+      btn.onclick=function(e){
+        if(e) e.preventDefault();
+        openOnlyNewSite(true);
+      };
+      btn.dataset.onlyNewBound="1";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded",bindOnlyNew);
+  setTimeout(bindOnlyNew,300);
+  setTimeout(bindOnlyNew,1000);
+  setTimeout(bindOnlyNew,2500);
+})();
+</script>
 <style>
 .new-only-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .new-only-grid .full{grid-column:1 / -1}
@@ -3818,323 +4087,363 @@ setTimeout(()=>{
 </script>
 
 
+<style>
+/* INDEPENDENT CSV ADD PANEL */
+#csvAddOverlay{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.35);
+  z-index:99999;
+  display:none;
+}
+#csvAddPanel{
+  position:fixed;
+  right:0;
+  top:0;
+  height:100dvh;
+  width:min(760px,100vw);
+  background:#fff;
+  z-index:100000;
+  overflow:auto;
+  padding:14px;
+  box-shadow:-12px 0 40px rgba(0,0,0,.25);
+  display:none;
+}
+#csvAddPanel.open,#csvAddOverlay.open{display:block}
+.csvAddHead{
+  position:sticky;
+  top:0;
+  background:#fff;
+  z-index:2;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+  border-bottom:1px solid #e2e8f0;
+  padding-bottom:10px;
+  margin-bottom:10px;
+}
+.csvAddHead h2{margin:0;font-size:20px}
+.csvAddGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+.csvAddGrid .full{grid-column:1/-1}
+.csvAddGrid label{
+  display:block;
+  font-size:12px;
+  font-weight:800;
+  color:#475569;
+  margin-bottom:3px;
+}
+.csvAddGrid input,.csvAddGrid textarea,.csvAddGrid select{
+  width:100%;
+  min-height:38px;
+  padding:7px 9px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  font-size:14px;
+  background:#fff;
+}
+.csvAddGrid textarea{min-height:74px}
+.csvAddNotice{
+  border:1px solid #bbf7d0;
+  background:#ecfdf5;
+  color:#166534;
+  border-radius:12px;
+  padding:9px;
+  margin:8px 0;
+  font-weight:700;
+  font-size:13px;
+}
+.csvAddError{
+  border-color:#fecaca!important;
+  background:#fef2f2!important;
+  color:#991b1b!important;
+}
+.csvAddActions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:10px 0;
+}
+#csvAddPanel button{
+  min-height:42px;
+  border-radius:10px;
+  border:1px solid #e2e8f0;
+  font-weight:800;
+  cursor:pointer;
+}
+.csvPrimary{background:#2563eb;color:white;border-color:#2563eb!important}
+.csvSecondary{background:#f1f5f9;color:#0f172a}
+.csvDanger{background:#fee2e2;color:#991b1b;border-color:#fecaca!important}
+@media(max-width:700px){
+  #csvAddPanel{width:100vw}
+  .csvAddGrid{grid-template-columns:1fr}
+  .csvAddGrid .full{grid-column:auto}
+  .csvAddActions{grid-template-columns:1fr}
+}
+</style>
+
+
 <script>
-/* CSV VERZE FINAL: přidání bodu přes data.csv, bez Firebase ukládání */
+/* INDEPENDENT CSV ADD PANEL */
 (function(){
-  let csvPreviewMarkerFinal = null;
-  function csvV(v){ return String(v ?? "").trim(); }
-  function csvN(v){ const n=parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n)?n:NaN; }
-  function csvStatus(msg, ok){
-    const st=document.getElementById("newSiteStatus");
-    if(st){ st.className=ok?"notice ok":"notice"; st.textContent=msg; }
+  const CSV_HEADERS = ["Název", "Adresa / umístění", "Adresa_GPS", "Popis_zdroje", "Zdroj", "Kontakt_mapy", "Kontakt", "Kraj", "Poznámky_mapy", "Poznámky", "Příští plánovaná kontrola", "Poslední proběhlá kontrola", "Dní do kontroly", "Stav pro mapu", "Barva bodu", "GPS_lat", "GPS_lon", "GPS_status", "GPS_nalezeno_jako", "GPS_poznámka", "Klíč_adresy", "Poslední_kontrola", "Příští_kontrola", "Dní_do_kontroly", "Stav_kontroly", "Barva_bodu", "Všechny_termíny", "Zdrojový_soubor", "Zdrojový_řádek", "Rok výroby", "Serviska", "Hlídáme sami termín", "Hlavní kontakt", "Jaký zdroj", "Umístění", "DŮLEŽITÁ POZNÁMKA", "Měsíc_1", "Měsíc_2", "Měsíc_3", "Měsíc_4", "Měsíc_5", "Měsíc_6", "Měsíc_7", "Měsíc_8", "Měsíc_9", "Měsíc_10", "Měsíc_11", "Měsíc_12", "Sloupec_21", "Cena FZ", "Faktura na", "Protokol s fakturou na", "Smlouva ano/ne", "Sloupec_27", "Sloupec_28", "Sloupec_29", "Sloupec_30", "Sloupec_31", "Sloupec_32", "Sloupec_33", "Sloupec_34", "Sloupec_35", "Sloupec_36", "Sloupec_37", "Sloupec_38", "Sloupec_39", "Sloupec_40", "Sloupec_41", "Sloupec_42", "Sloupec_43", "Sloupec_44", "Sloupec_45", "Sloupec_46", "Sloupec_47", "Sloupec_48", "Sloupec_49", "Sloupec_50", "Sloupec_51", "Sloupec_52", "Sloupec_53", "Sloupec_54", "Sloupec_55", "Sloupec_56", "Sloupec_57", "Sloupec_58", "Sloupec_59", "Sloupec_60", "Sloupec_61", "Sloupec_62", "Sloupec_63", "Sloupec_64", "Sloupec_65", "Sloupec_66", "Sloupec_67", "Sloupec_68", "Sloupec_69", "Sloupec_70", "Sloupec_71", "Sloupec_72", "Sloupec_73", "Sloupec_74", "Sloupec_75", "Sloupec_76", "Sloupec_77", "Sloupec_78", "Sloupec_79", "Sloupec_80", "Sloupec_81", "Sloupec_82", "Sloupec_83", "Sloupec_84", "Sloupec_85", "Sloupec_86", "Sloupec_87", "Sloupec_88", "Sloupec_89", "Sloupec_90", "Sloupec_91", "Sloupec_92", "Sloupec_93", "Sloupec_94", "Počet_termínů", "Umístění zdroje", "Sloupec_8", "Cena FZ v Kč", "Protokol na", "Adresa_GPS_původní", "Adresa_GPS_puvodni_pred_zjednodusenim"];
+  let csvAddedRows = [];
+  let csvLoadedOriginal = null;
+  let previewMarker = null;
+
+  function val(v){ return String(v ?? "").trim(); }
+  function num(v){
+    const n = parseFloat(String(v ?? "").replace(",", "."));
+    return Number.isFinite(n) ? n : NaN;
   }
-  function csvHeadersFinal(){
-    const headers=[];
-    try{ csvRows.forEach(r=>Object.keys(r.raw||{}).forEach(k=>{if(k&&!headers.includes(k))headers.push(k)})); }catch(e){}
-    ["Název","Adresa / umístění","Adresa_GPS","Popis_zdroje","Zdroj","Kontakt_mapy","Kontakt","Kraj","Poznámky_mapy","Poznámky","Příští plánovaná kontrola","Poslední proběhlá kontrola","Dní do kontroly","Stav pro mapu","Barva bodu","GPS_lat","GPS_lon","Klíč_adresy","Poslední_kontrola","Příští_kontrola","Dní_do_kontroly","Stav_kontroly","Barva_bodu","Rok výroby","Serviska","Hlídáme sami termín","Hlavní kontakt","Jaký zdroj","Umístění","DŮLEŽITÁ POZNÁMKA","Cena FZ","Smlouva ano/ne","Perioda kontrol","Zdroj_dat"].forEach(k=>{if(!headers.includes(k))headers.push(k)});
-    return headers;
+  function esc(v){
+    return String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
   }
-  function csvParseExtraText(raw, txt){
-    csvV(txt).split(/\n+/).forEach(line=>{
-      const m=line.match(/^\s*([^:=;]+)\s*[:=;]\s*(.*?)\s*$/);
-      if(m) raw[csvV(m[1])]=csvV(m[2]);
-    });
+  function label(k){
+    const map = {
+      "GPS_lat":"GPS lat",
+      "GPS_lon":"GPS lon",
+      "Popis_zdroje":"Popis zdroje",
+      "Kontakt_mapy":"Kontakt mapy",
+      "Poznámky_mapy":"Poznámky mapy",
+      "DŮLEŽITÁ POZNÁMKA":"Důležité poznámky",
+      "Příští_kontrola":"Příští kontrola",
+      "Poslední_kontrola":"Poslední kontrola",
+      "Dní_do_kontroly":"Dní do kontroly",
+      "Stav_kontroly":"Stav kontroly",
+      "Barva_bodu":"Barva bodu"
+    };
+    return map[k] || k;
   }
-  function csvCollectFinal(){
-    const raw={};
-    if(typeof collectNewSiteAllFields==="function"){ try{Object.assign(raw, collectNewSiteAllFields())}catch(e){} }
-    [["newName","Název"],["newGpsAddress","Adresa / umístění"],["newAddress","Adresa / umístění"],["newRegion","Kraj"],["newContact","Kontakt"],["newSource","Popis_zdroje"],["newNotes","Poznámky"],["newGpsLat","GPS_lat"],["newGpsLon","GPS_lon"],["newNextCheck","Příští_kontrola"],["newLastCheck","Poslední_kontrola"]].forEach(([id,key])=>{
-      const el=document.getElementById(id); const val=el?csvV(el.value):""; if(val&&!raw[key]) raw[key]=val;
-    });
-    if(raw["Adresa / umístění"]&&!raw["Adresa_GPS"]) raw["Adresa_GPS"]=raw["Adresa / umístění"];
-    if(raw["Kontakt"]&&!raw["Kontakt_mapy"]) raw["Kontakt_mapy"]=raw["Kontakt"];
-    if(raw["Popis_zdroje"]&&!raw["Jaký zdroj"]) raw["Jaký zdroj"]=raw["Popis_zdroje"];
-    if(raw["Poznámky"]&&!raw["Poznámky_mapy"]) raw["Poznámky_mapy"]=raw["Poznámky"];
-    const allData=document.getElementById("newAllData"); if(allData) csvParseExtraText(raw, allData.value);
-    const noOrder=document.getElementById("newNoOrder");
-    const watch=String(raw["Hlídáme kontroly sami"]||raw["Hlídáme sami termín"]||"").toLowerCase();
-    if((noOrder&&noOrder.checked)||watch==="ano"){
-      raw["Hlídáme sami termín"]="ANO"; raw["Jezdit bez objednávky"]="ANO"; raw["Bez objednávky"]="ANO";
-      raw["Stav_kontroly"]="Hlídáme termín sami"; raw["Stav pro mapu"]="Hlídáme termín sami";
-      raw["Barva bodu"]="růžová"; raw["Barva_bodu"]="růžová";
+  function status(msg, bad=false){
+    const s=document.getElementById("csvAddStatus");
+    if(!s) return;
+    s.textContent=msg;
+    s.className = bad ? "csvAddNotice csvAddError" : "csvAddNotice";
+  }
+  function isTextarea(k){
+    const l=k.toLowerCase();
+    return l.includes("poznám") || l.includes("termin") || l.includes("termín") || l.includes("všechny") || l.includes("data");
+  }
+  function selectOptions(k){
+    if(k==="Serviska" || k==="Smlouva ano/ne" || k==="Hlídáme sami termín") return ["","ano","ne"];
+    if(k==="Perioda kontrol") return ["","6","12"];
+    if(k==="Stav_kontroly" || k==="Stav pro mapu") return ["","OK / ostatní","Propadlá kontrola","1–30 dní k termínu","Kontrola objednaná","Hlídáme termín sami"];
+    if(k==="Barva bodu" || k==="Barva_bodu") return ["","červená","oranžová","žlutá","zelená","růžová"];
+    return null;
+  }
+  function field(k){
+    const opts=selectOptions(k);
+    const cls = (isTextarea(k) || k==="Název" || k==="Adresa / umístění" || k==="Adresa_GPS" || k==="Popis_zdroje" || k==="DŮLEŽITÁ POZNÁMKA") ? "full" : "";
+    if(opts){
+      return `<div class="${cls}"><label>${esc(label(k))}</label><select data-csv-key="${esc(k)}">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join("")}</select></div>`;
     }
-    if(!raw["Název"]&&raw["Adresa / umístění"]) raw["Název"]=raw["Adresa / umístění"];
-    if(!raw["Adresa / umístění"]&&raw["Název"]) raw["Adresa / umístění"]=raw["Název"];
-    if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="csv_manual_"+Date.now();
-    if(!raw["Stav_kontroly"]) raw["Stav_kontroly"]="OK / ostatní";
-    raw["Zdroj_dat"]="Přidáno ručně přes CSV";
-    return raw;
+    if(isTextarea(k)){
+      return `<div class="${cls}"><label>${esc(label(k))}</label><textarea data-csv-key="${esc(k)}"></textarea></div>`;
+    }
+    return `<div class="${cls}"><label>${esc(label(k))}</label><input data-csv-key="${esc(k)}"></div>`;
   }
-  async function csvCalcGpsFinal(){
-    const raw=csvCollectFinal();
-    const address=raw["Adresa / umístění"]||raw["Adresa_GPS"]||raw["Název"];
-    if(!address){csvStatus("Vyplň adresu nebo název.",false);return}
-    try{
-      csvStatus("Dopočítávám GPS...",false);
-      const res=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address),{headers:{"Accept":"application/json"}});
-      const data=await res.json();
-      if(!data||!data[0]){csvStatus("Adresa nebyla nalezena.",false);return}
-      const lat=data[0].lat, lon=data[0].lon;
-      const latEl=document.getElementById("newGpsLat"), lonEl=document.getElementById("newGpsLon");
-      if(latEl)latEl.value=lat; if(lonEl)lonEl.value=lon;
-      const latData=document.querySelector('#newAllFieldsBox [data-new-key="GPS_lat"]');
-      const lonData=document.querySelector('#newAllFieldsBox [data-new-key="GPS_lon"]');
-      if(latData)latData.value=lat; if(lonData)lonData.value=lon;
-      csvStatus("GPS doplněno.",true);
-    }catch(e){csvStatus("Chyba dopočtu GPS: "+e.message,false)}
+
+  function ensurePanel(){
+    if(document.getElementById("csvAddPanel")) return;
+    const overlay=document.createElement("div");
+    overlay.id="csvAddOverlay";
+    overlay.onclick=closePanel;
+    document.body.appendChild(overlay);
+
+    const panel=document.createElement("div");
+    panel.id="csvAddPanel";
+    panel.innerHTML = `
+      <div class="csvAddHead">
+        <div>
+          <h2>Přidat nové místo do data.csv</h2>
+          <p class="small">Tento panel je nezávislý na původním detailu. Vyplň data, dej Uložit bod, potom stáhni data.csv.</p>
+        </div>
+        <button class="csvSecondary" id="csvCloseBtn" type="button">Zavřít</button>
+      </div>
+      <div id="csvAddStatus" class="csvAddNotice">Připraveno. Prázdná pole se do nového řádku neuloží.</div>
+      <div class="csvAddActions">
+        <button class="csvSecondary" id="csvGpsBtn" type="button">Dopočítat GPS z adresy</button>
+        <button class="csvSecondary" id="csvFindBtn" type="button">Vyhledat na mapě</button>
+      </div>
+      <div class="csvAddGrid">
+        ${CSV_HEADERS.map(field).join("")}
+      </div>
+      <div class="csvAddActions">
+        <button class="csvPrimary" id="csvSavePointBtn" type="button">Uložit bod do data.csv</button>
+        <button class="csvPrimary" id="csvDownloadBtn" type="button">Stáhnout aktualizované data.csv</button>
+      </div>
+      <button class="csvDanger" id="csvClearBtn" type="button">Vymazat formulář</button>
+    `;
+    document.body.appendChild(panel);
+
+    document.getElementById("csvCloseBtn").onclick=closePanel;
+    document.getElementById("csvGpsBtn").onclick=calcGps;
+    document.getElementById("csvFindBtn").onclick=findOnMap;
+    document.getElementById("csvSavePointBtn").onclick=savePoint;
+    document.getElementById("csvDownloadBtn").onclick=downloadCsv;
+    document.getElementById("csvClearBtn").onclick=clearForm;
+
+    const period=panel.querySelector('[data-csv-key="Perioda kontrol"]');
+    if(period) period.value="12";
+    const stav=panel.querySelector('[data-csv-key="Stav_kontroly"]');
+    if(stav) stav.value="OK / ostatní";
   }
-  function csvFindMapFinal(){
-    const raw=csvCollectFinal(), lat=csvN(raw["GPS_lat"]), lon=csvN(raw["GPS_lon"]);
-    if(!Number.isFinite(lat)||!Number.isFinite(lon)){csvStatus("Doplň GPS lat/lon nebo klikni Dopočítat GPS.",false);return}
-    try{
-      if(csvPreviewMarkerFinal) map.removeLayer(csvPreviewMarkerFinal);
-      csvPreviewMarkerFinal=L.circleMarker([lat,lon],{radius:10,color:"#111827",weight:2,fillColor:"#2563eb",fillOpacity:.95}).addTo(map);
-      csvPreviewMarkerFinal.bindPopup("Nový bod - náhled").openPopup();
-      map.setView([lat,lon],15);
-      csvStatus("Bod nalezen na mapě.",true);
-    }catch(e){csvStatus("Chyba mapy: "+e.message,false)}
-  }
-  function csvSaveFinal(e){
-    if(e){e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation()}
-    const raw=csvCollectFinal(), lat=csvN(raw["GPS_lat"]), lon=csvN(raw["GPS_lon"]);
-    if(!raw["Název"]&&!raw["Adresa / umístění"]){csvStatus("Vyplň Název nebo Adresa / umístění.",false);return false}
-    if(!Number.isFinite(lat)||!Number.isFinite(lon)){csvStatus("Doplň GPS lat/lon. Bez GPS se bod nezobrazí na mapě.",false);return false}
-    raw["GPS_lat"]=String(lat); raw["GPS_lon"]=String(lon);
-    const row=normalize([raw])[0]; row.i=csvRows.length; csvRows.push(row);
-    rows=csvRows.map((r,i)=>{r.i=i;return applyEditToRow(r)}).filter(r=>!deletedSiteIds||!deletedSiteIds.has(r.id));
-    if(csvPreviewMarkerFinal){try{map.removeLayer(csvPreviewMarkerFinal)}catch(err){} csvPreviewMarkerFinal=null}
-    filters(); render(); map.setView([lat,lon],14);
-    const idx=rows.findIndex(r=>r.id===row.id); if(idx>=0)setTimeout(()=>openDetail(idx),100);
-    csvStatus("Bod je přidaný do dočasného CSV. Teď klikni vlevo na Stáhnout aktualizované data.csv.",true);
+  function openPanel(e){
+    if(e){ e.preventDefault(); e.stopPropagation(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); }
+    ensurePanel();
+    document.getElementById("csvAddOverlay").classList.add("open");
+    document.getElementById("csvAddPanel").classList.add("open");
+    status("Panel otevřen. Vyplň data a klikni Uložit bod do data.csv.");
+    setTimeout(()=>{
+      const first=document.querySelector('#csvAddPanel [data-csv-key="Název"]') || document.querySelector('#csvAddPanel input');
+      if(first) first.focus();
+    },80);
     return false;
   }
-  function csvDownloadFinal(){
-    const headers=csvHeadersFinal();
-    const data=csvRows.map(r=>{const o={};headers.forEach(h=>o[h]=(r.raw&&r.raw[h]!==undefined)?r.raw[h]:"");return o});
-    const csv=Papa.unparse(data,{columns:headers,delimiter:",",newline:"\r\n"});
+  function closePanel(){
+    const o=document.getElementById("csvAddOverlay"), p=document.getElementById("csvAddPanel");
+    if(o)o.classList.remove("open");
+    if(p)p.classList.remove("open");
+  }
+  function getRaw(){
+    ensurePanel();
+    const raw={};
+    document.querySelectorAll("#csvAddPanel [data-csv-key]").forEach(el=>{
+      const k=el.getAttribute("data-csv-key");
+      const v=val(el.value);
+      if(v) raw[k]=v;
+    });
+
+    if(raw["Adresa / umístění"] && !raw["Adresa_GPS"]) raw["Adresa_GPS"]=raw["Adresa / umístění"];
+    if(raw["Adresa_GPS"] && !raw["Adresa / umístění"]) raw["Adresa / umístění"]=raw["Adresa_GPS"];
+    if(raw["Adresa / umístění"] && !raw["Název"]) raw["Název"]=raw["Adresa / umístění"];
+    if(raw["Kontakt"] && !raw["Kontakt_mapy"]) raw["Kontakt_mapy"]=raw["Kontakt"];
+    if(raw["Popis_zdroje"] && !raw["Jaký zdroj"]) raw["Jaký zdroj"]=raw["Popis_zdroje"];
+    if(raw["Poznámky"] && !raw["Poznámky_mapy"]) raw["Poznámky_mapy"]=raw["Poznámky"];
+    if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="csv_manual_"+Date.now();
+    if(!raw["Zdroj_dat"]) raw["Zdroj_dat"]="Ručně přidáno v mapě";
+
+    const watch=String(raw["Hlídáme sami termín"]||"").toLowerCase();
+    if(watch==="ano"){
+      raw["Stav_kontroly"]="Hlídáme termín sami";
+      raw["Stav pro mapu"]="Hlídáme termín sami";
+      raw["Barva bodu"]="růžová";
+      raw["Barva_bodu"]="růžová";
+    }else if(!raw["Stav_kontroly"]){
+      raw["Stav_kontroly"]="OK / ostatní";
+    }
+    return raw;
+  }
+  function setField(k,v){
+    const el=document.querySelector(`#csvAddPanel [data-csv-key="${CSS.escape(k)}"]`);
+    if(el) el.value=v;
+  }
+  async function calcGps(){
+    const raw=getRaw();
+    const address=raw["Adresa_GPS"] || raw["Adresa / umístění"] || raw["Název"];
+    if(!address){ status("Vyplň nejdřív adresu / umístění.", true); return; }
+    try{
+      status("Dopočítávám GPS...");
+      const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address);
+      const res=await fetch(url,{headers:{"Accept":"application/json"}});
+      const data=await res.json();
+      if(!data || !data[0]){ status("Adresa nebyla nalezena.", true); return; }
+      setField("GPS_lat", data[0].lat);
+      setField("GPS_lon", data[0].lon);
+      status("GPS doplněno.");
+    }catch(e){ status("Chyba dopočtu GPS: "+e.message, true); }
+  }
+  function findOnMap(){
+    const raw=getRaw();
+    const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
+    if(!Number.isFinite(lat)||!Number.isFinite(lon)){ status("Vyplň GPS_lat a GPS_lon.", true); return; }
+    try{
+      if(typeof map==="undefined" || typeof L==="undefined"){ status("Mapa není dostupná.", true); return; }
+      if(previewMarker) map.removeLayer(previewMarker);
+      previewMarker=L.circleMarker([lat,lon],{radius:10,color:"#111827",weight:2,fillColor:"#2563eb",fillOpacity:.95}).addTo(map);
+      previewMarker.bindPopup("Nový bod - náhled").openPopup();
+      map.setView([lat,lon],15);
+      status("Bod zobrazen na mapě jako náhled.");
+    }catch(e){ status("Chyba mapy: "+e.message, true); }
+  }
+  function savePoint(){
+    const raw=getRaw();
+    const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
+    if(!raw["Název"] && !raw["Adresa / umístění"]){ status("Vyplň Název nebo Adresa / umístění.", true); return; }
+    if(!Number.isFinite(lat)||!Number.isFinite(lon)){ status("Bod nejde uložit bez GPS_lat a GPS_lon.", true); return; }
+    raw["GPS_lat"]=String(lat);
+    raw["GPS_lon"]=String(lon);
+
+    csvAddedRows.push(raw);
+
+    try{
+      if(typeof normalize==="function" && typeof csvRows!=="undefined"){
+        const r=normalize([raw])[0];
+        r.i=csvRows.length;
+        csvRows.push(r);
+        if(typeof rows!=="undefined") rows=csvRows.map((x,i)=>{x.i=i; return typeof applyEditToRow==="function" ? applyEditToRow(x) : x;});
+        if(typeof filters==="function") filters();
+        if(typeof render==="function") render();
+      }
+      if(typeof map!=="undefined") map.setView([lat,lon],14);
+    }catch(e){ console.warn(e); }
+
+    status("Bod je uložený do dočasného seznamu. Teď klikni na Stáhnout aktualizované data.csv.");
+  }
+  async function loadOriginalCsv(){
+    if(csvLoadedOriginal) return csvLoadedOriginal;
+    try{
+      const res=await fetch("data.csv?cache="+Date.now());
+      const text=await res.text();
+      const parsed=Papa.parse(text,{header:true,skipEmptyLines:true,transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim()});
+      csvLoadedOriginal=parsed.data || [];
+    }catch(e){
+      csvLoadedOriginal=[];
+    }
+    return csvLoadedOriginal;
+  }
+  async function downloadCsv(){
+    const original=await loadOriginalCsv();
+    const all=original.concat(csvAddedRows);
+    const csv=Papa.unparse(all,{columns:CSV_HEADERS,delimiter:",",newline:"\r\n"});
     const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="data.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="data.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    status("Staženo aktualizované data.csv.");
   }
-  function csvOpenFormFinal(){
-    try{window.__csvOriginalOpenNewSiteForm()}catch(e){try{openNewSiteForm.__csvOriginal()}catch(err){}}
-    const drawer=document.getElementById("drawer"); if(drawer){drawer.classList.add("open");drawer.classList.add("adding-new-site")}
-    const sub=document.getElementById("detailSub"); if(sub)sub.textContent="CSV VERZE: bod se přidá do data.csv, ne do Firebase.";
-    const st=document.getElementById("newSiteStatus"); if(st)st.innerHTML='<div class="csv-version-box">CSV VERZE – po přidání bodu stáhni aktualizované data.csv.</div>';
-    const box=document.getElementById("newAllFieldsBox");
-    if(box&&!box.querySelector('[data-new-key="GPS_lat"]')) box.insertAdjacentHTML("beforeend",'<div><label>GPS_lat</label><input data-new-key="GPS_lat"></div><div><label>GPS_lon</label><input data-new-key="GPS_lon"></div>');
-    const save=document.getElementById("saveNewSiteBtn");
-    if(save&&!document.getElementById("csvFinalActions")){
-      const div=document.createElement("div");div.id="csvFinalActions";div.className="csv-actions-row";
-      div.innerHTML='<button class="secondary" id="csvFinalCalcGps" type="button">Dopočítat GPS</button><button class="primary" id="csvFinalFindMap" type="button">Vyhledat na mapě</button>';
-      save.parentNode.insertBefore(div,save);
+  function clearForm(){
+    document.querySelectorAll("#csvAddPanel [data-csv-key]").forEach(el=>el.value="");
+    const period=document.querySelector('#csvAddPanel [data-csv-key="Perioda kontrol"]');
+    if(period) period.value="12";
+    const stav=document.querySelector('#csvAddPanel [data-csv-key="Stav_kontroly"]');
+    if(stav) stav.value="OK / ostatní";
+    status("Formulář vymazán.");
+  }
+
+  function bind(){
+    const add=document.getElementById("addSiteBtn");
+    if(add){
+      add.onclick=openPanel;
+      add.addEventListener("click", openPanel, true);
     }
-    csvBindFinal();
+    const leftDownload=document.getElementById("downloadCsvDataBtn") || document.getElementById("downloadUpdatedCsvBtn");
+    if(leftDownload) leftDownload.onclick=downloadCsv;
   }
-  function csvBindFinal(){
-    const add=document.getElementById("addSiteBtn"); if(add)add.onclick=function(e){if(e)e.preventDefault();csvOpenFormFinal();return false};
-    const save=document.getElementById("saveNewSiteBtn"); if(save){save.onclick=csvSaveFinal;save.addEventListener("click",csvSaveFinal,true)}
-    const dl=document.getElementById("downloadCsvDataBtn"); if(dl)dl.onclick=csvDownloadFinal;
-    const calc=document.getElementById("csvFinalCalcGps"); if(calc)calc.onclick=csvCalcGpsFinal;
-    const find=document.getElementById("csvFinalFindMap"); if(find)find.onclick=csvFindMapFinal;
-    const close=document.getElementById("closeDrawer"); if(close)close.onclick=function(e){if(e)e.preventDefault();const d=document.getElementById("drawer");if(d)d.classList.remove("open","adding-new-site");return false};
-    const cancel=document.getElementById("cancelNewSiteBtn"); if(cancel)cancel.onclick=function(e){if(e)e.preventDefault();const d=document.getElementById("drawer");if(d)d.classList.remove("open","adding-new-site");return false};
-  }
-  if(typeof openNewSiteForm==="function"&&!window.__csvOriginalOpenNewSiteForm){
-    window.__csvOriginalOpenNewSiteForm=openNewSiteForm;
-    const wrapped=function(){return csvOpenFormFinal()}; wrapped.__csvOriginal=window.__csvOriginalOpenNewSiteForm; openNewSiteForm=wrapped;
-  }
-  try{ if(typeof loadExtraSites==="function") loadExtraSites=async function(){extraSites=[]}; }catch(e){}
-  document.addEventListener("DOMContentLoaded",csvBindFinal);
-  setTimeout(csvBindFinal,100); setTimeout(csvBindFinal,500); setTimeout(csvBindFinal,1500); setInterval(csvBindFinal,1200);
-})();
-</script>
-
-
-<script>
-/* CSV ALL FIELDS FINAL: v přidat nové místo zobrazit všechny sloupce z data.csv */
-(function(){
-  const CSV_ALL_HEADERS = ["Název", "Adresa / umístění", "Adresa_GPS", "Popis_zdroje", "Zdroj", "Kontakt_mapy", "Kontakt", "Kraj", "Poznámky_mapy", "Poznámky", "Příští plánovaná kontrola", "Poslední proběhlá kontrola", "Dní do kontroly", "Stav pro mapu", "Barva bodu", "GPS_lat", "GPS_lon", "GPS_status", "GPS_nalezeno_jako", "GPS_poznámka", "Klíč_adresy", "Poslední_kontrola", "Příští_kontrola", "Dní_do_kontroly", "Stav_kontroly", "Barva_bodu", "Všechny_termíny", "Zdrojový_soubor", "Zdrojový_řádek", "Rok výroby", "Serviska", "Hlídáme sami termín", "Hlavní kontakt", "Jaký zdroj", "Umístění", "DŮLEŽITÁ POZNÁMKA", "Měsíc_1", "Měsíc_2", "Měsíc_3", "Měsíc_4", "Měsíc_5", "Měsíc_6", "Měsíc_7", "Měsíc_8", "Měsíc_9", "Měsíc_10", "Měsíc_11", "Měsíc_12", "Sloupec_21", "Cena FZ", "Faktura na", "Protokol s fakturou na", "Smlouva ano/ne", "Sloupec_27", "Sloupec_28", "Sloupec_29", "Sloupec_30", "Sloupec_31", "Sloupec_32", "Sloupec_33", "Sloupec_34", "Sloupec_35", "Sloupec_36", "Sloupec_37", "Sloupec_38", "Sloupec_39", "Sloupec_40", "Sloupec_41", "Sloupec_42", "Sloupec_43", "Sloupec_44", "Sloupec_45", "Sloupec_46", "Sloupec_47", "Sloupec_48", "Sloupec_49", "Sloupec_50", "Sloupec_51", "Sloupec_52", "Sloupec_53", "Sloupec_54", "Sloupec_55", "Sloupec_56", "Sloupec_57", "Sloupec_58", "Sloupec_59", "Sloupec_60", "Sloupec_61", "Sloupec_62", "Sloupec_63", "Sloupec_64", "Sloupec_65", "Sloupec_66", "Sloupec_67", "Sloupec_68", "Sloupec_69", "Sloupec_70", "Sloupec_71", "Sloupec_72", "Sloupec_73", "Sloupec_74", "Sloupec_75", "Sloupec_76", "Sloupec_77", "Sloupec_78", "Sloupec_79", "Sloupec_80", "Sloupec_81", "Sloupec_82", "Sloupec_83", "Sloupec_84", "Sloupec_85", "Sloupec_86", "Sloupec_87", "Sloupec_88", "Sloupec_89", "Sloupec_90", "Sloupec_91", "Sloupec_92", "Sloupec_93", "Sloupec_94", "Počet_termínů", "Umístění zdroje", "Sloupec_8", "Cena FZ v Kč", "Protokol na", "Adresa_GPS_původní", "Adresa_GPS_puvodni_pred_zjednodusenim"];
-
-  const NICE_LABELS = {
-    "GPS_lat":"GPS lat",
-    "GPS_lon":"GPS lon",
-    "Popis_zdroje":"Popis zdroje",
-    "Kontakt_mapy":"Kontakt mapy",
-    "Poznámky_mapy":"Poznámky mapy",
-    "DŮLEŽITÁ POZNÁMKA":"Důležité poznámky",
-    "Příští_kontrola":"Příští kontrola",
-    "Poslední_kontrola":"Poslední kontrola",
-    "Dní_do_kontroly":"Dní do kontroly",
-    "Stav_kontroly":"Stav kontroly",
-    "Barva_bodu":"Barva bodu",
-    "Hlídáme sami termín":"Hlídáme sami termín",
-    "Smlouva ano/ne":"Smlouva ano/ne",
-    "Perioda kontrol":"Perioda kontrol"
-  };
-
-  const TEXTAREA_KEYS = new Set([
-    "Poznámky","Poznámky_mapy","DŮLEŽITÁ POZNÁMKA","GPS_poznámka",
-    "Všechny_termíny","Další informace","Vlastní data"
-  ]);
-
-  const SELECTS = {
-    "Serviska":["","ano","ne"],
-    "Smlouva ano/ne":["","ano","ne"],
-    "Hlídáme sami termín":["","ano","ne"],
-    "Hlídáme kontroly sami":["","ano","ne"],
-    "Perioda kontrol":["","6","12"],
-    "Barva bodu":["","červená","oranžová","žlutá","zelená","růžová"],
-    "Barva_bodu":["","červená","oranžová","žlutá","zelená","růžová"],
-    "Stav_kontroly":["","OK / ostatní","Propadlá kontrola","1–30 dní k termínu","Kontrola objednaná","Hlídáme termín sami"],
-    "Stav pro mapu":["","OK / ostatní","Propadlá kontrola","1–30 dní k termínu","Kontrola objednaná","Hlídáme termín sami"]
-  };
-
-  function escHtml(v){
-    return String(v ?? "").replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
-  }
-
-  function labelFor(k){
-    return NICE_LABELS[k] || k;
-  }
-
-  function fieldHtml(k){
-    const label = escHtml(labelFor(k));
-    const key = escHtml(k);
-    const lower = String(k).toLowerCase();
-
-    if(SELECTS[k]){
-      const opts = SELECTS[k].map(v=>`<option value="${escHtml(v)}">${escHtml(v || "")}</option>`).join("");
-      return `<div><label>${label}</label><select data-new-key="${key}">${opts}</select></div>`;
-    }
-
-    if(TEXTAREA_KEYS.has(k) || lower.includes("poznám") || lower.includes("termin") || lower.includes("termín")){
-      return `<div class="full"><label>${label}</label><textarea data-new-key="${key}"></textarea></div>`;
-    }
-
-    const type = (lower.includes("kontrola") || lower.includes("datum")) ? "text" : "text";
-    return `<div><label>${label}</label><input type="${type}" data-new-key="${key}"></div>`;
-  }
-
-  function renderAllCsvFields(){
-    const box = document.getElementById("newAllFieldsBox");
-    if(!box) return;
-
-    box.classList.add("new-data-grid");
-    box.innerHTML = `
-      <div class="full csv-version-box">
-        Všechna data z data.csv – vyplň jen to, co potřebuješ. Prázdné kolonky se do nového řádku neuloží.
-      </div>
-      ${CSV_ALL_HEADERS.map(fieldHtml).join("")}
-    `;
-
-    // Předvyplnit některé bezpečné výchozí hodnoty
-    const period = box.querySelector('[data-new-key="Perioda kontrol"]');
-    if(period && !period.value) period.value = "12";
-    const stav = box.querySelector('[data-new-key="Stav_kontroly"]');
-    if(stav && !stav.value) stav.value = "OK / ostatní";
-  }
-
-  function bindAllFieldsOpen(){
-    const add = document.getElementById("addSiteBtn");
-    if(add && !add.__allCsvFieldsBound){
-      add.__allCsvFieldsBound = true;
-      add.addEventListener("click", () => {
-        setTimeout(renderAllCsvFields, 80);
-        setTimeout(renderAllCsvFields, 350);
-      }, true);
-    }
-
-    // Když se formulář otevře jinou cestou, taky překreslit
-    const drawer = document.getElementById("drawer");
-    if(drawer && drawer.classList.contains("adding-new-site")){
-      const box = document.getElementById("newAllFieldsBox");
-      if(box && !box.__allCsvFieldsRendered){
-        box.__allCsvFieldsRendered = true;
-        renderAllCsvFields();
-      }
-    }
-  }
-
-  // Přepiš původní renderNewSiteAllFields, aby už nikdy nevrátil jen krátký seznam
-  window.renderNewSiteAllFields = renderAllCsvFields;
-  try{ renderNewSiteAllFields = renderAllCsvFields; }catch(e){}
-
-  document.addEventListener("DOMContentLoaded", bindAllFieldsOpen);
-  setTimeout(bindAllFieldsOpen, 100);
-  setTimeout(bindAllFieldsOpen, 600);
-  setInterval(bindAllFieldsOpen, 1000);
-})();
-</script>
-
-
-<script>
-/* FORCE ALL CSV FIELDS FIX */
-(function(){
-  function forceRenderFields(){
-    const box = document.getElementById("newAllFieldsBox");
-    if(!box) return;
-
-    // if already rendered and has inputs, keep it
-    if(box.querySelector("input, textarea, select")) return;
-
-    const headers = (window.CSV_ALL_HEADERS || []).length ? window.CSV_ALL_HEADERS : [
-      "Název","Adresa / umístění","GPS_lat","GPS_lon","Popis_zdroje",
-      "Zdroj","Kontakt","Kraj","Poznámky","Rok výroby",
-      "Serviska","Cena FZ","Perioda kontrol","Hlídáme sami termín",
-      "DŮLEŽITÁ POZNÁMKA"
-    ];
-
-    box.innerHTML = headers.map(h=>{
-      const lower = String(h).toLowerCase();
-
-      if(lower.includes("poznám")){
-        return `<div class="full"><label>${h}</label><textarea data-new-key="${h}"></textarea></div>`;
-      }
-
-      if(h==="Serviska" || h==="Hlídáme sami termín"){
-        return `<div><label>${h}</label>
-          <select data-new-key="${h}">
-            <option value=""></option>
-            <option value="ano">ano</option>
-            <option value="ne">ne</option>
-          </select>
-        </div>`;
-      }
-
-      if(h==="Perioda kontrol"){
-        return `<div><label>${h}</label>
-          <select data-new-key="${h}">
-            <option value="6">6</option>
-            <option value="12" selected>12</option>
-          </select>
-        </div>`;
-      }
-
-      return `<div><label>${h}</label><input data-new-key="${h}"></div>`;
-    }).join("");
-
-    box.style.display = "grid";
-    box.style.gridTemplateColumns = "1fr 1fr";
-    box.style.gap = "10px";
-  }
-
-  function bindForce(){
-    const addBtn = document.getElementById("addSiteBtn");
-    if(addBtn && !addBtn.__forceFieldsBound){
-      addBtn.__forceFieldsBound = true;
-      addBtn.addEventListener("click", ()=>{
-        setTimeout(forceRenderFields, 50);
-        setTimeout(forceRenderFields, 300);
-        setTimeout(forceRenderFields, 800);
-      }, true);
-    }
-  }
-
-  document.addEventListener("DOMContentLoaded", bindForce);
-  setTimeout(bindForce, 200);
-  setInterval(bindForce, 1500);
+  document.addEventListener("DOMContentLoaded",bind);
+  setTimeout(bind,100);
+  setTimeout(bind,500);
+  setTimeout(bind,1500);
+  setInterval(bind,1200);
 })();
 </script>
 
