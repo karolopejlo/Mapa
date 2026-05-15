@@ -3949,5 +3949,124 @@ setTimeout(()=>{
 })();
 </script>
 
+
+<script>
+/* CSV ALL FIELDS FINAL: v přidat nové místo zobrazit všechny sloupce z data.csv */
+(function(){
+  const CSV_ALL_HEADERS = ["Název", "Adresa / umístění", "Adresa_GPS", "Popis_zdroje", "Zdroj", "Kontakt_mapy", "Kontakt", "Kraj", "Poznámky_mapy", "Poznámky", "Příští plánovaná kontrola", "Poslední proběhlá kontrola", "Dní do kontroly", "Stav pro mapu", "Barva bodu", "GPS_lat", "GPS_lon", "GPS_status", "GPS_nalezeno_jako", "GPS_poznámka", "Klíč_adresy", "Poslední_kontrola", "Příští_kontrola", "Dní_do_kontroly", "Stav_kontroly", "Barva_bodu", "Všechny_termíny", "Zdrojový_soubor", "Zdrojový_řádek", "Rok výroby", "Serviska", "Hlídáme sami termín", "Hlavní kontakt", "Jaký zdroj", "Umístění", "DŮLEŽITÁ POZNÁMKA", "Měsíc_1", "Měsíc_2", "Měsíc_3", "Měsíc_4", "Měsíc_5", "Měsíc_6", "Měsíc_7", "Měsíc_8", "Měsíc_9", "Měsíc_10", "Měsíc_11", "Měsíc_12", "Sloupec_21", "Cena FZ", "Faktura na", "Protokol s fakturou na", "Smlouva ano/ne", "Sloupec_27", "Sloupec_28", "Sloupec_29", "Sloupec_30", "Sloupec_31", "Sloupec_32", "Sloupec_33", "Sloupec_34", "Sloupec_35", "Sloupec_36", "Sloupec_37", "Sloupec_38", "Sloupec_39", "Sloupec_40", "Sloupec_41", "Sloupec_42", "Sloupec_43", "Sloupec_44", "Sloupec_45", "Sloupec_46", "Sloupec_47", "Sloupec_48", "Sloupec_49", "Sloupec_50", "Sloupec_51", "Sloupec_52", "Sloupec_53", "Sloupec_54", "Sloupec_55", "Sloupec_56", "Sloupec_57", "Sloupec_58", "Sloupec_59", "Sloupec_60", "Sloupec_61", "Sloupec_62", "Sloupec_63", "Sloupec_64", "Sloupec_65", "Sloupec_66", "Sloupec_67", "Sloupec_68", "Sloupec_69", "Sloupec_70", "Sloupec_71", "Sloupec_72", "Sloupec_73", "Sloupec_74", "Sloupec_75", "Sloupec_76", "Sloupec_77", "Sloupec_78", "Sloupec_79", "Sloupec_80", "Sloupec_81", "Sloupec_82", "Sloupec_83", "Sloupec_84", "Sloupec_85", "Sloupec_86", "Sloupec_87", "Sloupec_88", "Sloupec_89", "Sloupec_90", "Sloupec_91", "Sloupec_92", "Sloupec_93", "Sloupec_94", "Počet_termínů", "Umístění zdroje", "Sloupec_8", "Cena FZ v Kč", "Protokol na", "Adresa_GPS_původní", "Adresa_GPS_puvodni_pred_zjednodusenim"];
+
+  const NICE_LABELS = {
+    "GPS_lat":"GPS lat",
+    "GPS_lon":"GPS lon",
+    "Popis_zdroje":"Popis zdroje",
+    "Kontakt_mapy":"Kontakt mapy",
+    "Poznámky_mapy":"Poznámky mapy",
+    "DŮLEŽITÁ POZNÁMKA":"Důležité poznámky",
+    "Příští_kontrola":"Příští kontrola",
+    "Poslední_kontrola":"Poslední kontrola",
+    "Dní_do_kontroly":"Dní do kontroly",
+    "Stav_kontroly":"Stav kontroly",
+    "Barva_bodu":"Barva bodu",
+    "Hlídáme sami termín":"Hlídáme sami termín",
+    "Smlouva ano/ne":"Smlouva ano/ne",
+    "Perioda kontrol":"Perioda kontrol"
+  };
+
+  const TEXTAREA_KEYS = new Set([
+    "Poznámky","Poznámky_mapy","DŮLEŽITÁ POZNÁMKA","GPS_poznámka",
+    "Všechny_termíny","Další informace","Vlastní data"
+  ]);
+
+  const SELECTS = {
+    "Serviska":["","ano","ne"],
+    "Smlouva ano/ne":["","ano","ne"],
+    "Hlídáme sami termín":["","ano","ne"],
+    "Hlídáme kontroly sami":["","ano","ne"],
+    "Perioda kontrol":["","6","12"],
+    "Barva bodu":["","červená","oranžová","žlutá","zelená","růžová"],
+    "Barva_bodu":["","červená","oranžová","žlutá","zelená","růžová"],
+    "Stav_kontroly":["","OK / ostatní","Propadlá kontrola","1–30 dní k termínu","Kontrola objednaná","Hlídáme termín sami"],
+    "Stav pro mapu":["","OK / ostatní","Propadlá kontrola","1–30 dní k termínu","Kontrola objednaná","Hlídáme termín sami"]
+  };
+
+  function escHtml(v){
+    return String(v ?? "").replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  function labelFor(k){
+    return NICE_LABELS[k] || k;
+  }
+
+  function fieldHtml(k){
+    const label = escHtml(labelFor(k));
+    const key = escHtml(k);
+    const lower = String(k).toLowerCase();
+
+    if(SELECTS[k]){
+      const opts = SELECTS[k].map(v=>`<option value="${escHtml(v)}">${escHtml(v || "")}</option>`).join("");
+      return `<div><label>${label}</label><select data-new-key="${key}">${opts}</select></div>`;
+    }
+
+    if(TEXTAREA_KEYS.has(k) || lower.includes("poznám") || lower.includes("termin") || lower.includes("termín")){
+      return `<div class="full"><label>${label}</label><textarea data-new-key="${key}"></textarea></div>`;
+    }
+
+    const type = (lower.includes("kontrola") || lower.includes("datum")) ? "text" : "text";
+    return `<div><label>${label}</label><input type="${type}" data-new-key="${key}"></div>`;
+  }
+
+  function renderAllCsvFields(){
+    const box = document.getElementById("newAllFieldsBox");
+    if(!box) return;
+
+    box.classList.add("new-data-grid");
+    box.innerHTML = `
+      <div class="full csv-version-box">
+        Všechna data z data.csv – vyplň jen to, co potřebuješ. Prázdné kolonky se do nového řádku neuloží.
+      </div>
+      ${CSV_ALL_HEADERS.map(fieldHtml).join("")}
+    `;
+
+    // Předvyplnit některé bezpečné výchozí hodnoty
+    const period = box.querySelector('[data-new-key="Perioda kontrol"]');
+    if(period && !period.value) period.value = "12";
+    const stav = box.querySelector('[data-new-key="Stav_kontroly"]');
+    if(stav && !stav.value) stav.value = "OK / ostatní";
+  }
+
+  function bindAllFieldsOpen(){
+    const add = document.getElementById("addSiteBtn");
+    if(add && !add.__allCsvFieldsBound){
+      add.__allCsvFieldsBound = true;
+      add.addEventListener("click", () => {
+        setTimeout(renderAllCsvFields, 80);
+        setTimeout(renderAllCsvFields, 350);
+      }, true);
+    }
+
+    // Když se formulář otevře jinou cestou, taky překreslit
+    const drawer = document.getElementById("drawer");
+    if(drawer && drawer.classList.contains("adding-new-site")){
+      const box = document.getElementById("newAllFieldsBox");
+      if(box && !box.__allCsvFieldsRendered){
+        box.__allCsvFieldsRendered = true;
+        renderAllCsvFields();
+      }
+    }
+  }
+
+  // Přepiš původní renderNewSiteAllFields, aby už nikdy nevrátil jen krátký seznam
+  window.renderNewSiteAllFields = renderAllCsvFields;
+  try{ renderNewSiteAllFields = renderAllCsvFields; }catch(e){}
+
+  document.addEventListener("DOMContentLoaded", bindAllFieldsOpen);
+  setTimeout(bindAllFieldsOpen, 100);
+  setTimeout(bindAllFieldsOpen, 600);
+  setInterval(bindAllFieldsOpen, 1000);
+})();
+</script>
+
 </body>
 </html>
