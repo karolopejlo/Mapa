@@ -4087,6 +4087,9 @@ setTimeout(()=>{
   // Po uložení nového místa se openDetail taky nejdřív vrátí na normální šablonu.
   window.__restoreDrawerTemplateForDetail = restoreDrawerTemplate;
 })();
+
+window.normalizeSiteRows = normalize;
+window.applySiteEditToRow = applyEditToRow;
 </script>
 
 
@@ -4238,12 +4241,15 @@ setTimeout(()=>{
     }catch(e){status("Chyba mapy: "+e.message,true);}
   }
   function rowFromDoc(docId, d){
+    const normalizeRows = window.normalizeSiteRows || window.normalize;
+    const applyRowEdit = window.applySiteEditToRow || window.applyEditToRow || (row => row);
+    if(typeof normalizeRows !== "function") throw new Error("normalizeSiteRows není dostupné");
     const raw=Object.assign({}, d.raw || {});
     raw["Firebase_doc_id"]=docId;
     if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
-    const r=normalize([raw])[0];
+    const r=normalizeRows([raw])[0];
     r.id=raw["Klíč_adresy"]; r.raw=raw; r.firebaseDocId=docId;
-    return applyEditToRow(r);
+    return applyRowEdit(r);
   }
   async function loadFirebaseSites(openDocId=null){
     const database=db(); if(!database){sideStatus("Firebase není dostupný.",true);return;}
@@ -4252,7 +4258,8 @@ setTimeout(()=>{
       const snap=await database.collection(FB_COLLECTION).get();
       const firebaseRows=[]; snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
       firebaseRows.forEach((r,i)=>r.i=i);
-      csvRows=firebaseRows; rows=csvRows.map((r,i)=>{r.i=i; return applyEditToRow(r);}).filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id));
+      const applyRowEdit = window.applySiteEditToRow || window.applyEditToRow || (row => row);
+      csvRows=firebaseRows; rows=csvRows.map((r,i)=>{r.i=i; return applyRowEdit(r);}).filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id));
       if(typeof filters==="function") filters(); if(typeof render==="function") render();
       sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${rows.length} bodů z Firebase.`);
       if(openDocId){const idx=rows.findIndex(r=>r.firebaseDocId===openDocId); if(idx>=0){const r=rows[idx]; if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) map.setView([r.lat,r.lon],14); setTimeout(()=>openDetail(idx),150);}}
