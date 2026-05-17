@@ -2126,6 +2126,19 @@ window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
   }
   return rows;
 };
+window.upsertFirebaseSiteRow = function(firebaseRow, openDocId=null){
+  if(!firebaseRow) return rows;
+  const nextRows = csvRows.slice();
+  const existingIndex = nextRows.findIndex(r=>{
+    if(firebaseRow.firebaseDocId && r.firebaseDocId===firebaseRow.firebaseDocId) return true;
+    return r.id && firebaseRow.id && r.id===firebaseRow.id;
+  });
+
+  if(existingIndex>=0) nextRows[existingIndex]=firebaseRow;
+  else nextRows.push(firebaseRow);
+
+  return window.setFirebaseSiteRows(nextRows, openDocId || firebaseRow.firebaseDocId || firebaseRow.id);
+};
 window.getCurrentCsvRows = function(){
   return originalCsvRows.length ? originalCsvRows : csvRows;
 };
@@ -2215,10 +2228,44 @@ async function dataGpsToAddress(){
 }
 
 
+function isPlaceholderDataKey(k){
+  return /^sloupec\s*\d+$/i.test(dataNormFixed(k));
+}
+
+function isFirebaseUnifiedRow(r){
+  const raw = (r && r.raw) || {};
+  return !!(r && r.firebaseDocId) || safe(raw["Zdroj_dat"]).toLowerCase().includes("firebase");
+}
+
+function orderedEditableKeys(r){
+  const raw = (r && r.raw) || {};
+  const out = orderedFixedKeys(raw);
+
+  if(isFirebaseUnifiedRow(r) && Array.isArray(window.firebaseUnifiedEditableKeys)){
+    window.firebaseUnifiedEditableKeys.forEach(k=>{
+      if(!out.some(existing=>dataNormFixed(existing)===dataNormFixed(k))){
+        out.push(k);
+      }
+    });
+  }
+
+  return out;
+}
+
+function shouldShowEmptyEditableField(k,label){
+  if(isPlaceholderDataKey(k)) return false;
+  if(hideDataFixed(k)) return false;
+  const n=dataNormFixed(k);
+  const l=dataNormFixed(label);
+  if(n==="adresa gps" || l==="vyrobni cislo") return true;
+  return true;
+}
+
 function editableDataTable(r){
   const raw = r.raw || {};
   const rows = [];
   const seen = new Set();
+  const showEmptyEditable = isFirebaseUnifiedRow(r);
 
   function inputField(k,v,label){
     const n=dataNormFixed(k);
@@ -2246,7 +2293,7 @@ function editableDataTable(r){
       : `<input data-key="${esc(k)}" value="${esc(v)}">`;
   }
 
-  orderedFixedKeys(raw).forEach(k=>{
+  orderedEditableKeys(r).forEach(k=>{
     if(hideDataFixed(k)) return;
 
     let v=safe(raw[k]);
@@ -2255,7 +2302,7 @@ function editableDataTable(r){
     if(dataNormFixed(k)==="adresa gps") v="";
     if(dataNormFixed(label)==="vyrobni cislo") v="";
 
-    if(!v && dataNormFixed(k)!=="adresa gps" && dataNormFixed(label)!=="vyrobni cislo") return;
+    if(!v && dataNormFixed(k)!=="adresa gps" && dataNormFixed(label)!=="vyrobni cislo" && !(showEmptyEditable && shouldShowEmptyEditableField(k,label))) return;
 
     const key=dataNormFixed(label)+"::"+valNormFixed(v);
     if(seen.has(key)) return;
@@ -2547,8 +2594,10 @@ function hideDataFixed(k){
   if(n==="stav kontroly") return true;
   if(n==="stav pro mapu") return true;
   if(n==="zdrojovy radek") return true;
+  if(n==="zdroj dat") return true;
   if(n==="jezdit bez objednavky") return true;
   if(n==="bez objednavky") return true;
+  if(n==="perioda kontrol") return true;
 
   if(n==="pristi planovana kontrola") return true;
   if(n==="posledni probehla kontrola") return true;
@@ -4205,7 +4254,8 @@ setTimeout(()=>{
 <script>
 /* FIREBASE UNIFIED MODE */
 (function(){
-  const FB_HEADERS = ["Název", "Adresa / umístění", "Adresa_GPS", "Popis_zdroje", "Zdroj", "Kontakt_mapy", "Kontakt", "Kraj", "Poznámky_mapy", "Poznámky", "Příští plánovaná kontrola", "Poslední proběhlá kontrola", "Dní do kontroly", "Stav pro mapu", "Barva bodu", "GPS_lat", "GPS_lon", "GPS_status", "GPS_nalezeno_jako", "GPS_poznámka", "Klíč_adresy", "Poslední_kontrola", "Příští_kontrola", "Dní_do_kontroly", "Stav_kontroly", "Barva_bodu", "Všechny_termíny", "Zdrojový_soubor", "Zdrojový_řádek", "Rok výroby", "Serviska", "Hlídáme sami termín", "Hlavní kontakt", "Jaký zdroj", "Umístění", "DŮLEŽITÁ POZNÁMKA", "Měsíc_1", "Měsíc_2", "Měsíc_3", "Měsíc_4", "Měsíc_5", "Měsíc_6", "Měsíc_7", "Měsíc_8", "Měsíc_9", "Měsíc_10", "Měsíc_11", "Měsíc_12", "Sloupec_21", "Cena FZ", "Faktura na", "Protokol s fakturou na", "Smlouva ano/ne", "Sloupec_27", "Sloupec_28", "Sloupec_29", "Sloupec_30", "Sloupec_31", "Sloupec_32", "Sloupec_33", "Sloupec_34", "Sloupec_35", "Sloupec_36", "Sloupec_37", "Sloupec_38", "Sloupec_39", "Sloupec_40", "Sloupec_41", "Sloupec_42", "Sloupec_43", "Sloupec_44", "Sloupec_45", "Sloupec_46", "Sloupec_47", "Sloupec_48", "Sloupec_49", "Sloupec_50", "Sloupec_51", "Sloupec_52", "Sloupec_53", "Sloupec_54", "Sloupec_55", "Sloupec_56", "Sloupec_57", "Sloupec_58", "Sloupec_59", "Sloupec_60", "Sloupec_61", "Sloupec_62", "Sloupec_63", "Sloupec_64", "Sloupec_65", "Sloupec_66", "Sloupec_67", "Sloupec_68", "Sloupec_69", "Sloupec_70", "Sloupec_71", "Sloupec_72", "Sloupec_73", "Sloupec_74", "Sloupec_75", "Sloupec_76", "Sloupec_77", "Sloupec_78", "Sloupec_79", "Sloupec_80", "Sloupec_81", "Sloupec_82", "Sloupec_83", "Sloupec_84", "Sloupec_85", "Sloupec_86", "Sloupec_87", "Sloupec_88", "Sloupec_89", "Sloupec_90", "Sloupec_91", "Sloupec_92", "Sloupec_93", "Sloupec_94", "Počet_termínů", "Umístění zdroje", "Sloupec_8", "Cena FZ v Kč", "Protokol na", "Adresa_GPS_původní", "Adresa_GPS_puvodni_pred_zjednodusenim"];
+  const FB_HEADERS = ["Název", "Adresa / umístění", "Adresa_GPS", "Popis_zdroje", "Zdroj", "Kontakt_mapy", "Kontakt", "Kraj", "Poznámky_mapy", "Poznámky", "Příští plánovaná kontrola", "Poslední proběhlá kontrola", "Dní do kontroly", "Stav pro mapu", "Barva bodu", "GPS_lat", "GPS_lon", "GPS_status", "GPS_nalezeno_jako", "GPS_poznámka", "Klíč_adresy", "Poslední_kontrola", "Příští_kontrola", "Dní_do_kontroly", "Stav_kontroly", "Barva_bodu", "Všechny_termíny", "Zdrojový_soubor", "Zdrojový_řádek", "Rok výroby", "Serviska", "Perioda kontrol", "Hlídáme sami termín", "Hlavní kontakt", "Jaký zdroj", "Umístění", "DŮLEŽITÁ POZNÁMKA", "Měsíc_1", "Měsíc_2", "Měsíc_3", "Měsíc_4", "Měsíc_5", "Měsíc_6", "Měsíc_7", "Měsíc_8", "Měsíc_9", "Měsíc_10", "Měsíc_11", "Měsíc_12", "Sloupec_21", "Cena FZ", "Faktura na", "Protokol s fakturou na", "Smlouva ano/ne", "Sloupec_27", "Sloupec_28", "Sloupec_29", "Sloupec_30", "Sloupec_31", "Sloupec_32", "Sloupec_33", "Sloupec_34", "Sloupec_35", "Sloupec_36", "Sloupec_37", "Sloupec_38", "Sloupec_39", "Sloupec_40", "Sloupec_41", "Sloupec_42", "Sloupec_43", "Sloupec_44", "Sloupec_45", "Sloupec_46", "Sloupec_47", "Sloupec_48", "Sloupec_49", "Sloupec_50", "Sloupec_51", "Sloupec_52", "Sloupec_53", "Sloupec_54", "Sloupec_55", "Sloupec_56", "Sloupec_57", "Sloupec_58", "Sloupec_59", "Sloupec_60", "Sloupec_61", "Sloupec_62", "Sloupec_63", "Sloupec_64", "Sloupec_65", "Sloupec_66", "Sloupec_67", "Sloupec_68", "Sloupec_69", "Sloupec_70", "Sloupec_71", "Sloupec_72", "Sloupec_73", "Sloupec_74", "Sloupec_75", "Sloupec_76", "Sloupec_77", "Sloupec_78", "Sloupec_79", "Sloupec_80", "Sloupec_81", "Sloupec_82", "Sloupec_83", "Sloupec_84", "Sloupec_85", "Sloupec_86", "Sloupec_87", "Sloupec_88", "Sloupec_89", "Sloupec_90", "Sloupec_91", "Sloupec_92", "Sloupec_93", "Sloupec_94", "Počet_termínů", "Umístění zdroje", "Sloupec_8", "Cena FZ v Kč", "Protokol na", "Adresa_GPS_původní", "Adresa_GPS_puvodni_pred_zjednodusenim"];
+  window.firebaseUnifiedEditableKeys = FB_HEADERS.filter(k=>!/^Sloupec_\d+$/i.test(k));
   const FB_COLLECTION = "sitesUnified";
   let previewMarker = null;
 
@@ -4348,6 +4398,29 @@ setTimeout(()=>{
     if(!raw["Zdroj_dat"]) raw["Zdroj_dat"]="Firebase";
     return raw;
   }
+  function completeFirebaseRaw(raw, docId=null){
+    const out={};
+    FB_HEADERS.forEach(k=>out[k]="");
+    Object.assign(out, raw || {});
+
+    if(val(out["Adresa / umístění"]) && !val(out["Adresa_GPS"])) out["Adresa_GPS"]=out["Adresa / umístění"];
+    if(val(out["Adresa_GPS"]) && !val(out["Adresa / umístění"])) out["Adresa / umístění"]=out["Adresa_GPS"];
+    if(val(out["Adresa / umístění"]) && !val(out["Název"])) out["Název"]=out["Adresa / umístění"];
+    if(val(out["Kontakt"]) && !val(out["Kontakt_mapy"])) out["Kontakt_mapy"]=out["Kontakt"];
+    if(val(out["Kontakt_mapy"]) && !val(out["Kontakt"])) out["Kontakt"]=out["Kontakt_mapy"];
+    if(val(out["Popis_zdroje"]) && !val(out["Jaký zdroj"])) out["Jaký zdroj"]=out["Popis_zdroje"];
+    if(val(out["Poznámky"]) && !val(out["Poznámky_mapy"])) out["Poznámky_mapy"]=out["Poznámky"];
+    if(val(out["Poznámky_mapy"]) && !val(out["Poznámky"])) out["Poznámky"]=out["Poznámky_mapy"];
+    if(!val(out["Perioda kontrol"])) out["Perioda kontrol"]="12";
+    if(!val(out["Stav_kontroly"])) out["Stav_kontroly"]="OK / ostatní";
+    if(!val(out["Stav pro mapu"])) out["Stav pro mapu"]=out["Stav_kontroly"];
+    if(!val(out["Zdroj_dat"])) out["Zdroj_dat"]="Firebase";
+    if(docId){
+      out["Firebase_doc_id"]=docId;
+      if(!val(out["Klíč_adresy"])) out["Klíč_adresy"]="firebase_"+docId;
+    }
+    return out;
+  }
   async function calcGps(){
     const raw=getRaw(); const address=raw["Adresa_GPS"] || raw["Adresa / umístění"] || raw["Název"];
     if(!address){status("Vyplň nejdřív adresu / umístění.",true);return;}
@@ -4427,7 +4500,7 @@ setTimeout(()=>{
     const database=db(), u=user();
     if(!database){status("Firebase není dostupný nebo není inicializovaný.",true);return false;}
     if(!u){status("Nejdřív se přihlaš přes Google.",true);return false;}
-    const raw=getRaw(); const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
+    let raw=getRaw(); const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
     if(!raw["Název"] && !raw["Adresa / umístění"]){status("Vyplň Název nebo Adresa / umístění.",true);return false;}
     if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Doplň GPS_lat a GPS_lon nebo klikni Dopočítat GPS.",true);return false;}
     raw["GPS_lat"]=String(lat); raw["GPS_lon"]=String(lon);
@@ -4440,9 +4513,33 @@ setTimeout(()=>{
         return false;
       }
       status("Ukládám bod do Firebase...");
-      const ref=await database.collection(FB_COLLECTION).add({raw:raw,dedupKeys:dedupKeys(raw),createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),createdBy:u.email||"",updatedBy:u.email||"",name:raw["Název"]||raw["Adresa / umístění"]||"",lat:lat,lon:lon});
-      raw["Klíč_adresy"]="firebase_"+ref.id; await ref.set({raw:raw},{merge:true});
-      status("Bod uložen. Otevírám detail..."); closePanel(); await loadFirebaseSites(ref.id); return false;
+      const ref=database.collection(FB_COLLECTION).doc();
+      raw=completeFirebaseRaw(raw, ref.id);
+      const keys=dedupKeys(raw);
+      const savedData={
+        raw:raw,
+        dedupKeys:keys,
+        createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy:u.email||"",
+        updatedBy:u.email||"",
+        name:raw["Název"]||raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",
+        lat:lat,
+        lon:lon
+      };
+      await ref.set(savedData,{merge:true});
+      const localData={...savedData,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      const row=rowFromDoc(ref.id,localData);
+      status("Bod uložen. Zobrazuji v mapě...");
+      if(previewMarker){try{map.removeLayer(previewMarker);}catch(_e){} previewMarker=null;}
+      closePanel();
+      if(typeof window.upsertFirebaseSiteRow==="function"){
+        window.upsertFirebaseSiteRow(row,ref.id);
+      }else{
+        await loadFirebaseSites(ref.id);
+      }
+      sideStatus("<b>Bod uložen.</b> Nové místo je hned zobrazené v mapě a otevřené v detailu.");
+      return false;
     }catch(e){status("Chyba uložení do Firebase: "+e.message,true);return false;}
   }
   function clearForm(){
