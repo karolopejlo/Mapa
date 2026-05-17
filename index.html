@@ -1488,6 +1488,9 @@ function normalize(data){
   });
 }
 
+window.normalizeSiteRows = normalize;
+window.applySiteEditToRow = applyEditToRow;
+
 async function loadEdits(){
   if(!firebaseReady || !db) return;
   try{
@@ -4087,9 +4090,6 @@ setTimeout(()=>{
   // Po uložení nového místa se openDetail taky nejdřív vrátí na normální šablonu.
   window.__restoreDrawerTemplateForDetail = restoreDrawerTemplate;
 })();
-
-window.normalizeSiteRows = normalize;
-window.applySiteEditToRow = applyEditToRow;
 </script>
 
 
