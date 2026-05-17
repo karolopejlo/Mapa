@@ -2045,6 +2045,26 @@ function filters(){
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
 window.fit=fit;
+window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
+  csvRows = firebaseRows;
+  rows = csvRows
+    .map((r,i)=>{r.i=i; return applyEditToRow(r);})
+    .filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id));
+  filters();
+  render();
+  if(openDocId){
+    const idx=rows.findIndex(r=>r.firebaseDocId===openDocId);
+    if(idx>=0){
+      const r=rows[idx];
+      if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) map.setView([r.lat,r.lon],14);
+      setTimeout(()=>window.openDetail(idx),150);
+    }
+  }
+  return rows;
+};
+window.getCurrentCsvRows = function(){
+  return csvRows;
+};
 
 const duplicateValueAliases = [
   ["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"],
@@ -4258,30 +4278,29 @@ setTimeout(()=>{
       const snap=await database.collection(FB_COLLECTION).get();
       const firebaseRows=[]; snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
       firebaseRows.forEach((r,i)=>r.i=i);
-      const applyRowEdit = window.applySiteEditToRow || window.applyEditToRow || (row => row);
-      csvRows=firebaseRows; rows=csvRows.map((r,i)=>{r.i=i; return applyRowEdit(r);}).filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id));
-      if(typeof filters==="function") filters(); if(typeof render==="function") render();
-      sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${rows.length} bodů z Firebase.`);
-      if(openDocId){const idx=rows.findIndex(r=>r.firebaseDocId===openDocId); if(idx>=0){const r=rows[idx]; if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) map.setView([r.lat,r.lon],14); setTimeout(()=>openDetail(idx),150);}}
+      if(typeof window.setFirebaseSiteRows !== "function") throw new Error("setFirebaseSiteRows není dostupné");
+      const loadedRows=window.setFirebaseSiteRows(firebaseRows, openDocId);
+      sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.`);
     }catch(e){sideStatus("Chyba načtení z Firebase: "+e.message,true);}
   }
   async function migrateCsvToFirebase(){
     const database=db(), u=user();
     if(!database){sideStatus("Firebase není dostupný.",true);return;}
     if(!u){sideStatus("Nejdřív se přihlaš přes Google.",true);return;}
-    if(!Array.isArray(csvRows)||!csvRows.length){sideStatus("CSV ještě není načtené.",true);return;}
+    const sourceRows=typeof window.getCurrentCsvRows==="function" ? window.getCurrentCsvRows() : [];
+    if(!Array.isArray(sourceRows)||!sourceRows.length){sideStatus("CSV ještě není načtené.",true);return;}
     if(!confirm("Opravdu migrovat data.csv do Firebase? Spustí se jednorázový import všech bodů.")) return;
     try{
       sideStatus("Migruji CSV do Firebase...");
       const batchLimit=350; let batch=database.batch(), count=0, batchCount=0;
-      for(let i=0;i<csvRows.length;i++){
-        const raw=Object.assign({}, csvRows[i].raw || {});
+      for(let i=0;i<sourceRows.length;i++){
+        const raw=Object.assign({}, sourceRows[i].raw || {});
         const docId=docIdFromRaw(raw,i);
         if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
         const ref=database.collection(FB_COLLECTION).doc(docId);
         batch.set(ref,{raw:raw,migratedFromCsv:true,csvIndex:i,name:raw["Název"]||raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",lat:num(raw["GPS_lat"]),lon:num(raw["GPS_lon"]),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:u.email||""},{merge:true});
         count++; batchCount++;
-        if(batchCount>=batchLimit){await batch.commit(); sideStatus(`Migrováno ${count} / ${csvRows.length} bodů...`); batch=database.batch(); batchCount=0;}
+        if(batchCount>=batchLimit){await batch.commit(); sideStatus(`Migrováno ${count} / ${sourceRows.length} bodů...`); batch=database.batch(); batchCount=0;}
       }
       if(batchCount>0) await batch.commit();
       sideStatus(`<b>Migrace hotová.</b> Uloženo ${count} bodů do Firebase. Načítám Firebase data...`);
@@ -4375,7 +4394,8 @@ setTimeout(()=>{
     const database = db();
     const u = user();
     if(!database || !u) return;
-    if(!Array.isArray(window.csvRows || csvRows) || !csvRows.length) return;
+    const sourceRows = typeof window.getCurrentCsvRows === "function" ? window.getCurrentCsvRows() : [];
+    if(!Array.isArray(sourceRows) || !sourceRows.length) return;
 
     autoStarted = true;
 
@@ -4394,13 +4414,13 @@ setTimeout(()=>{
 
       showAutoStatus("Firebase je prázdná. Spouštím automatickou migraci data.csv do Firebase...");
 
-      const total = csvRows.length;
+      const total = sourceRows.length;
       let batch = database.batch();
       let batchCount = 0;
       let count = 0;
 
-      for(let i=0;i<csvRows.length;i++){
-        const raw = Object.assign({}, csvRows[i].raw || {});
+      for(let i=0;i<sourceRows.length;i++){
+        const raw = Object.assign({}, sourceRows[i].raw || {});
         const docId = docIdFromRawAuto(raw, i);
 
         if(!raw["Klíč_adresy"]) raw["Klíč_adresy"] = "firebase_" + docId;
