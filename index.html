@@ -1311,7 +1311,7 @@ function addMonths(dateObj, months){
   return d;
 }
 function periodMonths(r){
-  const text=[r.raw?.["Zdrojový_soubor"], r.raw?.["Zdrojovy_soubor"], r.raw?.["Zdroj_dat"], r.raw?.["Perioda"], r.raw?.["period"], r.raw?.["Perioda zkoušky provozuschopnosti"]].join(" ").toLowerCase();
+  const text=[r.raw?.["Zdrojový_soubor"], r.raw?.["Zdrojovy_soubor"], r.raw?.["Zdroj_dat"], r.raw?.["Perioda"], r.raw?.["period"], r.raw?.["Perioda kontrol"], r.raw?.["Perioda_kontrol"], r.raw?.["Četnost kontrol"], r.raw?.["Perioda zkoušky provozuschopnosti"]].join(" ").toLowerCase();
   if(text.includes("12")) return 12;
   if(text.includes("6")) return 6;
   return 6;
@@ -1476,13 +1476,13 @@ function normalize(data){
       adresa, zdroj, kontakt,
       kraj:first(raw,["Kraj"]),
       poznamky:first(raw,["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"]),
-      pristi:first(raw,["Příští_kontrola"]),
-      posledni:first(raw,["Poslední_kontrola"]),
+      pristi:first(raw,["Příští_kontrola","Příští plánovaná kontrola","Příští kontrola"]),
+      posledni:first(raw,["Poslední_kontrola","Poslední proběhlá kontrola","Poslední kontrola"]),
       dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),
-      stav:first(raw,["Stav_kontroly"]),
+      stav:first(raw,["Stav_kontroly","Stav pro mapu"]),
       barva:first(raw,["Barva bodu","Barva_bodu"]),
       ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan")),
-      noOrder:(first(raw,["Hlídáme termín sami","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
+      noOrder:(first(raw,["Hlídáme termín sami","Hlídáme sami termín","Hlídáme kontroly sami","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
     };
     return applyEditToRow(r);
   });
@@ -4402,6 +4402,10 @@ setTimeout(()=>{
     const out={};
     FB_HEADERS.forEach(k=>out[k]="");
     Object.assign(out, raw || {});
+    const sync=(a,b)=>{
+      if(val(out[a]) && !val(out[b])) out[b]=out[a];
+      if(val(out[b]) && !val(out[a])) out[a]=out[b];
+    };
 
     if(val(out["Adresa / umístění"]) && !val(out["Adresa_GPS"])) out["Adresa_GPS"]=out["Adresa / umístění"];
     if(val(out["Adresa_GPS"]) && !val(out["Adresa / umístění"])) out["Adresa / umístění"]=out["Adresa_GPS"];
@@ -4411,9 +4415,14 @@ setTimeout(()=>{
     if(val(out["Popis_zdroje"]) && !val(out["Jaký zdroj"])) out["Jaký zdroj"]=out["Popis_zdroje"];
     if(val(out["Poznámky"]) && !val(out["Poznámky_mapy"])) out["Poznámky_mapy"]=out["Poznámky"];
     if(val(out["Poznámky_mapy"]) && !val(out["Poznámky"])) out["Poznámky"]=out["Poznámky_mapy"];
+    sync("Příští plánovaná kontrola","Příští_kontrola");
+    sync("Poslední proběhlá kontrola","Poslední_kontrola");
+    sync("Dní do kontroly","Dní_do_kontroly");
+    sync("Stav pro mapu","Stav_kontroly");
+    sync("Barva bodu","Barva_bodu");
     if(!val(out["Perioda kontrol"])) out["Perioda kontrol"]="12";
     if(!val(out["Stav_kontroly"])) out["Stav_kontroly"]="OK / ostatní";
-    if(!val(out["Stav pro mapu"])) out["Stav pro mapu"]=out["Stav_kontroly"];
+    sync("Stav pro mapu","Stav_kontroly");
     if(!val(out["Zdroj_dat"])) out["Zdroj_dat"]="Firebase";
     if(docId){
       out["Firebase_doc_id"]=docId;
