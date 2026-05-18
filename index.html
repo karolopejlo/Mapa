@@ -1090,23 +1090,6 @@ Cena FZ: ..."></textarea>
   <p id="newSiteStatus" class="small"></p>
 </div>
 
-
-
-<div class="card service-card">
-<h3>🛠️ Nový servisní záznam</h3>
-<form id="serviceForm">
-<label>Datum kontroly</label><input type="date" id="checkDate" required>
-<label>Technik</label><input id="technician" placeholder="Jméno technika" required>
-<label>Výsledek kontroly</label><select id="result" required><option value="OK">OK</option><option value="Závada">Závada</option><option value="Doporučená oprava">Doporučená oprava</option><option value="Neprovedeno">Neprovedeno</option></select>
-<label>Závady / zjištění</label><textarea id="issues"></textarea>
-<label>Doporučení</label><textarea id="recommendation"></textarea>
-<label>Odkazy na fotky</label><textarea id="photoLinks" placeholder="Každý odkaz na nový řádek"></textarea>
-<button class="primary" type="submit" style="margin-top:12px">Uložit servisní záznam</button>
-<p id="formStatus" class="small"></p>
-</form>
-</div>
-
-
 <div class="card"><h3>Historie záznamů</h3><div id="history" class="small">Zatím nenačteno.</div></div>
 </div>
 
@@ -2029,13 +2012,8 @@ function render(){
   });
   document.getElementById("shownCount").textContent=vis.length;
   document.getElementById("gpsCount").textContent=rows.filter(inCzSk).length;
-  const missing=rows.length-rows.filter(rawGps).length, ignored=rows.filter(rawGps).length-rows.filter(inCzSk).length;
   const box=document.getElementById("gpsBox");
-  if(missing||ignored){
-    box.style.display="";
-    box.className="notice";
-    box.innerHTML=`Chybí GPS u <b>${missing}</b> záznamů. Ignorováno mimo ČR/SR: <b>${ignored}</b>.`;
-  }else{
+  if(box){
     box.style.display="none";
     box.className="notice";
     box.innerHTML="";
@@ -3111,24 +3089,27 @@ document.getElementById("saveEditBtn").onclick=async()=>{
     st.textContent="Úpravy uloženy.";
   }catch(e){st.textContent="Chyba uložení: "+e.message;}
 };
-document.getElementById("serviceForm").addEventListener("submit",async e=>{
-  e.preventDefault();
-  const st=document.getElementById("formStatus");
-  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
-  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
-  if(!selectedSite){st.textContent="Není vybrané místo.";return;}
-  if(!val("protoResetDiag")){
-    st.textContent="Je nutné vyplnit pole Reset diagnostiky.";
-    document.getElementById("protoResetDiag").focus();
-    return;
-  }
+const serviceForm=document.getElementById("serviceForm");
+if(serviceForm){
+  serviceForm.addEventListener("submit",async e=>{
+    e.preventDefault();
+    const st=document.getElementById("formStatus");
+    if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
+    if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+    if(!selectedSite){st.textContent="Není vybrané místo.";return;}
+    if(!val("protoResetDiag")){
+      st.textContent="Je nutné vyplnit pole Reset diagnostiky.";
+      document.getElementById("protoResetDiag").focus();
+      return;
+    }
 
-  try{
-    const {collection,addDoc,serverTimestamp}=fb.fsMod;
-    await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
-    st.textContent="Uloženo."; loadHistory(selectedSite.id);
-  }catch(err){st.textContent="Chyba uložení: "+err.message;}
-});
+    try{
+      const {collection,addDoc,serverTimestamp}=fb.fsMod;
+      await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
+      st.textContent="Uloženo."; loadHistory(selectedSite.id);
+    }catch(err){st.textContent="Chyba uložení: "+err.message;}
+  });
+}
 
 
 function checkbox(id){return document.getElementById(id)?.checked || false;}
