@@ -811,7 +811,6 @@ button,input,select,textarea{
 
 <div class="app" id="mainApp" style="display:none"><aside>
 <h1>Servis záložních zdrojů - mapa FZ</h1>
-<div class="notice ok"><b>FIREBASE DATABÁZE – VŠECHNY BODY</b><br>Po migraci se mapa načítá z Firebase. Nové body se ukládají rovnou do stejné databáze.</div>
 <button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
@@ -825,8 +824,6 @@ button,input,select,textarea{
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
-<button class="secondary" id="migrateCsvFirebaseBtn" style="margin-top:8px">Migrovat data.csv do Firebase</button>
-<button class="secondary" id="reloadFirebaseSitesBtn" style="margin-top:8px">Načíst body z Firebase</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
 <div class="legend">
@@ -1265,8 +1262,8 @@ if(firebaseReady){
   app=appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
   db=fsMod.getFirestore(app);
-  document.getElementById("firebaseBox").className="notice ok";
-  document.getElementById("firebaseBox").innerHTML="Firebase je nastavený. Přihlášení, historie a úpravy jsou aktivní.";
+  const firebaseBox=document.getElementById("firebaseBox");
+  if(firebaseBox) firebaseBox.style.display="none";
   authMod.onAuthStateChanged(auth,user=>{
     currentUser=user;
     document.getElementById("userBox").textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
@@ -2034,8 +2031,15 @@ function render(){
   document.getElementById("gpsCount").textContent=rows.filter(inCzSk).length;
   const missing=rows.length-rows.filter(rawGps).length, ignored=rows.filter(rawGps).length-rows.filter(inCzSk).length;
   const box=document.getElementById("gpsBox");
-  box.className=(missing||ignored)?"notice":"notice ok";
-  box.innerHTML=(missing||ignored)?`Chybí GPS u <b>${missing}</b> záznamů. Ignorováno mimo ČR/SR: <b>${ignored}</b>.`:"GPS jsou doplněné a body mimo ČR/SR jsou vyčištěné.";
+  if(missing||ignored){
+    box.style.display="";
+    box.className="notice";
+    box.innerHTML=`Chybí GPS u <b>${missing}</b> záznamů. Ignorováno mimo ČR/SR: <b>${ignored}</b>.`;
+  }else{
+    box.style.display="none";
+    box.className="notice";
+    box.innerHTML="";
+  }
 }
 function filters(){
   const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
@@ -4290,11 +4294,15 @@ setTimeout(()=>{
   }
   function sideStatus(msg,bad=false){
     let el=document.getElementById("firebaseUnifiedStatus");
+    if(!bad){
+      if(el) el.remove();
+      return;
+    }
     if(!el){
       const gps=document.getElementById("gpsBox");
       if(gps){el=document.createElement("div");el.id="firebaseUnifiedStatus";gps.parentNode.insertBefore(el,gps.nextSibling);}
     }
-    if(el){el.className=bad?"notice err":"notice ok";el.innerHTML=msg;}
+    if(el){el.className="notice err";el.innerHTML=msg;}
   }
   function db(){ if(!window.firebase || !firebase.apps || !firebase.apps.length) return null; try{return firebase.firestore();}catch(e){return null;} }
   function user(){ try{return firebase.auth().currentUser;}catch(e){return null;} }
@@ -4685,16 +4693,20 @@ setTimeout(()=>{
 
   function showAutoStatus(msg, bad=false){
     let el = document.getElementById("autoFirebaseMigrationStatus");
+    if(!bad){
+      if(el) el.remove();
+      return;
+    }
     if(!el){
       const gps = document.getElementById("gpsBox") || document.getElementById("progress");
       el = document.createElement("div");
       el.id = "autoFirebaseMigrationStatus";
-      el.className = bad ? "notice err" : "notice ok";
+      el.className = "notice err";
       el.style.marginTop = "10px";
       if(gps && gps.parentNode) gps.parentNode.insertBefore(el, gps.nextSibling);
       else document.body.prepend(el);
     }
-    el.className = bad ? "notice err" : "notice ok";
+    el.className = "notice err";
     el.innerHTML = msg;
   }
 
