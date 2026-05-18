@@ -2075,18 +2075,20 @@ function siteDedupKeysFromRaw(raw){
   ["Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"].forEach(k=>add("address", raw && raw[k]));
   return keys;
 }
-function siteRowPriority(r,index){
+function siteRowPriority(r,index,preferredDocId=null){
   const raw=r.raw || {};
   const data=r.firebaseData || {};
   let score=Object.values(raw).filter(v=>safe(v)).length;
+  const docId=String(r.firebaseDocId || raw["Firebase_doc_id"] || r.id || "");
+  if(preferredDocId && docId===String(preferredDocId)) score+=100000;
   if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) score+=20;
   if(data.createdAt) score+=100;
   if(data.migratedFromCsv) score-=20;
   if(r.firebaseDocId && !String(r.firebaseDocId).startsWith("site_")) score+=10;
   return {score,index};
 }
-function dedupeSiteRows(inputRows){
-  const indexed=(inputRows||[]).map((row,index)=>({row,index,priority:siteRowPriority(row,index)}));
+function dedupeSiteRows(inputRows,preferredDocId=null){
+  const indexed=(inputRows||[]).map((row,index)=>({row,index,priority:siteRowPriority(row,index,preferredDocId)}));
   indexed.sort((a,b)=>b.priority.score-a.priority.score || a.priority.index-b.priority.index);
   const usedKeys=new Set();
   const keep=new Set();
@@ -2108,12 +2110,22 @@ function dedupeSiteRows(inputRows){
 }
 window.siteDedupKeysFromRaw = siteDedupKeysFromRaw;
 window.dedupeSiteRows = dedupeSiteRows;
+function clearFiltersForOpenedSite(){
+  const search=document.getElementById("search");
+  if(search) search.value="";
+  const status=document.getElementById("statusFilter");
+  if(status) status.value="";
+  const region=document.getElementById("regionFilter");
+  if(region) region.value="";
+}
 window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
-  const deduped=dedupeSiteRows(firebaseRows);
+  const deduped=dedupeSiteRows(firebaseRows, openDocId);
+  const openedDocId=openDocId ? String(openDocId) : "";
   csvRows = deduped.rows;
   rows = csvRows
     .map((r,i)=>{r.i=i; return applyEditToRow(r);})
-    .filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id));
+    .filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id) || (openedDocId && String(r.firebaseDocId || "")===openedDocId));
+  if(openDocId) clearFiltersForOpenedSite();
   filters();
   render();
   if(openDocId){
@@ -4319,15 +4331,28 @@ setTimeout(()=>{
     const wanted=new Set(keys);
     const snap=await database.collection(FB_COLLECTION).get();
     let found=null;
+    function candidateScore(data, existingKeys){
+      const raw=(data&&data.raw)||{};
+      let score=0;
+      existingKeys.forEach(k=>{
+        if(!wanted.has(k)) return;
+        score += k.startsWith("address:") ? 1000 : 100;
+      });
+      if(Number.isFinite(num(raw["GPS_lat"])) && Number.isFinite(num(raw["GPS_lon"]))) score+=50;
+      if(val(raw["Adresa_GPS"]) || val(raw["Adresa / umístění"])) score+=10;
+      if(val(raw["Název"])) score+=5;
+      if(data && data.createdAt) score+=3;
+      return score;
+    }
     snap.forEach(doc=>{
-      if(found) return;
       const data=doc.data()||{};
       const existingKeys=dedupKeys(data.raw || {});
       if(existingKeys.some(k=>wanted.has(k))){
-        found={id:doc.id, data};
+        const score=candidateScore(data, existingKeys);
+        if(!found || score>found.score) found={id:doc.id, data, score};
       }
     });
-    return found;
+    return found ? {id:found.id,data:found.data} : null;
   }
 
   function docIdFromRaw(raw,i){
@@ -4378,6 +4403,7 @@ setTimeout(()=>{
     setTimeout(()=>{const first=document.querySelector('#fbUnifiedPanel [data-fb-key="Název"]') || document.querySelector('#fbUnifiedPanel input'); if(first) first.focus();},80);
     return false;
   }
+  window.openFirebaseUnifiedPanel=openPanel;
   function closePanel(){
     const o=document.getElementById("fbUnifiedOverlay"), p=document.getElementById("fbUnifiedPanel");
     if(o)o.classList.remove("open"); if(p)p.classList.remove("open");
@@ -4430,6 +4456,62 @@ setTimeout(()=>{
     }
     return out;
   }
+  function mergeDuplicateRaw(existingRaw, incomingRaw, docId){
+    const out=completeFirebaseRaw(existingRaw || {}, docId);
+    Object.entries(incomingRaw || {}).forEach(([k,v])=>{
+      if(val(v) && !val(out[k])) out[k]=v;
+    });
+    const existingLat=num(out["GPS_lat"]);
+    const existingLon=num(out["GPS_lon"]);
+    const incomingLat=num(incomingRaw && incomingRaw["GPS_lat"]);
+    const incomingLon=num(incomingRaw && incomingRaw["GPS_lon"]);
+    const existingVisible=Number.isFinite(existingLat)&&Number.isFinite(existingLon)&&existingLat>=47&&existingLat<=51.5&&existingLon>=12&&existingLon<=23;
+    const incomingVisible=Number.isFinite(incomingLat)&&Number.isFinite(incomingLon)&&incomingLat>=47&&incomingLat<=51.5&&incomingLon>=12&&incomingLon<=23;
+    if(incomingVisible && !existingVisible){
+      out["GPS_lat"]=String(incomingRaw["GPS_lat"]);
+      out["GPS_lon"]=String(incomingRaw["GPS_lon"]);
+    }else{
+      if(!Number.isFinite(existingLat) && Number.isFinite(incomingLat)) out["GPS_lat"]=String(incomingRaw["GPS_lat"]);
+      if(!Number.isFinite(existingLon) && Number.isFinite(incomingLon)) out["GPS_lon"]=String(incomingRaw["GPS_lon"]);
+    }
+    return completeFirebaseRaw(out, docId);
+  }
+  async function unhideOpenedRow(database, row){
+    if(!row || !row.id) return;
+    try{
+      if(typeof deletedSiteIds!=="undefined" && deletedSiteIds && deletedSiteIds.has(row.id)){
+        deletedSiteIds.delete(row.id);
+        await database.collection("deletedSites").doc(row.id).delete().catch(()=>{});
+      }
+    }catch(e){
+      console.warn("Nepodařilo se zrušit skrytí otevřeného bodu",e);
+    }
+  }
+  async function openDuplicateDoc(database, duplicate, incomingRaw, currentUser){
+    const mergedRaw=mergeDuplicateRaw((duplicate.data&&duplicate.data.raw)||{}, incomingRaw, duplicate.id);
+    const mergedLat=num(mergedRaw["GPS_lat"]);
+    const mergedLon=num(mergedRaw["GPS_lon"]);
+    const updateData={
+      raw:mergedRaw,
+      dedupKeys:dedupKeys(mergedRaw),
+      name:mergedRaw["Název"]||mergedRaw["Adresa / umístění"]||mergedRaw["Adresa_GPS"]||"",
+      lat:Number.isFinite(mergedLat)?mergedLat:null,
+      lon:Number.isFinite(mergedLon)?mergedLon:null,
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy:(currentUser&&currentUser.email)||""
+    };
+    await database.collection(FB_COLLECTION).doc(duplicate.id).set(updateData,{merge:true});
+    const localData={...(duplicate.data||{}),...updateData,updatedAt:new Date().toISOString()};
+    const row=rowFromDoc(duplicate.id,localData);
+    await unhideOpenedRow(database,row);
+    closePanel();
+    window.__lastSavedFirebaseSiteDocId=duplicate.id;
+    if(previewMarker){try{map.removeLayer(previewMarker);}catch(_e){} previewMarker=null;}
+    if(typeof window.upsertFirebaseSiteRow==="function") window.upsertFirebaseSiteRow(row,duplicate.id);
+    else await loadFirebaseSites(duplicate.id);
+    setTimeout(()=>loadFirebaseSites(duplicate.id).catch(err=>sideStatus("Existující bod jsem otevřel, ale kontrolní načtení z Firebase selhalo: "+err.message,true)),1200);
+    return row;
+  }
   async function calcGps(){
     const raw=getRaw(); const address=raw["Adresa_GPS"] || raw["Adresa / umístění"] || raw["Název"];
     if(!address){status("Vyplň nejdřív adresu / umístění.",true);return;}
@@ -4469,7 +4551,7 @@ setTimeout(()=>{
       const snap=await database.collection(FB_COLLECTION).get();
       const firebaseRows=[]; snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
       firebaseRows.forEach((r,i)=>r.i=i);
-      const deduped=typeof window.dedupeSiteRows==="function" ? window.dedupeSiteRows(firebaseRows) : {rows:firebaseRows,duplicateDocIds:[]};
+      const deduped=typeof window.dedupeSiteRows==="function" ? window.dedupeSiteRows(firebaseRows, openDocId) : {rows:firebaseRows,duplicateDocIds:[]};
       const removed=await deleteDuplicateDocs(database,deduped.duplicateDocIds);
       if(typeof window.setFirebaseSiteRows !== "function") throw new Error("setFirebaseSiteRows není dostupné");
       const loadedRows=window.setFirebaseSiteRows(deduped.rows, openDocId);
@@ -4517,8 +4599,9 @@ setTimeout(()=>{
       status("Kontroluji duplicitu...");
       const duplicate=await findDuplicateDoc(database,raw);
       if(duplicate){
-        const dRaw=(duplicate.data&&duplicate.data.raw)||{};
-        status("Bod už ve Firebase existuje: "+(dRaw["Název"]||dRaw["Adresa / umístění"]||dRaw["Adresa_GPS"]||duplicate.id),true);
+        status("Bod už existuje. Otevírám existující záznam...");
+        await openDuplicateDoc(database,duplicate,raw,u);
+        sideStatus("<b>Bod už ve Firebase existoval.</b> Otevřel jsem existující záznam a doplnil chybějící údaje/GPS z formuláře.");
         return false;
       }
       status("Ukládám bod do Firebase...");
@@ -4539,14 +4622,22 @@ setTimeout(()=>{
       await ref.set(savedData,{merge:true});
       const localData={...savedData,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
       const row=rowFromDoc(ref.id,localData);
+      await unhideOpenedRow(database,row);
       status("Bod uložen. Zobrazuji v mapě...");
       if(previewMarker){try{map.removeLayer(previewMarker);}catch(_e){} previewMarker=null;}
       closePanel();
-      if(typeof window.upsertFirebaseSiteRow==="function"){
-        window.upsertFirebaseSiteRow(row,ref.id);
-      }else{
-        await loadFirebaseSites(ref.id);
+      window.__lastSavedFirebaseSiteDocId=ref.id;
+      let openedLocally=false;
+      try{
+        if(typeof window.upsertFirebaseSiteRow==="function"){
+          window.upsertFirebaseSiteRow(row,ref.id);
+          openedLocally=true;
+        }
+      }catch(localErr){
+        console.warn("Okamžité zobrazení bodu selhalo, načítám z Firebase",localErr);
       }
+      if(!openedLocally) await loadFirebaseSites(ref.id);
+      setTimeout(()=>loadFirebaseSites(ref.id).catch(err=>sideStatus("Bod je uložený, ale kontrolní načtení z Firebase selhalo: "+err.message,true)),1200);
       sideStatus("<b>Bod uložen.</b> Nové místo je hned zobrazené v mapě a otevřené v detailu.");
       return false;
     }catch(e){status("Chyba uložení do Firebase: "+e.message,true);return false;}
@@ -4559,10 +4650,23 @@ setTimeout(()=>{
   }
   function bind(){
     const add=document.getElementById("addSiteBtn");
-    if(add){add.onclick=openPanel; add.addEventListener("click",openPanel,true);}
+    if(add){
+      add.onclick=openPanel;
+      if(!add.__firebaseUnifiedClickBound){
+        add.addEventListener("click",openPanel,true);
+        add.__firebaseUnifiedClickBound=true;
+      }
+    }
     const mig=document.getElementById("migrateCsvFirebaseBtn"); if(mig) mig.onclick=migrateCsvToFirebase;
     const reload=document.getElementById("reloadFirebaseSitesBtn"); if(reload) reload.onclick=()=>loadFirebaseSites();
     try{ if(typeof loadExtraSites==="function") loadExtraSites=async function(){}; }catch(e){}
+  }
+  if(!document.__firebaseUnifiedAddCaptureBound){
+    document.addEventListener("click",e=>{
+      const add=e.target && e.target.closest && e.target.closest("#addSiteBtn");
+      if(add) openPanel(e);
+    },true);
+    document.__firebaseUnifiedAddCaptureBound=true;
   }
   document.addEventListener("DOMContentLoaded",bind);
   setTimeout(bind,100); setTimeout(bind,500); setTimeout(bind,1500); setInterval(bind,1200);
