@@ -1999,16 +1999,28 @@ function filtered(){
     return okQ && okK && okS;
   });
 }
+function syncRowIndexes(){
+  rows.forEach((r,i)=>{r.i=i;});
+}
+function detailKey(r){
+  return String((r && (r.firebaseDocId || r.id || (r.raw && r.raw["Firebase_doc_id"]))) || "");
+}
+window.openDetailById=function(id){
+  const key=String(id || "");
+  const idx=rows.findIndex(r=>detailKey(r)===key);
+  if(idx>=0) return window.openDetail(idx);
+};
 function render(){
+  syncRowIndexes();
   layer.clearLayers();
   const vis=filtered(), gps=vis.filter(inCzSk);
   gps.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.92})
-    .bindPopup(`<b>${esc(r.adresa||"Bez názvu")}</b><br>${esc(r.zdroj)}<br>${esc(statusText(r))}<br><button onclick="openDetail(${r.i})">Detail</button>`).addTo(layer));
+    .bindPopup(`<b>${esc(r.adresa||"Bez názvu")}</b><br>${esc(r.zdroj)}<br>${esc(statusText(r))}<br><button onclick="openDetailById(${esc(JSON.stringify(detailKey(r)))})">Detail</button>`).addTo(layer));
   const list=document.getElementById("list");list.innerHTML="";
   vis.slice().sort((a,b)=>((daysToComputedNext(a)??999999)-(daysToComputedNext(b)??999999))).slice(0,160).forEach(r=>{
     const d=document.createElement("div");d.className="item";
     d.innerHTML=`<div class="item-title">${esc(r.adresa||"Bez názvu")}</div><div class="item-meta">${esc(r.zdroj)}<br>Další kontrola: <b>${esc(displayNext(r)||"není vyplněno")}</b></div><span class="pill ${pill(r)}">${esc(statusText(r))}</span>`;
-    d.onclick=()=>openDetail(r.i);list.appendChild(d);
+    d.onclick=()=>window.openDetailById(detailKey(r));list.appendChild(d);
   });
   document.getElementById("shownCount").textContent=vis.length;
   document.getElementById("gpsCount").textContent=rows.filter(inCzSk).length;
@@ -2115,7 +2127,7 @@ window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
     if(idx>=0){
       const r=rows[idx];
       if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) map.setView([r.lat,r.lon],14);
-      setTimeout(()=>window.openDetail(idx),150);
+      setTimeout(()=>window.openDetailById(openDocId),150);
     }
   }
   return rows;
@@ -2444,7 +2456,7 @@ async function saveAllDataEdits(){
 
     if(st) st.textContent="Data uložena.";
     render();
-    openDetail(selectedSite.i);
+    window.openDetailById(selectedSite.id);
   }catch(e){
     if(st) st.textContent="Chyba uložení dat: "+e.message;
   }
@@ -2760,6 +2772,7 @@ function detailTable(r){
 }
 
 window.openDetail=function(i){
+  syncRowIndexes();
   const r=rows[Number(i)]; if(!r)return; selectedSite=r;
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="none";
@@ -2793,7 +2806,7 @@ window.openDetail=function(i){
   if(saveDataBtn){ saveDataBtn.style.display="none"; saveDataBtn.onclick=saveAllDataEdits; }
   if(cancelDataEditBtn){
     cancelDataEditBtn.style.display="none";
-    cancelDataEditBtn.onclick=()=>openDetail(selectedSite.i);
+    cancelDataEditBtn.onclick=()=>window.openDetailById(selectedSite.id);
   }
   const addDataRowBtn=document.getElementById("addDataRowBtn");
   if(addDataRowBtn) addDataRowBtn.onclick=addNewDataRowToTable;
@@ -3083,9 +3096,10 @@ document.getElementById("saveEditBtn").onclick=async()=>{
     const {doc,setDoc}=fb.fsMod;
     await setDoc(doc(db,"siteEdits",selectedSite.id),edit,{merge:true});
     editCache[selectedSite.id]=edit;
-    rows=rows.map(r=>r.id===selectedSite.id?applyEditToRow(r):r);
-    selectedSite=rows[selectedSite.i];
-    render(); openDetail(selectedSite.i);
+    const selectedId=selectedSite.id;
+    rows=rows.map(r=>r.id===selectedId?applyEditToRow(r):r);
+    selectedSite=rows.find(r=>r.id===selectedId) || selectedSite;
+    render(); window.openDetailById(selectedId);
     st.textContent="Úpravy uloženy.";
   }catch(e){st.textContent="Chyba uložení: "+e.message;}
 };
@@ -3752,7 +3766,7 @@ setTimeout(()=>{
               fillOpacity:.95
             }).addTo(window.map);
             marker.bindPopup(row.nazev || "Nové místo");
-            marker.on("click",()=>{ if(typeof openDetail==="function") openDetail(row.i); });
+            marker.on("click",()=>{ if(typeof window.openDetailById==="function") window.openDetailById(row.id); });
           }
         }catch(e){}
 
@@ -3762,7 +3776,7 @@ setTimeout(()=>{
         }
       }
 
-      if(typeof openDetail==="function") setTimeout(()=>openDetail(row.i),250);
+      if(typeof window.openDetailById==="function") setTimeout(()=>window.openDetailById(row.id),250);
     }catch(e){
       location.reload();
     }
@@ -4055,8 +4069,8 @@ setTimeout(()=>{
       }
 
       // nový bod se chová jako ostatní: detail se otevře přes původní openDetail
-      if(typeof window.openDetail==="function"){
-        setTimeout(()=>window.openDetail(row.i),250);
+      if(typeof window.openDetailById==="function"){
+        setTimeout(()=>window.openDetailById(row.id),250);
       }
     }catch(e){
       location.reload();
