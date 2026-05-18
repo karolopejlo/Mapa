@@ -2086,10 +2086,11 @@ function siteRowPriority(r,index,preferredDocId=null){
   const docId=String(r.firebaseDocId || raw["Firebase_doc_id"] || r.id || "");
   if(preferredDocId && docId===String(preferredDocId)) score+=100000;
   if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) score+=20;
-  if(data.manualEntry) score+=200;
+  if(data.manualEntry) score+=1000000;
   if(data.createdAt) score+=100;
-  if(data.migratedFromCsv) score-=20;
-  if(r.firebaseDocId && !String(r.firebaseDocId).startsWith("site_")) score+=10;
+  if(data.updatedAt) score+=50;
+  if(data.migratedFromCsv) score-=1000;
+  if(r.firebaseDocId && !String(r.firebaseDocId).startsWith("site_")) score+=500000;
   return {score,index};
 }
 function dedupeSiteRows(inputRows,preferredDocId=null){
@@ -4399,7 +4400,7 @@ setTimeout(()=>{
     const wanted=new Set(keys);
     const snap=await database.collection(FB_COLLECTION).get();
     let found=null;
-    function candidateScore(data, existingKeys){
+    function candidateScore(data, existingKeys, docId){
       const raw=(data&&data.raw)||{};
       let score=0;
       existingKeys.forEach(k=>{
@@ -4407,16 +4408,19 @@ setTimeout(()=>{
         score += k.startsWith("address:") ? 1000 : 100;
       });
       if(Number.isFinite(num(raw["GPS_lat"])) && Number.isFinite(num(raw["GPS_lon"]))) score+=50;
+      if(data && data.manualEntry) score+=1000000;
+      if(docId && !String(docId).startsWith("site_")) score+=500000;
       if(val(raw["Adresa_GPS"]) || val(raw["Adresa / umístění"])) score+=10;
       if(val(raw["Název"])) score+=5;
       if(data && data.createdAt) score+=3;
+      if(data && data.migratedFromCsv) score-=1000;
       return score;
     }
     snap.forEach(doc=>{
       const data=doc.data()||{};
       const existingKeys=dedupKeys(data.raw || {});
       if(existingKeys.some(k=>wanted.has(k))){
-        const score=candidateScore(data, existingKeys);
+        const score=candidateScore(data, existingKeys, doc.id);
         if(!found || score>found.score) found={id:doc.id, data, score};
       }
     });
@@ -4566,7 +4570,9 @@ setTimeout(()=>{
       lat:Number.isFinite(mergedLat)?mergedLat:null,
       lon:Number.isFinite(mergedLon)?mergedLon:null,
       updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
-      updatedBy:(currentUser&&currentUser.email)||""
+      updatedBy:(currentUser&&currentUser.email)||"",
+      manualEntry:true,
+      migratedFromCsv:false
     };
     await database.collection(FB_COLLECTION).doc(duplicate.id).set(updateData,{merge:true});
     const localData={...(duplicate.data||{}),...updateData,updatedAt:new Date().toISOString()};
@@ -4620,12 +4626,11 @@ setTimeout(()=>{
       const firebaseRows=[]; snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
       firebaseRows.forEach((r,i)=>r.i=i);
       const deduped=typeof window.dedupeSiteRows==="function" ? window.dedupeSiteRows(firebaseRows, openDocId) : {rows:firebaseRows,duplicateDocIds:[]};
-      const removed=await deleteDuplicateDocs(database,deduped.duplicateDocIds);
       if(typeof window.setFirebaseSiteRows !== "function") throw new Error("setFirebaseSiteRows není dostupné");
       const loadedRows=window.setFirebaseSiteRows(deduped.rows, openDocId);
       window.__firebaseUnifiedRowsLoaded=true;
       window.__firebaseUnifiedRowsCount=loadedRows.length;
-      sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.${removed?` Odstraněno duplicit: ${removed}.`:""}`);
+      sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.`);
       return loadedRows;
     }catch(e){sideStatus("Chyba načtení z Firebase: "+e.message,true);}
   }
@@ -4687,6 +4692,7 @@ setTimeout(()=>{
         createdBy:u.email||"",
         updatedBy:u.email||"",
         manualEntry:true,
+        migratedFromCsv:false,
         name:raw["Název"]||raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",
         lat:lat,
         lon:lon
