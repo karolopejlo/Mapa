@@ -1226,6 +1226,7 @@ const CSV_FILE="data.csv";
 const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
 let app, auth, db, fb={}, currentUser=null;
 let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, editCache={};
+let firebaseUnifiedPrimary = firebaseReady;
 const ORIGINAL_PINK_PLACES = ["bedřichov 290, hotel", "benešov, máchova 400, nemocnice rudolfa a stefanie", "borek u rokycan, policie", "bratislava, františka kubu 2,3,5,6 -rinok rača", "bratislava, trnavská cesta 8a, 6b, 19123 - nová cvernovka", "bratislava, volvo, lamač-bory", "brno, hrázní 1", "brno, jakubská 126,11,  kostel sv jakuba", "brno, kabátníkova 2, bd", "brno, kotlářská 3, bd", "brno, metodějova 3120/6", "brno, oblá 79", "brno, rotalova 80,82,84, bd", "brno, sokolova 1e", "brno, spolková 8a", "brno, svážná 1", "brno, česká 11, škola charbulova", "bruntál, zahradní 48, strojmetal - pozor info ve složce", "choceň, běstovice, de heus", "chotěboř, severní 1911, bd", "dek trade", "dobřichovice, anežky české 1119", "frýdek místek, revoluční 1282, dps", "frýdek-místek, 17.listopadu 147", "havlíčkův brod, nuselská 3240, zš", "hradec králové, jana koziny 1237, biskupské gymnázium", "humpolec, okružní 1296, cobap", "jablonec nad nisou, v. nezvala 87/14, dps", "karviná, lázeňská, darkov", "klatovy, podhůrecká 815/3, dps", "kralupy nad vltavou, palackého nám. 1, mú", "kroměříž, erbenovo nábř. 4262", "kyjov, strážovská, centrumpro seniory", "kyjovice, domov na zámku", "luhačovice, zatloukalova 1144", "milovice, armádní 882,883", "milovice, dětské centrum, dětská 361", "mnichovice, bezručova 346, zš", "neslovice, lesní 368, bd", "nupaky, komerční 528, auto opat", "nymburk, soudní, penzion panorama", "olomouc, eduarda hamburgera 9, 11", "olomouc, loudova 7 + 11, 15", "olomouc, tř. j. pelikána 5,7,9,11,13", "opatovice nad labem, siko koupelny", "opava, císařského pluku 3078/1", "opava, nákladní 2", "opava, olomoucká 88, psychiatrická léčebna", "opava, rolnická 24", "osoblaha, klášterní 34 - dps", "ostrava, 28. října, red house", "pacov, malovcova 1080", "pec pod sněžkou, velká úpa 360, bd", "pelhřimov, habrová 2523 + 2524, bd", "pelhřimov, habrová 2525, 2526, bd", "plesná, spojovací 80, kodus, okres cheb", "plzeň, nemocniční 6 a stehlíkova 5,7,9", "plzeň, průmyslová 2a, škoda electric", "plzeň, rybářská 26, bd", "poprad, slovenského odboja, karpatská rezidence", "poříčí nad sázavou, parc. č. 190-71, hala h1 + h2", "praha 10, bd u hranic", "praha 10, ramonova 3466, bd hagibor", "praha, budínova 2, protialkoholní záchytka, bulovka", "praha, choceradská 2, bd", "praha, dobratická 525, zš tupolevova", "praha, dopraváků 749/3, stiebel eltron", "praha, hloubětín 837-2, bd, kbelská 1152", "praha, holečkova 13, hotel", "praha, horolezecká 1a", "praha, hradešínská 52, bd", "praha, ke kříži 1653-8 -vivus 4. etapa", "praha, ke kříži 1672, vivus -5. etapa", "praha, konviktská 14, cloister inn", "praha, koubkova 12", "praha, libocká 643, domov sv. rodiny", "praha, lucemburská 9, ubytovna", "praha, maltézské náměstí 8, bd s ubytovnou", "praha, na bělidle 23", "praha, na chvalské tvrzi", "praha, na poříčí, mb 48 - opletal", "praha, na vackově -os vackov", "praha, nad kazankou 19", "praha, novovysočanská 8, dps", "praha, opletalova 40, hotel gold bank", "praha, oty bubeníčka 1654-4, vivus 4. etapa", "praha, parmská 390, dps", "praha, plzeňská 56, hotel", "praha, polyfunkční objekt dlouhá", "praha, sazovická 508", "praha, spálená 12, městská poliklinika", "praha, starokošířská 13, bd", "praha, v podhájí 20, bd braník residences", "praha, vivus uhřiněves ke kříži -1636, oty bubeníčka -1637, 1638, 1639", "praha, vladivostocká 1530/12, slavia hotel", "praha, řešovská 852-10, bohnice -rezidence jasmín", "prostějov, průmyslová 20", "slatinice, ld balnea", "slavkov u brna, slovanská 758, destila", "slušovice, dostihová 725, kodus", "sobotka, libošovice 39, charita", "sokolovská uhelná, vintířov, vřesová, suas zpracování odpadů", "střelice, tetčická 31169", "teplice, nám. svobody 3316, oc teplice", "trnava, včelárska 2", "uherský brod, vlčnovská 2512, sklad ptáček", "vamberk, smetanovo nábřeží 334, vaspo", "vejprty, nerudova1221_14, dzr krakonoš", "velké meziříčí, u světlé 9, dps", "vrchlabí - herlíkovice, horská 547, apartmány mlýn herlíkovice", "vrchlabí, horská 179", "český těšín, střelniční 257/3, gerontocentrum", "čimelice, siko koupelny"];
 
 window.addEventListener("load",()=>{
@@ -1478,8 +1479,10 @@ async function loadEdits(){
     const snap=await getDocs(collection(db,"siteEdits"));
     editCache={};
     snap.forEach(d=>editCache[d.id]=d.data());
-    rows=csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
-    render();
+    if(!firebaseUnifiedPrimary){
+      rows=csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
+      render();
+    }
     document.getElementById("editStatus").textContent="Uložené úpravy načteny.";
   }catch(e){
     document.getElementById("editStatus").textContent="Úpravy se nepodařilo načíst: "+e.message;
@@ -1809,6 +1812,7 @@ function newSiteToRow(docId, d){
 
 async function loadExtraSites(){
   extraSites = [];
+  if(firebaseUnifiedPrimary) return;
   if(!firebaseReady || !db) return;
   try{
     const {collection,getDocs}=fb.fsMod;
@@ -1955,8 +1959,12 @@ async function deleteSelectedSite(){
     st.textContent="Místo bylo smazáno/skryto.";
     document.getElementById("drawer").classList.remove("open");
     await loadDeletedSites();
-    await loadExtraSites();
-    render();
+    if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function"){
+      await window.loadFirebaseSitesUnified();
+    }else{
+      await loadExtraSites();
+      render();
+    }
   }catch(e){
     st.textContent="Chyba při mazání: "+e.message;
   }
@@ -1970,7 +1978,9 @@ async function loadDeletedSites(){
     const {collection,getDocs}=fb.fsMod;
     const snap=await getDocs(collection(db,"deletedSites"));
     snap.forEach(d=>deletedSiteIds.add(d.id));
-    rows=csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
+    if(!firebaseUnifiedPrimary){
+      rows=csvRows.concat(extraSites).map(applyEditToRow).filter(r=>!deletedSiteIds.has(r.id));
+    }
   }catch(e){
     console.warn("Nepodařilo se načíst smazaná místa",e);
   }
@@ -2076,6 +2086,7 @@ function siteRowPriority(r,index,preferredDocId=null){
   const docId=String(r.firebaseDocId || raw["Firebase_doc_id"] || r.id || "");
   if(preferredDocId && docId===String(preferredDocId)) score+=100000;
   if(Number.isFinite(r.lat)&&Number.isFinite(r.lon)) score+=20;
+  if(data.manualEntry) score+=200;
   if(data.createdAt) score+=100;
   if(data.migratedFromCsv) score-=20;
   if(r.firebaseDocId && !String(r.firebaseDocId).startsWith("site_")) score+=10;
@@ -2113,6 +2124,8 @@ function clearFiltersForOpenedSite(){
   if(region) region.value="";
 }
 window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
+  firebaseUnifiedPrimary = true;
+  window.__firebaseUnifiedPrimary = true;
   const deduped=dedupeSiteRows(firebaseRows, openDocId);
   const openedDocId=openDocId ? String(openDocId) : "";
   csvRows = deduped.rows;
@@ -2952,7 +2965,16 @@ document.getElementById("search").addEventListener("input",render);
 document.getElementById("statusFilter").addEventListener("change",render);
 document.getElementById("regionFilter").addEventListener("change",render);
 document.getElementById("fitBtn").addEventListener("click",fit);
-document.getElementById("reloadEditBtn").onclick=async()=>{await loadEdits(); await loadExtraSites();};
+document.getElementById("reloadEditBtn").onclick=async()=>{
+  await loadEdits();
+  await loadDeletedSites();
+  if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function"){
+    await window.loadFirebaseSitesUnified();
+  }else{
+    await loadExtraSites();
+    render();
+  }
+};
 document.getElementById("addSiteBtn").onclick=()=>{
   openNewSiteForm();
   const form=document.getElementById("newSiteCard");
@@ -3037,8 +3059,12 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     document.getElementById("newExtra").value="";
     clearNewSiteAllFields();
     document.getElementById("newAllData").value="";
-    await loadExtraSites();
-    fit();
+    if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function"){
+      await window.loadFirebaseSitesUnified();
+    }else{
+      await loadExtraSites();
+      fit();
+    }
   }catch(e){st.textContent="Chyba uložení nového místa: "+e.message;}
 };
 document.getElementById("editBtn").onclick=()=>document.getElementById("editCard").style.display="block";
@@ -3492,18 +3518,57 @@ window.addEventListener("resize",fixMapView);
 window.addEventListener("DOMContentLoaded",()=>{
   setTimeout(()=>{ if(typeof fixMapView==="function") fixMapView(); },800);
 });
-Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:async res=>{
-  const data=res.data.filter(r=>Object.values(r).some(v=>safe(v)!==""));
-  csvRows=normalize(data);
-  originalCsvRows=csvRows.slice();
-  rows=csvRows.map(applyEditToRow);
-  filters(); populateNewRegionOptions(); render(); fit();
-  document.getElementById("progress").textContent=`Načteno ${rows.length} řádků.`;
-  fixMapView();
+async function refreshFirebaseUnifiedPrimary(){
   await loadEdits();
   await loadDeletedSites();
-  await loadExtraSites();
-},error:e=>{document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+e}});
+  if(typeof window.loadFirebaseSitesUnified==="function"){
+    await window.loadFirebaseSitesUnified();
+    return true;
+  }
+  return false;
+}
+function scheduleFirebaseUnifiedPrimaryLoad(delay=0){
+  setTimeout(async()=>{
+    const loaded=await refreshFirebaseUnifiedPrimary();
+    if(!loaded) setTimeout(refreshFirebaseUnifiedPrimary,1200);
+  },delay);
+}
+let csvLoadPromise=null;
+window.loadCsvRowsForMigration=function(){
+  if(originalCsvRows.length) return Promise.resolve(originalCsvRows);
+  if(csvLoadPromise) return csvLoadPromise;
+  csvLoadPromise=new Promise((resolve,reject)=>{
+    Papa.parse(CSV_FILE,{download:true,header:true,skipEmptyLines:true,delimiter:"",transformHeader:h=>String(h).replace(/^\uFEFF/,"").trim(),complete:async res=>{
+      const data=res.data.filter(r=>Object.values(r).some(v=>safe(v)!==""));
+      csvRows=normalize(data);
+      originalCsvRows=csvRows.slice();
+      populateNewRegionOptions();
+      fixMapView();
+      if(firebaseUnifiedPrimary){
+        const p=document.getElementById("progress");
+        if(p) p.textContent="";
+        resolve(originalCsvRows);
+        return;
+      }
+      rows=csvRows.map(applyEditToRow);
+      filters(); render(); fit();
+      document.getElementById("progress").textContent=`Načteno ${rows.length} řádků.`;
+      await loadEdits();
+      await loadDeletedSites();
+      await loadExtraSites();
+      resolve(originalCsvRows);
+    },error:e=>{
+      if(!firebaseUnifiedPrimary) document.getElementById("progress").textContent="Nepodařilo se načíst data.csv: "+e;
+      reject(e);
+    }});
+  });
+  return csvLoadPromise;
+};
+if(firebaseUnifiedPrimary){
+  scheduleFirebaseUnifiedPrimaryLoad();
+}else{
+  window.loadCsvRowsForMigration().catch(()=>{});
+}
 
 window.addEventListener("DOMContentLoaded",()=>{
   const b=document.getElementById("startupLoginBtn");
@@ -4558,7 +4623,10 @@ setTimeout(()=>{
       const removed=await deleteDuplicateDocs(database,deduped.duplicateDocIds);
       if(typeof window.setFirebaseSiteRows !== "function") throw new Error("setFirebaseSiteRows není dostupné");
       const loadedRows=window.setFirebaseSiteRows(deduped.rows, openDocId);
+      window.__firebaseUnifiedRowsLoaded=true;
+      window.__firebaseUnifiedRowsCount=loadedRows.length;
       sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.${removed?` Odstraněno duplicit: ${removed}.`:""}`);
+      return loadedRows;
     }catch(e){sideStatus("Chyba načtení z Firebase: "+e.message,true);}
   }
   async function migrateCsvToFirebase(){
@@ -4618,6 +4686,7 @@ setTimeout(()=>{
         updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
         createdBy:u.email||"",
         updatedBy:u.email||"",
+        manualEntry:true,
         name:raw["Název"]||raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",
         lat:lat,
         lon:lon
@@ -4733,8 +4802,6 @@ setTimeout(()=>{
     const database = db();
     const u = user();
     if(!database || !u) return;
-    const sourceRows = typeof window.getCurrentCsvRows === "function" ? window.getCurrentCsvRows() : [];
-    if(!Array.isArray(sourceRows) || !sourceRows.length) return;
 
     autoStarted = true;
 
@@ -4742,6 +4809,24 @@ setTimeout(()=>{
       showAutoStatus("Kontroluji Firebase databázi...");
 
       const existing = await database.collection(COLLECTION).get();
+      if(!existing.empty){
+        showAutoStatus("Firebase už obsahuje body. Načítám mapu z Firebase...");
+        if(typeof window.loadFirebaseSitesUnified === "function"){
+          await window.loadFirebaseSitesUnified();
+        }
+        return;
+      }
+
+      let sourceRows = typeof window.getCurrentCsvRows === "function" ? window.getCurrentCsvRows() : [];
+      if((!Array.isArray(sourceRows) || !sourceRows.length) && typeof window.loadCsvRowsForMigration==="function"){
+        sourceRows=await window.loadCsvRowsForMigration();
+      }
+      if(!Array.isArray(sourceRows) || !sourceRows.length){
+        showAutoStatus("Firebase je prázdná, ale data.csv ještě není připravené pro jednorázovou migraci.", true);
+        autoStarted = false;
+        return;
+      }
+
       const seenKeys = new Set();
       existing.forEach(doc=>{
         if(typeof window.siteDedupKeysFromRaw === "function"){
@@ -4749,11 +4834,7 @@ setTimeout(()=>{
         }
       });
 
-      if(existing.empty){
-        showAutoStatus("Firebase je prázdná. Spouštím automatickou migraci data.csv do Firebase...");
-      }else{
-        showAutoStatus("Firebase obsahuje " + existing.size + " dokumentů. Doplňuji chybějící unikátní body z data.csv...");
-      }
+      showAutoStatus("Firebase je prázdná. Spouštím jednorázovou migraci data.csv do Firebase...");
 
       const total = sourceRows.length;
       let batch = database.batch();
