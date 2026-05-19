@@ -1106,6 +1106,7 @@ Cena FZ: ..."></textarea>
     appId: "1:304123957651:web:3d837eb57957d18b17d866",
     measurementId: "G-EL8BSFYFDN"
   };
+  window.__firebaseConfig = firebaseConfig;
 
   function status(msg){
     const el=document.getElementById("startupStatus");
@@ -1221,12 +1222,17 @@ const firebaseConfig = {
   appId: "1:304123957651:web:3d837eb57957d18b17d866",
   measurementId: "G-EL8BSFYFDN"
 };
+window.__firebaseConfig = firebaseConfig;
 
 const CSV_FILE="data.csv";
 const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
 let app, auth, db, fb={}, currentUser=null;
 let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, editCache={};
 let firebaseUnifiedPrimary = firebaseReady;
+window.firebaseReady = firebaseReady;
+window.firebaseUnifiedPrimary = firebaseUnifiedPrimary;
+window.__firebaseUnifiedPrimary = firebaseUnifiedPrimary;
+window.rows = rows;
 const ORIGINAL_PINK_PLACES = ["bedřichov 290, hotel", "benešov, máchova 400, nemocnice rudolfa a stefanie", "borek u rokycan, policie", "bratislava, františka kubu 2,3,5,6 -rinok rača", "bratislava, trnavská cesta 8a, 6b, 19123 - nová cvernovka", "bratislava, volvo, lamač-bory", "brno, hrázní 1", "brno, jakubská 126,11,  kostel sv jakuba", "brno, kabátníkova 2, bd", "brno, kotlářská 3, bd", "brno, metodějova 3120/6", "brno, oblá 79", "brno, rotalova 80,82,84, bd", "brno, sokolova 1e", "brno, spolková 8a", "brno, svážná 1", "brno, česká 11, škola charbulova", "bruntál, zahradní 48, strojmetal - pozor info ve složce", "choceň, běstovice, de heus", "chotěboř, severní 1911, bd", "dek trade", "dobřichovice, anežky české 1119", "frýdek místek, revoluční 1282, dps", "frýdek-místek, 17.listopadu 147", "havlíčkův brod, nuselská 3240, zš", "hradec králové, jana koziny 1237, biskupské gymnázium", "humpolec, okružní 1296, cobap", "jablonec nad nisou, v. nezvala 87/14, dps", "karviná, lázeňská, darkov", "klatovy, podhůrecká 815/3, dps", "kralupy nad vltavou, palackého nám. 1, mú", "kroměříž, erbenovo nábř. 4262", "kyjov, strážovská, centrumpro seniory", "kyjovice, domov na zámku", "luhačovice, zatloukalova 1144", "milovice, armádní 882,883", "milovice, dětské centrum, dětská 361", "mnichovice, bezručova 346, zš", "neslovice, lesní 368, bd", "nupaky, komerční 528, auto opat", "nymburk, soudní, penzion panorama", "olomouc, eduarda hamburgera 9, 11", "olomouc, loudova 7 + 11, 15", "olomouc, tř. j. pelikána 5,7,9,11,13", "opatovice nad labem, siko koupelny", "opava, císařského pluku 3078/1", "opava, nákladní 2", "opava, olomoucká 88, psychiatrická léčebna", "opava, rolnická 24", "osoblaha, klášterní 34 - dps", "ostrava, 28. října, red house", "pacov, malovcova 1080", "pec pod sněžkou, velká úpa 360, bd", "pelhřimov, habrová 2523 + 2524, bd", "pelhřimov, habrová 2525, 2526, bd", "plesná, spojovací 80, kodus, okres cheb", "plzeň, nemocniční 6 a stehlíkova 5,7,9", "plzeň, průmyslová 2a, škoda electric", "plzeň, rybářská 26, bd", "poprad, slovenského odboja, karpatská rezidence", "poříčí nad sázavou, parc. č. 190-71, hala h1 + h2", "praha 10, bd u hranic", "praha 10, ramonova 3466, bd hagibor", "praha, budínova 2, protialkoholní záchytka, bulovka", "praha, choceradská 2, bd", "praha, dobratická 525, zš tupolevova", "praha, dopraváků 749/3, stiebel eltron", "praha, hloubětín 837-2, bd, kbelská 1152", "praha, holečkova 13, hotel", "praha, horolezecká 1a", "praha, hradešínská 52, bd", "praha, ke kříži 1653-8 -vivus 4. etapa", "praha, ke kříži 1672, vivus -5. etapa", "praha, konviktská 14, cloister inn", "praha, koubkova 12", "praha, libocká 643, domov sv. rodiny", "praha, lucemburská 9, ubytovna", "praha, maltézské náměstí 8, bd s ubytovnou", "praha, na bělidle 23", "praha, na chvalské tvrzi", "praha, na poříčí, mb 48 - opletal", "praha, na vackově -os vackov", "praha, nad kazankou 19", "praha, novovysočanská 8, dps", "praha, opletalova 40, hotel gold bank", "praha, oty bubeníčka 1654-4, vivus 4. etapa", "praha, parmská 390, dps", "praha, plzeňská 56, hotel", "praha, polyfunkční objekt dlouhá", "praha, sazovická 508", "praha, spálená 12, městská poliklinika", "praha, starokošířská 13, bd", "praha, v podhájí 20, bd braník residences", "praha, vivus uhřiněves ke kříži -1636, oty bubeníčka -1637, 1638, 1639", "praha, vladivostocká 1530/12, slavia hotel", "praha, řešovská 852-10, bohnice -rezidence jasmín", "prostějov, průmyslová 20", "slatinice, ld balnea", "slavkov u brna, slovanská 758, destila", "slušovice, dostihová 725, kodus", "sobotka, libošovice 39, charita", "sokolovská uhelná, vintířov, vřesová, suas zpracování odpadů", "střelice, tetčická 31169", "teplice, nám. svobody 3316, oc teplice", "trnava, včelárska 2", "uherský brod, vlčnovská 2512, sklad ptáček", "vamberk, smetanovo nábřeží 334, vaspo", "vejprty, nerudova1221_14, dzr krakonoš", "velké meziříčí, u světlé 9, dps", "vrchlabí - herlíkovice, horská 547, apartmány mlýn herlíkovice", "vrchlabí, horská 179", "český těšín, střelniční 257/3, gerontocentrum", "čimelice, siko koupelny"];
 
 window.addEventListener("load",()=>{
@@ -1246,10 +1252,20 @@ if(firebaseReady){
   app=appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
   db=fsMod.getFirestore(app);
+  window.fb=fb;
+  window.db=db;
+  try{
+    if(window.firebase && firebase.initializeApp && (!firebase.apps || !firebase.apps.length)){
+      firebase.initializeApp(firebaseConfig);
+    }
+  }catch(e){
+    console.warn("Compat Firebase se nepodařilo inicializovat",e);
+  }
   const firebaseBox=document.getElementById("firebaseBox");
   if(firebaseBox) firebaseBox.style.display="none";
   authMod.onAuthStateChanged(auth,user=>{
     currentUser=user;
+    window.currentUser=user;
     document.getElementById("userBox").textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
     if(user){ showApp(); }
     else { const topLogoutBtn=document.getElementById("topLogoutBtn"); if(topLogoutBtn) topLogoutBtn.style.display="none"; showLogin(); }
@@ -2022,6 +2038,7 @@ window.openDetailById=function(id){
 };
 function render(){
   syncRowIndexes();
+  window.rows=rows;
   layer.clearLayers();
   const vis=filtered(), gps=vis.filter(inCzSk);
   gps.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.92})
@@ -2126,6 +2143,7 @@ function clearFiltersForOpenedSite(){
 }
 window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
   firebaseUnifiedPrimary = true;
+  window.firebaseUnifiedPrimary = true;
   window.__firebaseUnifiedPrimary = true;
   const deduped=dedupeSiteRows(firebaseRows, openDocId);
   const openedDocId=openDocId ? String(openDocId) : "";
@@ -2133,6 +2151,7 @@ window.setFirebaseSiteRows = function(firebaseRows, openDocId=null){
   rows = csvRows
     .map((r,i)=>{r.i=i; return applyEditToRow(r);})
     .filter(r=>!deletedSiteIds || !deletedSiteIds.has(r.id) || (openedDocId && String(r.firebaseDocId || "")===openedDocId));
+  window.rows = rows;
   if(openDocId) clearFiltersForOpenedSite();
   filters();
   render();
@@ -3043,7 +3062,39 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
 
   try{
     const {collection,addDoc}=fb.fsMod;
-    await addDoc(collection(db,"sites"),data);
+    let savedRef=null;
+    if(firebaseUnifiedPrimary){
+      const raw={...(data.allRawData || {})};
+      raw["Název"]=data.name || raw["Název"] || "";
+      raw["Adresa / umístění"]=data.gpsAddress || raw["Adresa / umístění"] || data.name || "";
+      raw["Adresa_GPS"]=data.gpsAddress || raw["Adresa_GPS"] || raw["Adresa / umístění"] || "";
+      raw["GPS_lat"]=data.gpsLat || raw["GPS_lat"] || "";
+      raw["GPS_lon"]=data.gpsLon || raw["GPS_lon"] || "";
+      raw["Kraj"]=data.region || raw["Kraj"] || "";
+      raw["Kontakt"]=data.contact || raw["Kontakt"] || "";
+      raw["Kontakt_mapy"]=data.contact || raw["Kontakt_mapy"] || raw["Kontakt"] || "";
+      raw["Popis_zdroje"]=data.source || raw["Popis_zdroje"] || "";
+      raw["Poznámky"]=data.notes || raw["Poznámky"] || "";
+      raw["Poznámky_mapy"]=data.notes || raw["Poznámky_mapy"] || raw["Poznámky"] || "";
+      raw["Příští_kontrola"]=data.nextCheck || raw["Příští_kontrola"] || "";
+      raw["Poslední_kontrola"]=data.lastCheck || raw["Poslední_kontrola"] || "";
+      if(data.noOrder) raw["Hlídáme sami termín"]="ano";
+      savedRef=await addDoc(collection(db,"sitesUnified"),{
+        raw,
+        dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw) : [],
+        manualEntry:true,
+        migratedFromCsv:false,
+        createdAt:new Date().toISOString(),
+        updatedAt:new Date().toISOString(),
+        createdBy:currentUser.email,
+        updatedBy:currentUser.email,
+        name:raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "",
+        lat:num(raw["GPS_lat"]),
+        lon:num(raw["GPS_lon"])
+      });
+    }else{
+      savedRef=await addDoc(collection(db,"sites"),data);
+    }
     st.textContent="Nové místo uloženo.";
     document.getElementById("newName").value="";
     document.getElementById("newGpsAddress").value="";
@@ -3061,7 +3112,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     clearNewSiteAllFields();
     document.getElementById("newAllData").value="";
     if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function"){
-      await window.loadFirebaseSitesUnified();
+      await window.loadFirebaseSitesUnified(savedRef && savedRef.id);
     }else{
       await loadExtraSites();
       fit();
@@ -3785,12 +3836,29 @@ setTimeout(()=>{
     }catch(e){}
 
     try{
-      if(window.firebaseReady && window.db && window.fb && fb.fsMod){
-        const {doc,setDoc}=fb.fsMod;
-        await setDoc(doc(db,"sites",id),{
+      const fbMod=window.fb || {};
+      const firestoreDb=window.db;
+      const useUnified=window.__firebaseUnifiedPrimary !== false;
+      const userEmail=(window.currentUser && window.currentUser.email) || "";
+      if(window.firebaseReady && firestoreDb && fbMod.fsMod){
+        const {doc,setDoc}=fbMod.fsMod;
+        const colName=useUnified ? "sitesUnified" : "sites";
+        await setDoc(doc(firestoreDb,colName,id),useUnified ? {
+          raw:raw,
+          dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw) : [],
+          manualEntry:true,
+          migratedFromCsv:false,
+          createdAt:new Date().toISOString(),
+          updatedAt:new Date().toISOString(),
+          createdBy:userEmail,
+          updatedBy:userEmail,
+          name:raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "",
+          lat:Number.isFinite(row.lat)?row.lat:null,
+          lon:Number.isFinite(row.lon)?row.lon:null
+        } : {
           raw:raw,
           createdAt:new Date().toISOString(),
-          createdBy:(window.currentUser&&currentUser.email)||"",
+          createdBy:userEmail,
           noOrder:row.noOrder
         },{merge:true});
       }
@@ -3815,7 +3883,9 @@ setTimeout(()=>{
     if(st) st.textContent="Nové místo uloženo a zobrazeno na mapě.";
 
     try{
-      if(typeof render==="function") render();
+      if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
+        await window.loadFirebaseSitesUnified(id);
+      }else if(typeof render==="function") render();
 
       const hasGps = Number.isFinite(row.lat) && Number.isFinite(row.lon);
       if(hasGps){
@@ -4104,13 +4174,30 @@ setTimeout(()=>{
     }
 
     try{
-      if(window.firebaseReady && window.db && window.fb && fb.fsMod){
-        const {doc,setDoc}=fb.fsMod;
-        await setDoc(doc(db,"sites",row.id),{
+      const fbMod=window.fb || {};
+      const firestoreDb=window.db;
+      const useUnified=window.__firebaseUnifiedPrimary !== false;
+      const userEmail=(window.currentUser && window.currentUser.email) || "";
+      if(window.firebaseReady && firestoreDb && fbMod.fsMod){
+        const {doc,setDoc}=fbMod.fsMod;
+        const colName=useUnified ? "sitesUnified" : "sites";
+        await setDoc(doc(firestoreDb,colName,row.id),useUnified ? {
+          raw:row.raw,
+          dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(row.raw) : [],
+          manualEntry:true,
+          migratedFromCsv:false,
+          createdAt:new Date().toISOString(),
+          updatedAt:new Date().toISOString(),
+          createdBy:userEmail,
+          updatedBy:userEmail,
+          name:row.raw["Název"] || row.raw["Adresa / umístění"] || row.raw["Adresa_GPS"] || "",
+          lat:Number.isFinite(row.lat)?row.lat:null,
+          lon:Number.isFinite(row.lon)?row.lon:null
+        } : {
           raw:row.raw,
           noOrder:row.noOrder,
           createdAt:new Date().toISOString(),
-          createdBy:(window.currentUser && currentUser.email) || ""
+          createdBy:userEmail
         },{merge:true});
       }
     }catch(e){
@@ -4126,7 +4213,9 @@ setTimeout(()=>{
     if(st) st.textContent="Nové místo uloženo.";
 
     try{
-      if(typeof render==="function") render();
+      if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
+        await window.loadFirebaseSitesUnified(row.id);
+      }else if(typeof render==="function") render();
 
       const latlng=[row.lat,row.lon];
       if(window.map){
@@ -4365,8 +4454,28 @@ setTimeout(()=>{
     }
     if(el){el.className="notice err";el.innerHTML=msg;}
   }
-  function db(){ if(!window.firebase || !firebase.apps || !firebase.apps.length) return null; try{return firebase.firestore();}catch(e){return null;} }
-  function user(){ try{return firebase.auth().currentUser;}catch(e){return null;} }
+  function ensureCompatFirebase(){
+    if(!window.firebase) return null;
+    try{
+      if((!firebase.apps || !firebase.apps.length) && window.__firebaseConfig){
+        firebase.initializeApp(window.__firebaseConfig);
+      }
+      return firebase.apps && firebase.apps.length ? firebase : null;
+    }catch(e){
+      console.warn("Firebase compat inicializace selhala",e);
+      return null;
+    }
+  }
+  function db(){
+    const compat=ensureCompatFirebase();
+    if(!compat) return null;
+    try{return compat.firestore();}catch(e){return null;}
+  }
+  function user(){
+    const compat=ensureCompatFirebase();
+    if(!compat) return null;
+    try{return compat.auth().currentUser;}catch(e){return null;}
+  }
   function dedupKeys(raw){
     return typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw || {}) : [];
   }
@@ -4749,6 +4858,12 @@ setTimeout(()=>{
   document.addEventListener("DOMContentLoaded",bind);
   setTimeout(bind,100); setTimeout(bind,500); setTimeout(bind,1500); setInterval(bind,1200);
   setTimeout(()=>loadFirebaseSites(),3500);
+  try{
+    const compat=ensureCompatFirebase();
+    if(compat && compat.auth){
+      compat.auth().onAuthStateChanged(()=>loadFirebaseSites());
+    }
+  }catch(e){}
   window.loadFirebaseSitesUnified=loadFirebaseSites;
   window.migrateCsvToFirebaseUnified=migrateCsvToFirebase;
 })();
@@ -4782,13 +4897,21 @@ setTimeout(()=>{
 
   function db(){
     try{
+      if(window.firebase && (!firebase.apps || !firebase.apps.length) && window.__firebaseConfig){
+        firebase.initializeApp(window.__firebaseConfig);
+      }
       if(window.firebase && firebase.apps && firebase.apps.length) return firebase.firestore();
     }catch(e){}
     return null;
   }
 
   function user(){
-    try{return firebase.auth().currentUser;}catch(e){return null;}
+    try{
+      if(window.firebase && (!firebase.apps || !firebase.apps.length) && window.__firebaseConfig){
+        firebase.initializeApp(window.__firebaseConfig);
+      }
+      return firebase.auth().currentUser;
+    }catch(e){return null;}
   }
 
   function docIdFromRawAuto(raw,i){
