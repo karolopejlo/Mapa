@@ -3061,9 +3061,9 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
   };
 
   try{
-    const {collection,addDoc}=fb.fsMod;
     let savedRef=null;
     if(firebaseUnifiedPrimary){
+      if(typeof window.saveUnifiedSiteRaw!=="function") throw new Error("Firebase ukládání nových bodů ještě není připravené.");
       const raw={...(data.allRawData || {})};
       raw["Název"]=data.name || raw["Název"] || "";
       raw["Adresa / umístění"]=data.gpsAddress || raw["Adresa / umístění"] || data.name || "";
@@ -3079,20 +3079,15 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       raw["Příští_kontrola"]=data.nextCheck || raw["Příští_kontrola"] || "";
       raw["Poslední_kontrola"]=data.lastCheck || raw["Poslední_kontrola"] || "";
       if(data.noOrder) raw["Hlídáme sami termín"]="ano";
-      savedRef=await addDoc(collection(db,"sitesUnified"),{
-        raw,
-        dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw) : [],
-        manualEntry:true,
-        migratedFromCsv:false,
-        createdAt:new Date().toISOString(),
-        updatedAt:new Date().toISOString(),
-        createdBy:currentUser.email,
-        updatedBy:currentUser.email,
-        name:raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "",
-        lat:num(raw["GPS_lat"]),
-        lon:num(raw["GPS_lon"])
-      });
+      const result=await window.saveUnifiedSiteRaw(raw);
+      if(result.duplicate){
+        st.textContent="Bod už existuje. Otevírám existující záznam.";
+        if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
+        return;
+      }
+      savedRef={id:result.id};
     }else{
+      const {collection,addDoc}=fb.fsMod;
       savedRef=await addDoc(collection(db,"sites"),data);
     }
     st.textContent="Nové místo uloženo.";
@@ -3835,40 +3830,41 @@ setTimeout(()=>{
       }
     }catch(e){}
 
+    let savedUnified=false;
+    let savedId=id;
+
     try{
       const fbMod=window.fb || {};
       const firestoreDb=window.db;
       const useUnified=window.__firebaseUnifiedPrimary !== false;
       const userEmail=(window.currentUser && window.currentUser.email) || "";
-      if(window.firebaseReady && firestoreDb && fbMod.fsMod){
+      if(useUnified){
+        if(typeof window.saveUnifiedSiteRaw!=="function") throw new Error("Firebase ukládání nových bodů ještě není připravené.");
+        const result=await window.saveUnifiedSiteRaw(raw,{docId:id});
+        if(result.duplicate){
+          if(st) st.textContent="Bod už existuje. Otevírám existující záznam.";
+          if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
+          return;
+        }
+        savedUnified=true;
+        savedId=result.id;
+        if(result.row) row=result.row;
+      }else if(window.firebaseReady && firestoreDb && fbMod.fsMod){
         const {doc,setDoc}=fbMod.fsMod;
-        const colName=useUnified ? "sitesUnified" : "sites";
-        await setDoc(doc(firestoreDb,colName,id),useUnified ? {
-          raw:raw,
-          dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw) : [],
-          manualEntry:true,
-          migratedFromCsv:false,
-          createdAt:new Date().toISOString(),
-          updatedAt:new Date().toISOString(),
-          createdBy:userEmail,
-          updatedBy:userEmail,
-          name:raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "",
-          lat:Number.isFinite(row.lat)?row.lat:null,
-          lon:Number.isFinite(row.lon)?row.lon:null
-        } : {
+        await setDoc(doc(firestoreDb,"sites",id),{
           raw:raw,
           createdAt:new Date().toISOString(),
           createdBy:userEmail,
           noOrder:row.noOrder
         },{merge:true});
-      }
+      }else throw new Error("Firebase není připravený, bod se neuložil.");
     }catch(e){
       if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
       return;
     }
 
     // vložit bod do hlavního seznamu tak, aby ho render() hned zobrazil na mapě
-    if(Array.isArray(window.rows)){
+    if(!savedUnified && Array.isArray(window.rows)){
       row.i = window.rows.length;
       row.lat = Number(row.lat);
       row.lon = Number(row.lon);
@@ -3883,28 +3879,31 @@ setTimeout(()=>{
     if(st) st.textContent="Nové místo uloženo a zobrazeno na mapě.";
 
     try{
-      if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
-        await window.loadFirebaseSitesUnified(id);
+      if(savedUnified && typeof window.loadFirebaseSitesUnified==="function"){
+        await window.loadFirebaseSitesUnified(savedId);
+      }else if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
+        await window.loadFirebaseSitesUnified(savedId);
       }else if(typeof render==="function") render();
 
       const hasGps = Number.isFinite(row.lat) && Number.isFinite(row.lon);
       if(hasGps){
         const latlng=[row.lat,row.lon];
 
-        // přidat bod okamžitě i bez čekání na render
-        try{
-          if(window.L && window.map){
-            const marker=L.circleMarker(latlng,{
-              radius:8,
-              color:"#111827",
-              weight:2,
-              fillColor: row.noOrder ? "#ec4899" : "#22c55e",
-              fillOpacity:.95
-            }).addTo(window.map);
-            marker.bindPopup(row.nazev || "Nové místo");
-            marker.on("click",()=>{ if(typeof window.openDetailById==="function") window.openDetailById(row.id); });
-          }
-        }catch(e){}
+        if(!savedUnified){
+          try{
+            if(window.L && window.map){
+              const marker=L.circleMarker(latlng,{
+                radius:8,
+                color:"#111827",
+                weight:2,
+                fillColor: row.noOrder ? "#ec4899" : "#22c55e",
+                fillOpacity:.95
+              }).addTo(window.map);
+              marker.bindPopup(row.nazev || "Nové místo");
+              marker.on("click",()=>{ if(typeof window.openDetailById==="function") window.openDetailById(row.id); });
+            }
+          }catch(e){}
+        }
 
         if(window.map){
           setTimeout(()=>{try{window.map.setView(latlng,14);}catch(e){}},150);
@@ -3912,7 +3911,7 @@ setTimeout(()=>{
         }
       }
 
-      if(typeof window.openDetailById==="function") setTimeout(()=>window.openDetailById(row.id),250);
+      if(typeof window.openDetailById==="function") setTimeout(()=>window.openDetailById(savedUnified ? savedId : row.id),250);
     }catch(e){
       location.reload();
     }
@@ -4173,39 +4172,40 @@ setTimeout(()=>{
       return;
     }
 
+    let savedUnified=false;
+    let savedId=row.id;
+
     try{
       const fbMod=window.fb || {};
       const firestoreDb=window.db;
       const useUnified=window.__firebaseUnifiedPrimary !== false;
       const userEmail=(window.currentUser && window.currentUser.email) || "";
-      if(window.firebaseReady && firestoreDb && fbMod.fsMod){
+      if(useUnified){
+        if(typeof window.saveUnifiedSiteRaw!=="function") throw new Error("Firebase ukládání nových bodů ještě není připravené.");
+        const result=await window.saveUnifiedSiteRaw(row.raw,{docId:row.id});
+        if(result.duplicate){
+          if(st) st.textContent="Bod už existuje. Otevírám existující záznam.";
+          if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
+          return;
+        }
+        savedUnified=true;
+        savedId=result.id;
+        if(result.row) row=result.row;
+      }else if(window.firebaseReady && firestoreDb && fbMod.fsMod){
         const {doc,setDoc}=fbMod.fsMod;
-        const colName=useUnified ? "sitesUnified" : "sites";
-        await setDoc(doc(firestoreDb,colName,row.id),useUnified ? {
-          raw:row.raw,
-          dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(row.raw) : [],
-          manualEntry:true,
-          migratedFromCsv:false,
-          createdAt:new Date().toISOString(),
-          updatedAt:new Date().toISOString(),
-          createdBy:userEmail,
-          updatedBy:userEmail,
-          name:row.raw["Název"] || row.raw["Adresa / umístění"] || row.raw["Adresa_GPS"] || "",
-          lat:Number.isFinite(row.lat)?row.lat:null,
-          lon:Number.isFinite(row.lon)?row.lon:null
-        } : {
+        await setDoc(doc(firestoreDb,"sites",row.id),{
           raw:row.raw,
           noOrder:row.noOrder,
           createdAt:new Date().toISOString(),
           createdBy:userEmail
         },{merge:true});
-      }
+      }else throw new Error("Firebase není připravený, bod se neuložil.");
     }catch(e){
       if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
       return;
     }
 
-    if(Array.isArray(window.rows)){
+    if(!savedUnified && Array.isArray(window.rows)){
       row.i=window.rows.length;
       window.rows.push(row);
     }
@@ -4213,8 +4213,10 @@ setTimeout(()=>{
     if(st) st.textContent="Nové místo uloženo.";
 
     try{
-      if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
-        await window.loadFirebaseSitesUnified(row.id);
+      if(savedUnified && typeof window.loadFirebaseSitesUnified==="function"){
+        await window.loadFirebaseSitesUnified(savedId);
+      }else if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
+        await window.loadFirebaseSitesUnified(savedId);
       }else if(typeof render==="function") render();
 
       const latlng=[row.lat,row.lon];
@@ -4225,7 +4227,7 @@ setTimeout(()=>{
 
       // nový bod se chová jako ostatní: detail se otevře přes původní openDetail
       if(typeof window.openDetailById==="function"){
-        setTimeout(()=>window.openDetailById(row.id),250);
+        setTimeout(()=>window.openDetailById(savedUnified ? savedId : row.id),250);
       }
     }catch(e){
       location.reload();
@@ -4503,10 +4505,11 @@ setTimeout(()=>{
     if(batchCount>0) await batch.commit();
     return count;
   }
-  async function findDuplicateDoc(database, raw){
+  async function findDuplicateDoc(database, raw, skipDocId=null){
     const keys=dedupKeys(raw);
     if(!keys.length) return null;
     const wanted=new Set(keys);
+    const skip=skipDocId ? String(skipDocId) : "";
     const snap=await database.collection(FB_COLLECTION).get();
     let found=null;
     function candidateScore(data, existingKeys, docId){
@@ -4526,6 +4529,7 @@ setTimeout(()=>{
       return score;
     }
     snap.forEach(doc=>{
+      if(skip && doc.id===skip) return;
       const data=doc.data()||{};
       const existingKeys=dedupKeys(data.raw || {});
       if(existingKeys.some(k=>wanted.has(k))){
@@ -4727,6 +4731,42 @@ setTimeout(()=>{
     r.firebaseData=d;
     return applyRowEdit(r);
   }
+  async function saveUnifiedSiteRaw(rawInput, opts={}){
+    const database=db(), u=user();
+    if(!database) throw new Error("Firebase není dostupný nebo není inicializovaný.");
+    if(!u) throw new Error("Nejdřív se přihlaš přes Google.");
+
+    const requestedDocId=opts && opts.docId ? String(opts.docId) : "";
+    let raw=completeFirebaseRaw(rawInput || {}, requestedDocId || null);
+    const duplicate=await findDuplicateDoc(database, raw, requestedDocId);
+    if(duplicate){
+      const row=await openDuplicateDoc(database,duplicate,raw,u);
+      return {duplicate:true,id:duplicate.id,row};
+    }
+
+    const ref=requestedDocId ? database.collection(FB_COLLECTION).doc(requestedDocId) : database.collection(FB_COLLECTION).doc();
+    raw=completeFirebaseRaw(raw, ref.id);
+    const lat=num(raw["GPS_lat"]);
+    const lon=num(raw["GPS_lon"]);
+    const now=new Date().toISOString();
+    const savedData={
+      raw,
+      dedupKeys:dedupKeys(raw),
+      createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+      createdBy:u.email||"",
+      updatedBy:u.email||"",
+      manualEntry:true,
+      migratedFromCsv:false,
+      name:raw["Název"]||raw["Adresa / umístění"]||raw["Adresa_GPS"]||"",
+      lat:Number.isFinite(lat)?lat:null,
+      lon:Number.isFinite(lon)?lon:null
+    };
+    await ref.set(savedData,{merge:true});
+    const row=rowFromDoc(ref.id,{...savedData,createdAt:now,updatedAt:now});
+    await unhideOpenedRow(database,row);
+    return {duplicate:false,id:ref.id,row};
+  }
   async function loadFirebaseSites(openDocId=null){
     const database=db(); if(!database){sideStatus("Firebase není dostupný.",true);return;}
     try{
@@ -4814,17 +4854,14 @@ setTimeout(()=>{
       if(previewMarker){try{map.removeLayer(previewMarker);}catch(_e){} previewMarker=null;}
       closePanel();
       window.__lastSavedFirebaseSiteDocId=ref.id;
-      let openedLocally=false;
       try{
         if(typeof window.upsertFirebaseSiteRow==="function"){
           window.upsertFirebaseSiteRow(row,ref.id);
-          openedLocally=true;
         }
       }catch(localErr){
         console.warn("Okamžité zobrazení bodu selhalo, načítám z Firebase",localErr);
       }
-      if(!openedLocally) await loadFirebaseSites(ref.id);
-      setTimeout(()=>loadFirebaseSites(ref.id).catch(err=>sideStatus("Bod je uložený, ale kontrolní načtení z Firebase selhalo: "+err.message,true)),1200);
+      await loadFirebaseSites(ref.id);
       sideStatus("<b>Bod uložen.</b> Nové místo je hned zobrazené v mapě a otevřené v detailu.");
       return false;
     }catch(e){status("Chyba uložení do Firebase: "+e.message,true);return false;}
@@ -4866,6 +4903,7 @@ setTimeout(()=>{
   }catch(e){}
   window.loadFirebaseSitesUnified=loadFirebaseSites;
   window.migrateCsvToFirebaseUnified=migrateCsvToFirebase;
+  window.saveUnifiedSiteRaw=saveUnifiedSiteRaw;
 })();
 </script>
 
