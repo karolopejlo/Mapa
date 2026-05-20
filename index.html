@@ -1171,6 +1171,32 @@ Cena FZ: ..."></textarea>
     }
   };
 
+  function signOutAndReload(){
+    const auth=initAuth();
+    if(!auth) return;
+    auth.signOut().then(()=>location.reload()).catch(err=>{
+      status("Odhlášení selhalo: " + (err.code || "") + " " + (err.message || err));
+    });
+  }
+
+  function bindLoginButtons(){
+    const handler=window.startGoogleLogin || window.loginPopup;
+    const startup=document.getElementById("startupLoginBtn");
+    const login=document.getElementById("loginBtn");
+    const logout=document.getElementById("logoutBtn");
+    const topLogout=document.getElementById("topLogoutBtn");
+    if(startup && typeof handler==="function") startup.onclick=handler;
+    if(login && typeof handler==="function") login.onclick=handler;
+    if(logout) logout.onclick=signOutAndReload;
+    if(topLogout) topLogout.onclick=signOutAndReload;
+  }
+
+  window.startGoogleLogin = window.loginPopup;
+  window.bindLoginButtons = bindLoginButtons;
+  bindLoginButtons();
+  window.addEventListener("DOMContentLoaded", bindLoginButtons);
+  window.addEventListener("load", bindLoginButtons);
+
   window.addEventListener("load", async function(){
     const auth=initAuth();
     if(!auth) return;
@@ -1183,9 +1209,12 @@ Cena FZ: ..."></textarea>
 
     auth.onAuthStateChanged(async function(user){
       if(!user){
+        window.currentUser=null;
         status("");
         return;
       }
+
+      window.currentUser=user;
 
       const email=String(user.email || "").toLowerCase();
 
@@ -1198,14 +1227,7 @@ Cena FZ: ..."></textarea>
 
       showAppHard();
     });
-
-    const topLogout=document.getElementById("topLogoutBtn");
-    if(topLogout){
-      topLogout.onclick=async function(){
-        await auth.signOut();
-        location.reload();
-      };
-    }
+    bindLoginButtons();
   });
 })();
 </script>
@@ -1249,7 +1271,7 @@ if(firebaseReady){
   const authMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
   const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
   fb={appMod,authMod,fsMod};
-  app=appMod.initializeApp(firebaseConfig);
+  app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
   db=fsMod.getFirestore(app);
   window.fb=fb;
@@ -1266,9 +1288,37 @@ if(firebaseReady){
   authMod.onAuthStateChanged(auth,user=>{
     currentUser=user;
     window.currentUser=user;
-    document.getElementById("userBox").textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
-    if(user){ showApp(); }
-    else { const topLogoutBtn=document.getElementById("topLogoutBtn"); if(topLogoutBtn) topLogoutBtn.style.display="none"; showLogin(); }
+    const userBox=document.getElementById("userBox");
+    if(userBox) userBox.textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
+    if(user){
+      const email=String(user.email || "").toLowerCase();
+      if(!email.endsWith("@astip.cz")){
+        const st=document.getElementById("startupStatus");
+        if(st) st.textContent="Přihlášení je povoleno jen pro @astip.cz.";
+        authMod.signOut(auth).catch(()=>{});
+        showLogin();
+        return;
+      }
+      const topLogoutBtn=document.getElementById("topLogoutBtn");
+      if(topLogoutBtn) topLogoutBtn.style.display="block";
+      showApp();
+    }
+    else {
+      setTimeout(()=>{
+        let compatUser=null;
+        try{ compatUser=window.firebase && firebase.auth ? firebase.auth().currentUser : null; }catch(e){}
+        if(compatUser){
+          currentUser=compatUser;
+          window.currentUser=compatUser;
+          if(userBox) userBox.textContent=`Přihlášen: ${compatUser.email || ""}`;
+          showApp();
+          return;
+        }
+        const topLogoutBtn=document.getElementById("topLogoutBtn");
+        if(topLogoutBtn) topLogoutBtn.style.display="none";
+        showLogin();
+      },300);
+    }
   });
 }
 
@@ -3039,7 +3089,9 @@ function showLogin(){
   document.getElementById("mainApp").style.display="none";
 }
 
-document.getElementById("loginBtn").onclick = window.startGoogleLogin;
+if(typeof window.bindLoginButtons==="function"){
+  window.bindLoginButtons();
+}
 
 
 
@@ -3684,10 +3736,9 @@ if(firebaseUnifiedPrimary){
 }
 
 window.addEventListener("DOMContentLoaded",()=>{
-  const b=document.getElementById("startupLoginBtn");
-  if(b) b.addEventListener("click", window.startGoogleLogin);
-  const b2=document.getElementById("loginBtn");
-  if(b2) b2.addEventListener("click", window.startGoogleLogin);
+  if(typeof window.bindLoginButtons==="function"){
+    window.bindLoginButtons();
+  }
 });
 
 
@@ -4643,7 +4694,7 @@ setTimeout(()=>{
       <div class="fbUnifiedHead"><div><h2>Přidat nové místo</h2><p class="small">Ukládá se do stejné Firebase databáze jako ostatní body.</p><div class="fbDbBadge">Kolekce: <b>${FB_COLLECTION}</b></div></div><button class="fbSecondary" id="fbUnifiedClose" type="button">Zavřít</button></div>
       <div id="fbUnifiedStatus" class="fbUnifiedNotice">Připraveno. Vyplň aspoň název/adresu a GPS.</div>
       <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Vyhledat na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
-      <div class="fbUnifiedGrid">${FB_HEADERS.map(field).join("")}</div>`;
+      <div class="fbUnifiedGrid">${window.firebaseUnifiedEditableKeys.map(field).join("")}</div>`;
     document.body.appendChild(panel);
     document.getElementById("fbUnifiedClose").onclick=closePanel;
     document.getElementById("fbUnifiedGps").onclick=calcGps;
@@ -4682,9 +4733,7 @@ setTimeout(()=>{
     return raw;
   }
   function completeFirebaseRaw(raw, docId=null){
-    const out={};
-    FB_HEADERS.forEach(k=>out[k]="");
-    Object.assign(out, raw || {});
+    const out=compactFirebaseRaw(raw || {});
     const sync=(a,b)=>{
       if(val(out[a]) && !val(out[b])) out[b]=out[a];
       if(val(out[b]) && !val(out[a])) out[a]=out[b];
@@ -4711,6 +4760,18 @@ setTimeout(()=>{
       out["Firebase_doc_id"]=docId;
       if(!val(out["Klíč_adresy"])) out["Klíč_adresy"]="firebase_"+docId;
     }
+    return compactFirebaseRaw(out);
+  }
+  function compactFirebaseRaw(raw){
+    const out={};
+    Object.entries(raw || {}).forEach(([k,v])=>{
+      const key=String(k || "").trim();
+      if(!key) return;
+      if(/^Sloupec_\d+$/i.test(key)) return;
+      const value=typeof v==="string" ? v.trim() : v;
+      if(value===undefined || value===null || value==="") return;
+      out[key]=value;
+    });
     return out;
   }
   function mergeDuplicateRaw(existingRaw, incomingRaw, docId){
