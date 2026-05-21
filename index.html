@@ -683,6 +683,12 @@ button,input,select,textarea{
 .data-edit-table textarea{
   min-height:48px !important;
 }
+.data-edit-table input[readonly],
+.fbUnifiedGrid input[readonly]{
+  background:#f1f5f9 !important;
+  color:#475569;
+  cursor:not-allowed;
+}
 
 
 .data-add-row{
@@ -701,6 +707,15 @@ button,input,select,textarea{
 .notes-red-row td:nth-child(2){
   color:#991b1b !important;
   font-weight:800;
+}
+.fbUnifiedGrid .fbImportant{
+  background:#fee2e2;
+  border:1px solid #fecaca;
+  border-radius:12px;
+  padding:9px;
+}
+.fbUnifiedGrid .fbImportant label{
+  color:#991b1b;
 }
 @media(max-width:700px){
   .data-add-row{grid-template-columns:1fr}
@@ -1012,8 +1027,8 @@ button,input,select,textarea{
   <div><label>Hodnota</label><input id="newDataValue" placeholder="Hodnota údaje"></div>
   <button class="secondary" type="button" id="addDataRowBtn">Přidat řádek</button>
 </div><div class="control-dates-strong" id="controlDatesRow">
-  <div class="control-date-box control-date-last"><span>Poslední kontrola</span><b id="detailLastCheck">-</b></div>
-  <div class="control-date-box control-date-next"><span>Další kontrola</span><b id="detailNextCheck">-</b></div>
+  <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><b id="detailLastCheck">-</b></div>
+  <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><b id="detailNextCheck">-</b></div>
 </div><table id="detailTable"></table></div>
 <div class="card">
   <div class="row">
@@ -1480,9 +1495,11 @@ function applyEditToRow(r){
   const e=editCache[r.id];
   if(!e) return r;
 
+  const rawEdits = e.rawEdits || {};
   const lat = num(e.gpsLat) ?? num((e.rawEdits||{})["GPS_lat"]);
   const lon = num(e.gpsLon) ?? num((e.rawEdits||{})["GPS_lon"]);
-  const updatedRaw = {...r.raw, ...(e.rawEdits || {})};
+  const updatedRaw = {...r.raw, ...rawEdits};
+  const rawWatch = yesNoFixed(rawEdits["Hlídáme sami termín"] || rawEdits["Hlídáme kontroly sami"], "");
 
   if(e.name) updatedRaw["Upravený název"] = e.name;
   if(e.contact) updatedRaw["Upravený kontakt"] = e.contact;
@@ -1497,17 +1514,18 @@ function applyEditToRow(r){
 
   return {...r,
     raw: updatedRaw,
-    adresa:e.name || (e.rawEdits && (e.rawEdits["Adresa_GPS"] || e.rawEdits["Adresa / umístění"] || e.rawEdits["Umístění"])) || r.adresa,
-    kontakt:e.contact || r.kontakt,
-    zdroj:e.source || r.zdroj,
-    poznamky:e.notes || r.poznamky,
+    adresa:e.name || rawEdits["Název"] || rawEdits["Adresa / umístění"] || rawEdits["Adresa_GPS"] || rawEdits["Umístění zdroje"] || r.adresa,
+    kontakt:e.contact || rawEdits["Kontakt"] || r.kontakt,
+    zdroj:e.source || rawEdits["Popis_zdroje"] || r.zdroj,
+    poznamky:e.notes || rawEdits["Poznámky"] || rawEdits["Důležitá poznámka"] || r.poznamky,
+    kraj:rawEdits["Kraj"] || r.kraj,
     posledni:e.lastCheck || r.posledni,
     pristi:e.nextCheck || r.pristi,
     lat:Number.isFinite(lat) ? lat : r.lat,
     lon:Number.isFinite(lon) ? lon : r.lon,
     gpsAddress:e.gpsAddress || r.gpsAddress,
     ordered:e.ordered === true ? true : r.ordered,
-    noOrder:e.noOrder === true ? true : r.noOrder,
+    noOrder:rawWatch ? rawWatch==="ano" : (e.noOrder === true ? true : r.noOrder),
     edit:e
   };
 }
@@ -2414,84 +2432,89 @@ function shouldShowEmptyEditableField(k,label){
   return true;
 }
 
-function editableDataTable(r){
-  const raw = r.raw || {};
-  const rows = [];
-  const seen = new Set();
-  const showEmptyEditable = isFirebaseUnifiedRow(r);
+const USER_SITE_DATA_FIELDS = [
+  {label:"Název", key:"Název", keys:["Název"]},
+  {label:"Adresa / umístění", key:"Adresa / umístění", keys:["Adresa / umístění","Původní adresa / umístění"]},
+  {label:"Adresa_GPS", key:"Adresa_GPS", keys:["Adresa_GPS"], readonly:true},
+  {label:"Kraj", key:"Kraj", keys:["Kraj"], type:"region"},
+  {label:"Popis zdroje", key:"Popis_zdroje", keys:["Popis_zdroje","Jaký zdroj"]},
+  {label:"Výrobní číslo", key:"Zdroj", keys:["Výrobní číslo","Výrobní_číslo","Seriové číslo","Sériové číslo","Serial","SN","Zdroj"]},
+  {label:"Kontakt", key:"Kontakt", keys:["Kontakt","Kontakt_mapy","Hlavní kontakt"]},
+  {label:"Umístění zdroje", key:"Umístění zdroje", keys:["Umístění zdroje","Umístění"]},
+  {label:"Poznámky", key:"Poznámky", keys:["Poznámky","Poznámky_mapy"], type:"textarea"},
+  {label:"Perioda kontrol", key:"Perioda kontrol", keys:["Perioda kontrol","Perioda","Četnost"], type:"period"},
+  {label:"Hlídáme sami termín", key:"Hlídáme sami termín", keys:["Hlídáme sami termín","Hlídáme kontroly sami","Hlidame kontroly sami"], type:"yesno"},
+  {label:"Smlouva", key:"Smlouva ano/ne", keys:["Smlouva ano/ne","Smlouva"], type:"yesno"},
+  {label:"Cena FZ", key:"Cena FZ", keys:["Cena FZ","Cena FZ v Kč"]},
+  {label:"Faktura na", key:"Faktura na", keys:["Faktura na"]},
+  {label:"Důležité poznámky", key:"Důležitá poznámka", keys:["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky"], type:"textarea", important:true}
+];
+window.userSiteDataFields = USER_SITE_DATA_FIELDS.map(f=>({label:f.label,key:f.key,type:f.type||"text"}));
 
-  function inputField(k,v,label){
-    const n=dataNormFixed(k);
-
-    if(n==="adresa gps"){
-      return `<input data-key="${esc(k)}" value="">`;
-    }
-
-    // výrobní číslo prázdné
-    if(dataNormFixed(label)==="vyrobni cislo"){
-      return `<input data-key="${esc(k)}" value="">`;
-    }
-
-    if(n==="serviska" || n==="smlouva ano/ne" || n==="smlouva ano ne" || n==="smlouva"){
-      const val=String(v||"").toLowerCase();
-      return `<select data-key="${esc(k)}">
-        <option value="">Vyber</option>
-        <option value="ano" ${val==="ano"?"selected":""}>ano</option>
-        <option value="ne" ${val==="ne"?"selected":""}>ne</option>
-      </select>`;
-    }
-
-    return String(v||"").length>70
-      ? `<textarea data-key="${esc(k)}">${esc(v)}</textarea>`
-      : `<input data-key="${esc(k)}" value="${esc(v)}">`;
+function firstSiteField(raw, keys){
+  for(const k of keys || []){
+    const v=safe(get(raw,k));
+    if(v) return v;
   }
+  return "";
+}
 
-  orderedEditableKeys(r).forEach(k=>{
-    if(hideDataFixed(k)) return;
+function yesNoFixed(v, fallback="ne"){
+  const n=dataNormFixed(v);
+  if(n==="ano" || n==="yes" || n==="true" || n==="1") return "ano";
+  if(n==="ne" || n==="no" || n==="false" || n==="0") return "ne";
+  return fallback;
+}
 
-    let v=safe(raw[k]);
-    const label=dataLabelFixed(k);
+function regionOptionsFixed(current){
+  const defaults=[
+    "Hlavní město Praha","Středočeský kraj","Jihočeský kraj","Plzeňský kraj","Karlovarský kraj",
+    "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
+    "Jihomoravský kraj","Olomoucký kraj","Moravskoslezský kraj","Zlínský kraj","Slovensko"
+  ];
+  const set=new Set(["", ...defaults]);
+  (window.rows || rows || []).forEach(r=>{ if(r && r.kraj) set.add(r.kraj); });
+  if(current) set.add(current);
+  return [...set].map(v=>`<option value="${esc(v)}" ${v===current ? "selected" : ""}>${esc(v || "Vyber kraj")}</option>`).join("");
+}
 
-    if(dataNormFixed(k)==="adresa gps") v="";
-    if(dataNormFixed(label)==="vyrobni cislo") v="";
+function userSiteFieldValue(r, spec){
+  const raw=r.raw || {};
+  if(spec.type==="period") return detectControlPeriod(raw);
+  if(spec.key==="Hlídáme sami termín") return yesNoFixed(getWatchFixed(raw), "ne");
+  if(spec.important) return getImportantNoteFixed(raw);
 
-    if(!v && dataNormFixed(k)!=="adresa gps" && dataNormFixed(label)!=="vyrobni cislo" && !(showEmptyEditable && shouldShowEmptyEditableField(k,label))) return;
+  let v=firstSiteField(raw, spec.keys);
+  if(!v && spec.key==="Název") v=r.adresa || "";
+  if(!v && spec.key==="Adresa / umístění") v=firstSiteField(raw,["Adresa_GPS","Umístění","Umístění zdroje"]);
+  if(!v && spec.key==="Kontakt") v=r.kontakt || "";
+  if(!v && spec.key==="Popis_zdroje") v=r.zdroj || "";
+  return v;
+}
 
-    const key=dataNormFixed(label)+"::"+valNormFixed(v);
-    if(seen.has(key)) return;
-    seen.add(key);
+function userSiteInput(spec, value){
+  const dataKey=esc(spec.key);
+  const text=esc(value);
+  if(spec.type==="region") return `<select data-key="${dataKey}">${regionOptionsFixed(value)}</select>`;
+  if(spec.type==="period") return `<select data-key="${dataKey}"><option value="6" ${value==="6" ? "selected" : ""}>6 měsíců</option><option value="12" ${value==="12" ? "selected" : ""}>12 měsíců</option></select>`;
+  if(spec.type==="yesno") return `<select data-key="${dataKey}"><option value="ne" ${yesNoFixed(value)==="ne" ? "selected" : ""}>ne</option><option value="ano" ${yesNoFixed(value)==="ano" ? "selected" : ""}>ano</option></select>`;
+  if(spec.type==="textarea") return `<textarea data-key="${dataKey}">${text}</textarea>`;
+  if(spec.readonly) return `<input data-key="${dataKey}" value="${text}" readonly title="Dopočítá se z adresy">`;
+  return `<input data-key="${dataKey}" value="${text}">`;
+}
 
-    rows.push(`<tr><td>${esc(label)}</td><td>${inputField(k,v,label)}</td></tr>`);
-  });
+function editableDataTable(r){
+  return USER_SITE_DATA_FIELDS.map(spec=>{
+    const value=userSiteFieldValue(r,spec);
+    const cls=spec.important ? "notes-red-row" : "";
+    return `<tr class="${cls}"><td>${esc(spec.label)}</td><td>${userSiteInput(spec,value)}</td></tr>`;
+  }).join("");
+}
 
-  const period = detectControlPeriod(raw);
-  rows.push(`<tr>
-    <td>Perioda kontrol</td>
-    <td>
-      <select data-key="Perioda kontrol">
-        <option value="6" ${period==="6" ? "selected" : ""}>6 měsíců</option>
-        <option value="12" ${period==="12" ? "selected" : ""}>12 měsíců</option>
-      </select>
-    </td>
-  </tr>`);
-
-  const watchVal=String(getWatchFixed(raw)||"ne").toLowerCase();
-  rows.push(`<tr>
-    <td>Hlídáme kontroly sami</td>
-    <td><select data-key="Hlídáme kontroly sami" data-special="watch-self">
-      <option value="">Vyber</option>
-      <option value="ano" ${watchVal==="ano" || watchVal==="true" || watchVal==="1" ? "selected" : ""}>ano</option>
-      <option value="ne" ${watchVal==="ne" || watchVal==="false" || watchVal==="0" ? "selected" : ""}>ne</option>
-    </select></td>
-  </tr>`);
-
-  const noteVal=getImportantNoteFixed(raw);
-  rows.push(`<tr class="notes-red-row">
-    <td>Důležité poznámky</td>
-    <td><textarea data-key="Důležitá poznámka">${esc(noteVal)}</textarea></td>
-  </tr>`);
-
-  return rows.join("") || "<tr><td>Data</td><td>Bez údajů</td></tr>";
+function userSiteDisplayValue(spec, value){
+  if(spec.type==="period") return value ? `${esc(value)} měsíců` : "";
+  if(spec.type==="yesno") return yesNoFixed(value, "ne");
+  return esc(value);
 }
 
 
@@ -2539,58 +2562,28 @@ async function saveAllDataEdits(){
   if(!currentUser){ if(st) st.textContent="Nejdřív se přihlaš."; return; }
 
   const editedRaw={};
-  const originalRaw=selectedSite?.raw || {};
-
-  document.querySelectorAll("#detailTable input[data-key], #detailTable textarea[data-key], #detailTable select[data-key]").forEach(el=>{
-    const key=el.dataset.key;
-    if(!key) return;
-    const newValue=el.value;
-
-    // prázdné řádky se po uložení nezobrazují
-    if(!String(newValue||"").trim()) return;
-
-    editedRaw[key]=newValue;
-
-    const oldValue=safe(originalRaw[key]);
-    if(oldValue){
-      Object.keys(originalRaw).forEach(k=>{
-        if(k!==key && safe(originalRaw[k])===oldValue){
-          editedRaw[k]=newValue;
-        }
-      });
-    }
+  USER_SITE_DATA_FIELDS.forEach(spec=>{
+    const el=document.querySelector(`#detailTable [data-key="${CSS.escape(spec.key)}"]`);
+    if(!el) return;
+    let value=String(el.value || "").trim();
+    if(spec.type==="yesno") value=yesNoFixed(value,"ne");
+    if(spec.type==="period") value=value==="6" ? "6" : "12";
+    if(!value && spec.type!=="yesno" && spec.type!=="period") return;
+    editedRaw[spec.key]=value;
   });
 
-  const watchValue = Object.entries(editedRaw).find(([k,v])=>{
-    return dataNormFixed(k)==="hlidame kontroly sami" && String(v).toLowerCase()==="ano";
-  });
-
-  // růžové místo + synchronizace do hlavního panelu
-  if(watchValue){
-    editedRaw["Hlídáme kontroly sami"]="ano";
-    editedRaw["Hlídáme sami termín"]="ano";
-    editedRaw["Jezdit hlídáme termín sami"]="ANO";
-    editedRaw["Bez objednávky"]="ANO";
-  }else{
-    editedRaw["Hlídáme kontroly sami"]="ne";
-    editedRaw["Hlídáme sami termín"]="ne";
-    editedRaw["Jezdit hlídáme termín sami"]="NE";
-    editedRaw["Bez objednávky"]="NE";
-  }
-
-  // uložit jen jeden uživatelský řádek; interní růžové příznaky se do Data nezobrazují
-  if(watchValue){
-    editedRaw["Hlídáme kontroly sami"]="ano";
-    editedRaw["Hlídáme sami termín"]="ano";
-    editedRaw["Hlídáme termín sami"]="ANO";
-    editedRaw["Bez objednávky"]="ANO";
-  }
+  const watchSelf=yesNoFixed(editedRaw["Hlídáme sami termín"],"ne")==="ano";
 
   try{
     const {doc,setDoc}=fb.fsMod;
     const edit = {
       rawEdits: editedRaw,
-      noOrder: !!watchValue || selectedSite.noOrder === true,
+      name: editedRaw["Název"] || editedRaw["Adresa / umístění"] || "",
+      contact: editedRaw["Kontakt"] || "",
+      source: editedRaw["Popis_zdroje"] || "",
+      notes: editedRaw["Poznámky"] || "",
+      gpsAddress: editedRaw["Adresa_GPS"] || "",
+      noOrder: watchSelf,
       updatedBy: currentUser.email,
       updatedAt: new Date().toISOString()
     };
@@ -2881,41 +2874,11 @@ function shouldWatchSelf(raw){
 }
 
 function detailTable(r){
-  const raw = r.raw || {};
-  const rows = [];
-  const seen = new Set();
-
-  orderedFixedKeys(raw).forEach(k=>{
-    if(hideDataFixed(k)) return;
-
-    let v = safe(raw[k]);
-    const label = dataLabelFixed(k);
-
-    // Umístění zdroje prázdné
-    if(dataNormFixed(k)==="adresa gps") v = "";
-
-    // Výrobní číslo vždy prázdné
-    if(dataNormFixed(label)==="vyrobni cislo") v = "";
-
-    if(!v && dataNormFixed(k)!=="adresa gps" && dataNormFixed(label)!=="vyrobni cislo") return;
-
-    const key = dataNormFixed(label)+"::"+valNormFixed(v);
-    if(seen.has(key)) return;
-    seen.add(key);
-
-    rows.push(`<tr><td>${esc(label)}</td><td>${esc(v)}</td></tr>`);
-  });
-
-  const period = detectControlPeriod(raw);
-  rows.push(`<tr><td>Perioda kontrol</td><td>${period} měsíců</td></tr>`);
-
-  const watchVal=getWatchFixed(raw);
-  rows.push(`<tr><td>Hlídáme kontroly sami</td><td>${esc(watchVal || "ne")}</td></tr>`);
-
-  const noteVal=getImportantNoteFixed(raw);
-  rows.push(`<tr class="notes-red-row"><td>Důležité poznámky</td><td>${esc(noteVal)}</td></tr>`);
-
-  return rows.join("") || "<tr><td>Data</td><td>Bez dalších údajů</td></tr>";
+  return USER_SITE_DATA_FIELDS.map(spec=>{
+    const value=userSiteFieldValue(r,spec);
+    const cls=spec.important ? "notes-red-row" : "";
+    return `<tr class="${cls}"><td>${esc(spec.label)}</td><td>${userSiteDisplayValue(spec,value)}</td></tr>`;
+  }).join("");
 }
 
 window.openDetail=function(i){
@@ -2946,7 +2909,7 @@ window.openDetail=function(i){
       editDataToggleBtn.style.display="none";
       if(saveDataBtn) saveDataBtn.style.display="block";
       if(cancelDataEditBtn) cancelDataEditBtn.style.display="block";
-      const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="grid";
+      const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
       
     };
   }
@@ -4545,8 +4508,25 @@ setTimeout(()=>{
 <script>
 /* FIREBASE UNIFIED MODE */
 (function(){
-  const FB_HEADERS = ["Název", "Adresa / umístění", "Adresa_GPS", "Popis_zdroje", "Zdroj", "Kontakt_mapy", "Kontakt", "Kraj", "Poznámky_mapy", "Poznámky", "Příští plánovaná kontrola", "Poslední proběhlá kontrola", "Dní do kontroly", "Stav pro mapu", "Barva bodu", "GPS_lat", "GPS_lon", "GPS_status", "GPS_nalezeno_jako", "GPS_poznámka", "Klíč_adresy", "Poslední_kontrola", "Příští_kontrola", "Dní_do_kontroly", "Stav_kontroly", "Barva_bodu", "Všechny_termíny", "Zdrojový_soubor", "Zdrojový_řádek", "Rok výroby", "Serviska", "Perioda kontrol", "Hlídáme sami termín", "Hlavní kontakt", "Jaký zdroj", "Umístění", "DŮLEŽITÁ POZNÁMKA", "Měsíc_1", "Měsíc_2", "Měsíc_3", "Měsíc_4", "Měsíc_5", "Měsíc_6", "Měsíc_7", "Měsíc_8", "Měsíc_9", "Měsíc_10", "Měsíc_11", "Měsíc_12", "Sloupec_21", "Cena FZ", "Faktura na", "Protokol s fakturou na", "Smlouva ano/ne", "Sloupec_27", "Sloupec_28", "Sloupec_29", "Sloupec_30", "Sloupec_31", "Sloupec_32", "Sloupec_33", "Sloupec_34", "Sloupec_35", "Sloupec_36", "Sloupec_37", "Sloupec_38", "Sloupec_39", "Sloupec_40", "Sloupec_41", "Sloupec_42", "Sloupec_43", "Sloupec_44", "Sloupec_45", "Sloupec_46", "Sloupec_47", "Sloupec_48", "Sloupec_49", "Sloupec_50", "Sloupec_51", "Sloupec_52", "Sloupec_53", "Sloupec_54", "Sloupec_55", "Sloupec_56", "Sloupec_57", "Sloupec_58", "Sloupec_59", "Sloupec_60", "Sloupec_61", "Sloupec_62", "Sloupec_63", "Sloupec_64", "Sloupec_65", "Sloupec_66", "Sloupec_67", "Sloupec_68", "Sloupec_69", "Sloupec_70", "Sloupec_71", "Sloupec_72", "Sloupec_73", "Sloupec_74", "Sloupec_75", "Sloupec_76", "Sloupec_77", "Sloupec_78", "Sloupec_79", "Sloupec_80", "Sloupec_81", "Sloupec_82", "Sloupec_83", "Sloupec_84", "Sloupec_85", "Sloupec_86", "Sloupec_87", "Sloupec_88", "Sloupec_89", "Sloupec_90", "Sloupec_91", "Sloupec_92", "Sloupec_93", "Sloupec_94", "Počet_termínů", "Umístění zdroje", "Sloupec_8", "Cena FZ v Kč", "Protokol na", "Adresa_GPS_původní", "Adresa_GPS_puvodni_pred_zjednodusenim"];
-  window.firebaseUnifiedEditableKeys = FB_HEADERS.filter(k=>!/^Sloupec_\d+$/i.test(k));
+  const FB_USER_FIELDS = [
+    {label:"Název", key:"Název", full:true},
+    {label:"Adresa / umístění", key:"Adresa / umístění", full:true},
+    {label:"Adresa_GPS", key:"Adresa_GPS", full:true, readonly:true},
+    {label:"Kraj", key:"Kraj", type:"region"},
+    {label:"Popis zdroje", key:"Popis_zdroje", full:true},
+    {label:"Výrobní číslo", key:"Zdroj"},
+    {label:"Kontakt", key:"Kontakt"},
+    {label:"Umístění zdroje", key:"Umístění zdroje", full:true},
+    {label:"Poznámky", key:"Poznámky", type:"textarea", full:true},
+    {label:"Perioda kontrol", key:"Perioda kontrol", type:"period"},
+    {label:"Hlídáme sami termín", key:"Hlídáme sami termín", type:"yesno"},
+    {label:"Smlouva", key:"Smlouva ano/ne", type:"yesno"},
+    {label:"Cena FZ", key:"Cena FZ"},
+    {label:"Faktura na", key:"Faktura na"},
+    {label:"Důležité poznámky", key:"Důležitá poznámka", type:"textarea", full:true, important:true}
+  ];
+  const FB_HIDDEN_KEYS = ["GPS_lat", "GPS_lon"];
+  window.firebaseUnifiedEditableKeys = FB_USER_FIELDS.map(f=>f.key);
   const FB_COLLECTION = "sitesUnified";
   let previewMarker = null;
 
@@ -4554,12 +4534,80 @@ setTimeout(()=>{
   const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : NaN; };
   const esc = v => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 
-  function label(k){
-    return ({
-      "GPS_lat":"GPS lat","GPS_lon":"GPS lon","Popis_zdroje":"Popis zdroje","Kontakt_mapy":"Kontakt mapy",
-      "Poznámky_mapy":"Poznámky mapy","DŮLEŽITÁ POZNÁMKA":"Důležité poznámky","Příští_kontrola":"Příští kontrola",
-      "Poslední_kontrola":"Poslední kontrola","Dní_do_kontroly":"Dní do kontroly","Stav_kontroly":"Stav kontroly","Barva_bodu":"Barva bodu"
-    })[k] || k;
+  function rawKeyNorm(k){
+    return String(k || "").trim().toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .replace(/[\/\\,.;:()\-]+/g," ")
+      .replace(/_/g," ")
+      .replace(/\s+/g," ")
+      .trim();
+  }
+  const allowedRawKeys = new Set([
+    ...FB_USER_FIELDS.map(f=>f.key),
+    "GPS_lat","GPS_lon","Příští_kontrola","Poslední_kontrola","Zdroj_dat","Firebase_doc_id","Klíč_adresy"
+  ]);
+  const rawKeyAliases = {
+    "nazev":"Název",
+    "adresa umisteni":"Adresa / umístění",
+    "puvodni adresa umisteni":"Adresa / umístění",
+    "adresa gps":"Adresa_GPS",
+    "kraj":"Kraj",
+    "popis zdroje":"Popis_zdroje",
+    "jaky zdroj":"Popis_zdroje",
+    "vyrobni cislo":"Zdroj",
+    "seriove cislo":"Zdroj",
+    "serial":"Zdroj",
+    "sn":"Zdroj",
+    "zdroj":"Zdroj",
+    "kontakt":"Kontakt",
+    "kontakt mapy":"Kontakt",
+    "hlavni kontakt":"Kontakt",
+    "umisteni zdroje":"Umístění zdroje",
+    "umisteni":"Umístění zdroje",
+    "poznamky":"Poznámky",
+    "poznamky mapy":"Poznámky",
+    "perioda":"Perioda kontrol",
+    "perioda kontrol":"Perioda kontrol",
+    "cetnost":"Perioda kontrol",
+    "hlidame sami termin":"Hlídáme sami termín",
+    "hlidame kontroly sami":"Hlídáme sami termín",
+    "smlouva":"Smlouva ano/ne",
+    "smlouva ano ne":"Smlouva ano/ne",
+    "cena fz":"Cena FZ",
+    "cena fz v kc":"Cena FZ",
+    "faktura na":"Faktura na",
+    "dulezita poznamka":"Důležitá poznámka",
+    "dulezite poznamky":"Důležitá poznámka",
+    "gps lat":"GPS_lat",
+    "gps lon":"GPS_lon",
+    "pristi kontrola":"Příští_kontrola",
+    "pristi planovana kontrola":"Příští_kontrola",
+    "posledni kontrola":"Poslední_kontrola",
+    "posledni probehla kontrola":"Poslední_kontrola",
+    "zdroj dat":"Zdroj_dat",
+    "firebase doc id":"Firebase_doc_id",
+    "klic adresy":"Klíč_adresy"
+  };
+  function canonicalRawKey(k){
+    if(allowedRawKeys.has(k)) return k;
+    return rawKeyAliases[rawKeyNorm(k)] || "";
+  }
+  function yesNo(v, fallback="ne"){
+    const n=rawKeyNorm(v);
+    if(n==="ano" || n==="yes" || n==="true" || n==="1") return "ano";
+    if(n==="ne" || n==="no" || n==="false" || n==="0") return "ne";
+    return fallback;
+  }
+  function regionOptions(current=""){
+    const defaults=[
+      "Hlavní město Praha","Středočeský kraj","Jihočeský kraj","Plzeňský kraj","Karlovarský kraj",
+      "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
+      "Jihomoravský kraj","Olomoucký kraj","Moravskoslezský kraj","Zlínský kraj","Slovensko"
+    ];
+    const set=new Set(["", ...defaults]);
+    (window.rows || []).forEach(r=>{if(r && r.kraj) set.add(r.kraj);});
+    if(current) set.add(current);
+    return [...set].map(v=>`<option value="${esc(v)}" ${v===current ? "selected" : ""}>${esc(v || "Vyber kraj")}</option>`).join("");
   }
   function status(msg,bad=false){
     const s=document.getElementById("fbUnifiedStatus");
@@ -4668,23 +4716,15 @@ setTimeout(()=>{
     let h=0; for(let x=0;x<base.length;x++) h=((h<<5)-h+base.charCodeAt(x))|0;
     return "site_" + Math.abs(h).toString(36) + "_" + String(i).padStart(5,"0");
   }
-  function isTextarea(k){
-    const l=k.toLowerCase();
-    return l.includes("poznám") || l.includes("termin") || l.includes("termín") || l.includes("všechny") || l.includes("data");
-  }
-  function selectOptions(k){
-    if(k==="Serviska" || k==="Smlouva ano/ne" || k==="Hlídáme sami termín") return ["","ano","ne"];
-    if(k==="Perioda kontrol") return ["","6","12"];
-    if(k==="Stav_kontroly" || k==="Stav pro mapu") return ["","OK / ostatní","Propadlá kontrola","1–30 dní k termínu","Kontrola objednaná","Hlídáme termín sami"];
-    if(k==="Barva bodu" || k==="Barva_bodu") return ["","červená","oranžová","žlutá","zelená","růžová"];
-    return null;
-  }
-  function field(k){
-    const opts=selectOptions(k);
-    const cls=(isTextarea(k)||k==="Název"||k==="Adresa / umístění"||k==="Adresa_GPS"||k==="Popis_zdroje"||k==="DŮLEŽITÁ POZNÁMKA")?"full":"";
-    if(opts) return `<div class="${cls}"><label>${esc(label(k))}</label><select data-fb-key="${esc(k)}">${opts.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join("")}</select></div>`;
-    if(isTextarea(k)) return `<div class="${cls}"><label>${esc(label(k))}</label><textarea data-fb-key="${esc(k)}"></textarea></div>`;
-    return `<div class="${cls}"><label>${esc(label(k))}</label><input data-fb-key="${esc(k)}"></div>`;
+  function field(spec){
+    const k=spec.key;
+    const cls=[spec.full ? "full" : "", spec.important ? "fbImportant" : ""].filter(Boolean).join(" ");
+    if(spec.type==="region") return `<div class="${cls}"><label>${esc(spec.label)}</label><select data-fb-key="${esc(k)}">${regionOptions()}</select></div>`;
+    if(spec.type==="period") return `<div class="${cls}"><label>${esc(spec.label)}</label><select data-fb-key="${esc(k)}"><option value="6">6 měsíců</option><option value="12" selected>12 měsíců</option></select></div>`;
+    if(spec.type==="yesno") return `<div class="${cls}"><label>${esc(spec.label)}</label><select data-fb-key="${esc(k)}"><option value="ne" selected>ne</option><option value="ano">ano</option></select></div>`;
+    if(spec.type==="textarea") return `<div class="${cls}"><label>${esc(spec.label)}</label><textarea data-fb-key="${esc(k)}"></textarea></div>`;
+    if(spec.readonly) return `<div class="${cls}"><label>${esc(spec.label)}</label><input data-fb-key="${esc(k)}" readonly title="Dopočítá se z adresy"></div>`;
+    return `<div class="${cls}"><label>${esc(spec.label)}</label><input data-fb-key="${esc(k)}"></div>`;
   }
   function ensurePanel(){
     if(document.getElementById("fbUnifiedPanel")) return;
@@ -4694,15 +4734,13 @@ setTimeout(()=>{
       <div class="fbUnifiedHead"><div><h2>Přidat nové místo</h2><p class="small">Ukládá se do stejné Firebase databáze jako ostatní body.</p><div class="fbDbBadge">Kolekce: <b>${FB_COLLECTION}</b></div></div><button class="fbSecondary" id="fbUnifiedClose" type="button">Zavřít</button></div>
       <div id="fbUnifiedStatus" class="fbUnifiedNotice">Připraveno. Vyplň aspoň název/adresu a GPS.</div>
       <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Vyhledat na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
-      <div class="fbUnifiedGrid">${window.firebaseUnifiedEditableKeys.map(field).join("")}</div>`;
+      <div class="fbUnifiedGrid">${FB_USER_FIELDS.map(field).join("")}${FB_HIDDEN_KEYS.map(k=>`<input type="hidden" data-fb-key="${esc(k)}">`).join("")}</div>`;
     document.body.appendChild(panel);
     document.getElementById("fbUnifiedClose").onclick=closePanel;
     document.getElementById("fbUnifiedGps").onclick=calcGps;
     document.getElementById("fbUnifiedFind").onclick=findOnMap;
     document.getElementById("fbUnifiedSave").onclick=savePoint;
     document.getElementById("fbUnifiedClear").onclick=clearForm;
-    const period=panel.querySelector('[data-fb-key="Perioda kontrol"]'); if(period) period.value="12";
-    const stav=panel.querySelector('[data-fb-key="Stav_kontroly"]'); if(stav) stav.value="OK / ostatní";
   }
   function openPanel(e){
     if(e){e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}
@@ -4720,41 +4758,19 @@ setTimeout(()=>{
   function getRaw(){
     ensurePanel(); const raw={};
     document.querySelectorAll("#fbUnifiedPanel [data-fb-key]").forEach(el=>{const k=el.getAttribute("data-fb-key"); const v=val(el.value); if(v) raw[k]=v;});
-    if(raw["Adresa / umístění"] && !raw["Adresa_GPS"]) raw["Adresa_GPS"]=raw["Adresa / umístění"];
-    if(raw["Adresa_GPS"] && !raw["Adresa / umístění"]) raw["Adresa / umístění"]=raw["Adresa_GPS"];
     if(raw["Adresa / umístění"] && !raw["Název"]) raw["Název"]=raw["Adresa / umístění"];
-    if(raw["Kontakt"] && !raw["Kontakt_mapy"]) raw["Kontakt_mapy"]=raw["Kontakt"];
-    if(raw["Popis_zdroje"] && !raw["Jaký zdroj"]) raw["Jaký zdroj"]=raw["Popis_zdroje"];
-    if(raw["Poznámky"] && !raw["Poznámky_mapy"]) raw["Poznámky_mapy"]=raw["Poznámky"];
-    const watch=String(raw["Hlídáme sami termín"]||"").toLowerCase();
-    if(watch==="ano"){raw["Stav_kontroly"]="Hlídáme termín sami"; raw["Stav pro mapu"]="Hlídáme termín sami"; raw["Barva bodu"]="růžová"; raw["Barva_bodu"]="růžová";}
-    else if(!raw["Stav_kontroly"]) raw["Stav_kontroly"]="OK / ostatní";
+    raw["Hlídáme sami termín"]=yesNo(raw["Hlídáme sami termín"],"ne");
+    raw["Smlouva ano/ne"]=yesNo(raw["Smlouva ano/ne"],"ne");
+    if(raw["Perioda kontrol"]!=="6") raw["Perioda kontrol"]="12";
     if(!raw["Zdroj_dat"]) raw["Zdroj_dat"]="Firebase";
-    return raw;
+    return compactFirebaseRaw(raw);
   }
   function completeFirebaseRaw(raw, docId=null){
     const out=compactFirebaseRaw(raw || {});
-    const sync=(a,b)=>{
-      if(val(out[a]) && !val(out[b])) out[b]=out[a];
-      if(val(out[b]) && !val(out[a])) out[a]=out[b];
-    };
-
-    if(val(out["Adresa / umístění"]) && !val(out["Adresa_GPS"])) out["Adresa_GPS"]=out["Adresa / umístění"];
-    if(val(out["Adresa_GPS"]) && !val(out["Adresa / umístění"])) out["Adresa / umístění"]=out["Adresa_GPS"];
     if(val(out["Adresa / umístění"]) && !val(out["Název"])) out["Název"]=out["Adresa / umístění"];
-    if(val(out["Kontakt"]) && !val(out["Kontakt_mapy"])) out["Kontakt_mapy"]=out["Kontakt"];
-    if(val(out["Kontakt_mapy"]) && !val(out["Kontakt"])) out["Kontakt"]=out["Kontakt_mapy"];
-    if(val(out["Popis_zdroje"]) && !val(out["Jaký zdroj"])) out["Jaký zdroj"]=out["Popis_zdroje"];
-    if(val(out["Poznámky"]) && !val(out["Poznámky_mapy"])) out["Poznámky_mapy"]=out["Poznámky"];
-    if(val(out["Poznámky_mapy"]) && !val(out["Poznámky"])) out["Poznámky"]=out["Poznámky_mapy"];
-    sync("Příští plánovaná kontrola","Příští_kontrola");
-    sync("Poslední proběhlá kontrola","Poslední_kontrola");
-    sync("Dní do kontroly","Dní_do_kontroly");
-    sync("Stav pro mapu","Stav_kontroly");
-    sync("Barva bodu","Barva_bodu");
+    if(val(out["Hlídáme sami termín"])) out["Hlídáme sami termín"]=yesNo(out["Hlídáme sami termín"],"ne");
+    if(val(out["Smlouva ano/ne"])) out["Smlouva ano/ne"]=yesNo(out["Smlouva ano/ne"],"ne");
     if(!val(out["Perioda kontrol"])) out["Perioda kontrol"]="12";
-    if(!val(out["Stav_kontroly"])) out["Stav_kontroly"]="OK / ostatní";
-    sync("Stav pro mapu","Stav_kontroly");
     if(!val(out["Zdroj_dat"])) out["Zdroj_dat"]="Firebase";
     if(docId){
       out["Firebase_doc_id"]=docId;
@@ -4768,9 +4784,11 @@ setTimeout(()=>{
       const key=String(k || "").trim();
       if(!key) return;
       if(/^Sloupec_\d+$/i.test(key)) return;
+      const canonical=canonicalRawKey(key);
+      if(!canonical) return;
       const value=typeof v==="string" ? v.trim() : v;
       if(value===undefined || value===null || value==="") return;
-      out[key]=value;
+      if(!out[canonical] || canonical===key) out[canonical]=value;
     });
     return out;
   }
@@ -4833,19 +4851,22 @@ setTimeout(()=>{
     return row;
   }
   async function calcGps(){
-    const raw=getRaw(); const address=raw["Adresa_GPS"] || raw["Adresa / umístění"] || raw["Název"];
+    const raw=getRaw(); const address=raw["Adresa / umístění"] || raw["Název"];
     if(!address){status("Vyplň nejdřív adresu / umístění.",true);return;}
     try{
       status("Dopočítávám GPS...");
       const res=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address),{headers:{"Accept":"application/json"}});
       const data=await res.json();
       if(!data || !data[0]){status("Adresa nebyla nalezena.",true);return;}
-      setField("GPS_lat",data[0].lat); setField("GPS_lon",data[0].lon); status("GPS doplněno.");
+      setField("Adresa_GPS",data[0].display_name || address);
+      setField("GPS_lat",data[0].lat);
+      setField("GPS_lon",data[0].lon);
+      status("GPS doplněno.");
     }catch(e){status("Chyba dopočtu GPS: "+e.message,true);}
   }
   function findOnMap(){
     const raw=getRaw(); const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
-    if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Vyplň GPS_lat a GPS_lon.",true);return;}
+    if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Nejdřív klikni Dopočítat GPS.",true);return;}
     try{
       if(previewMarker) map.removeLayer(previewMarker);
       previewMarker=L.circleMarker([lat,lon],{radius:10,color:"#111827",weight:2,fillColor:"#2563eb",fillOpacity:.95}).addTo(map);
@@ -4972,7 +4993,7 @@ setTimeout(()=>{
     if(!u){status("Nejdřív se přihlaš přes Google.",true);return false;}
     let raw=getRaw(); const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
     if(!raw["Název"] && !raw["Adresa / umístění"]){status("Vyplň Název nebo Adresa / umístění.",true);return false;}
-    if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Doplň GPS_lat a GPS_lon nebo klikni Dopočítat GPS.",true);return false;}
+    if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Klikni Dopočítat GPS, aby se bod mohl zobrazit na mapě.",true);return false;}
     raw["GPS_lat"]=String(lat); raw["GPS_lon"]=String(lon);
     try{
       status("Kontroluji duplicitu...");
@@ -5016,7 +5037,7 @@ setTimeout(()=>{
   function clearForm(){
     document.querySelectorAll("#fbUnifiedPanel [data-fb-key]").forEach(el=>el.value="");
     const period=document.querySelector('#fbUnifiedPanel [data-fb-key="Perioda kontrol"]'); if(period) period.value="12";
-    const stav=document.querySelector('#fbUnifiedPanel [data-fb-key="Stav_kontroly"]'); if(stav) stav.value="OK / ostatní";
+    document.querySelectorAll('#fbUnifiedPanel [data-fb-key="Hlídáme sami termín"], #fbUnifiedPanel [data-fb-key="Smlouva ano/ne"]').forEach(el=>el.value="ne");
     status("Formulář vymazán.");
   }
   function bind(){
