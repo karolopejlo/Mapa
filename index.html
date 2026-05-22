@@ -523,6 +523,16 @@ button,input,select,textarea{
 .control-date-box b{
   font-size:20px;
 }
+.control-date-box input{
+  width:100%;
+  min-height:36px;
+  padding:6px 8px;
+  border:1px solid rgba(15,23,42,.18);
+  border-radius:10px;
+  background:#fff;
+  font-size:14px;
+  font-weight:800;
+}
 .control-date-last{
   background:#dcfce7;
   color:#166534;
@@ -1019,8 +1029,9 @@ button,input,select,textarea{
 
 <div class="card"><h3>Data</h3><div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
+  <button class="secondary" type="button" id="calcDataGpsBtn" style="display:none">Dopočítat GPS</button>
   <button class="primary" type="button" id="saveDataEditsBtn" style="display:none">Uložit data</button>
-  <button class="secondary" type="button" id="cancelDataEditBtn" style="display:none">Zrušit úpravy</button>
+  <button class="secondary" type="button" id="cancelDataEditBtn" style="display:none">Zavřít</button>
 </div>
 <div class="data-add-row" id="addDataRowBox" style="display:none">
   <div><label>Název nového údaje</label><input id="newDataKey" placeholder="např. Kontakt, Smlouva, Poznámky"></div>
@@ -1029,16 +1040,16 @@ button,input,select,textarea{
 </div><div class="control-dates-strong" id="controlDatesRow">
   <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><b id="detailLastCheck">-</b></div>
   <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><b id="detailNextCheck">-</b></div>
-</div><table id="detailTable"></table></div>
-<div class="card">
+</div><table id="detailTable"></table><p id="editStatus" class="small"></p></div>
+<div class="card" id="legacyEditTools" style="display:none">
   <div class="row">
     <button class="secondary" id="editBtn">Upravit údaje</button>
     <button class="secondary" id="reloadEditBtn">Načíst uložené úpravy</button>
   </div>
-  <p id="editStatus" class="small"></p>
+  <p id="legacyEditStatus" class="small"></p>
 </div>
 
-<div class="card" id="editCard" style="display:none">
+<div class="card" id="editCard" style="display:none!important">
   <h3>Upravit údaje zdroje a polohu na mapě</h3><p class="small">Změna GPS lat/lon se po uložení projeví rovnou jako nová poloha bodu na mapě.</p>
   <div class="edit-grid">
     <div><label>Název</label><input id="editName"></div>
@@ -1491,8 +1502,13 @@ function isNoOrderSite(r){
 }
 
 
+function editCacheKeyForRow(r){
+  return String((r && (r.firebaseDocId || (r.raw && r.raw["Firebase_doc_id"]) || r.id)) || "");
+}
+
 function applyEditToRow(r){
-  const e=editCache[r.id];
+  const cacheKey=editCacheKeyForRow(r);
+  const e=editCache[cacheKey] || editCache[r.id];
   if(!e) return r;
 
   const rawEdits = e.rawEdits || {};
@@ -1514,7 +1530,7 @@ function applyEditToRow(r){
 
   return {...r,
     raw: updatedRaw,
-    adresa:e.name || rawEdits["Název"] || rawEdits["Adresa / umístění"] || rawEdits["Adresa_GPS"] || rawEdits["Umístění zdroje"] || r.adresa,
+    adresa:e.name || rawEdits["Název"] || rawEdits["Adresa / umístění"] || rawEdits["Umístění zdroje"] || r.adresa,
     kontakt:e.contact || rawEdits["Kontakt"] || r.kontakt,
     zdroj:e.source || rawEdits["Popis_zdroje"] || r.zdroj,
     poznamky:e.notes || rawEdits["Poznámky"] || rawEdits["Důležitá poznámka"] || r.poznamky,
@@ -2129,7 +2145,7 @@ function syncRowIndexes(){
   rows.forEach((r,i)=>{r.i=i;});
 }
 function detailKey(r){
-  return String((r && (r.firebaseDocId || r.id || (r.raw && r.raw["Firebase_doc_id"]))) || "");
+  return editCacheKeyForRow(r);
 }
 window.openDetailById=function(id){
   const key=String(id || "");
@@ -2162,7 +2178,13 @@ function filters(){
   const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
   st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
   ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Hlídáme termín sami"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
-  [...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
+  const regionMap=new Map();
+  rows.map(r=>r.kraj).filter(Boolean).forEach(v=>{
+    const clean=safe(v);
+    const key=dataNormFixed(clean);
+    if(key && !regionMap.has(key)) regionMap.set(key, clean);
+  });
+  [...regionMap.values()].sort().forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
 window.fit=fit;
@@ -2387,9 +2409,22 @@ async function reverseGeocodeGpsGeneric(lat,lon){
 }
 async function dataAddressToGps(){
   const st=document.getElementById("editStatus");
-  const addrEl=document.querySelector('#detailTable [data-key="Adresa_GPS"], #detailTable [data-key="Adresa / umístění"], #detailTable [data-key="Umístění"]');
+  const addrEl=["Adresa / umístění","Umístění zdroje","Název"]
+    .map(k=>document.querySelector(`#detailTable [data-key="${CSS.escape(k)}"]`))
+    .find(el=>el && el.value.trim());
   if(!addrEl || !addrEl.value.trim()){if(st)st.textContent="Vyplň adresu.";return;}
-  try{if(st)st.textContent="Dopočítávám GPS z adresy...";const r=await geocodeAddressGeneric(addrEl.value.trim());if(!r){if(st)st.textContent="Adresa nebyla nalezena.";return;}let latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');let lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');if(latEl)latEl.value=r.lat;if(lonEl)lonEl.value=r.lon;if(st)st.textContent="GPS doplněno.";}catch(e){if(st)st.textContent="Chyba: "+e.message;}
+  try{
+    if(st)st.textContent="Dopočítávám GPS z adresy...";
+    const r=await geocodeAddressGeneric(addrEl.value.trim());
+    if(!r){if(st)st.textContent="Adresa nebyla nalezena.";return;}
+    let latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');
+    let lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');
+    let gpsTextEl=document.querySelector('#detailTable [data-key="Adresa_GPS"]');
+    if(latEl)latEl.value=r.lat;
+    if(lonEl)lonEl.value=r.lon;
+    if(gpsTextEl)gpsTextEl.value=`${r.lat}, ${r.lon}`;
+    if(st)st.textContent="GPS souřadnice doplněny.";
+  }catch(e){if(st)st.textContent="Chyba: "+e.message;}
 }
 async function dataGpsToAddress(){
   const st=document.getElementById("editStatus");
@@ -2472,10 +2507,19 @@ function regionOptionsFixed(current){
     "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
     "Jihomoravský kraj","Olomoucký kraj","Moravskoslezský kraj","Zlínský kraj","Slovensko"
   ];
-  const set=new Set(["", ...defaults]);
-  (window.rows || rows || []).forEach(r=>{ if(r && r.kraj) set.add(r.kraj); });
-  if(current) set.add(current);
-  return [...set].map(v=>`<option value="${esc(v)}" ${v===current ? "selected" : ""}>${esc(v || "Vyber kraj")}</option>`).join("");
+  const map=new Map();
+  const add=v=>{
+    const clean=safe(v);
+    const key=dataNormFixed(clean);
+    if(!key && !map.has("")) map.set("", "");
+    if(key && !map.has(key)) map.set(key, clean);
+  };
+  add("");
+  defaults.forEach(add);
+  (window.rows || rows || []).forEach(r=>{ if(r && r.kraj) add(r.kraj); });
+  if(current) add(current);
+  const currentKey=dataNormFixed(current);
+  return [...map.entries()].map(([key,v])=>`<option value="${esc(v)}" ${key===currentKey ? "selected" : ""}>${esc(v || "Vyber kraj")}</option>`).join("");
 }
 
 function userSiteFieldValue(r, spec){
@@ -2483,10 +2527,15 @@ function userSiteFieldValue(r, spec){
   if(spec.type==="period") return detectControlPeriod(raw);
   if(spec.key==="Hlídáme sami termín") return yesNoFixed(getWatchFixed(raw), "ne");
   if(spec.important) return getImportantNoteFixed(raw);
+  if(spec.key==="Adresa_GPS"){
+    const lat=Number.isFinite(r.lat) ? r.lat : num(raw["GPS_lat"]);
+    const lon=Number.isFinite(r.lon) ? r.lon : num(raw["GPS_lon"]);
+    if(Number.isFinite(lat) && Number.isFinite(lon)) return `${lat}, ${lon}`;
+  }
 
   let v=firstSiteField(raw, spec.keys);
   if(!v && spec.key==="Název") v=r.adresa || "";
-  if(!v && spec.key==="Adresa / umístění") v=firstSiteField(raw,["Adresa_GPS","Umístění","Umístění zdroje"]);
+  if(!v && spec.key==="Adresa / umístění") v=firstSiteField(raw,["Umístění","Umístění zdroje"]);
   if(!v && spec.key==="Kontakt") v=r.kontakt || "";
   if(!v && spec.key==="Popis_zdroje") v=r.zdroj || "";
   return v;
@@ -2504,17 +2553,56 @@ function userSiteInput(spec, value){
 }
 
 function editableDataTable(r){
-  return USER_SITE_DATA_FIELDS.map(spec=>{
+  const visibleRows=USER_SITE_DATA_FIELDS.map(spec=>{
     const value=userSiteFieldValue(r,spec);
     const cls=spec.important ? "notes-red-row" : "";
     return `<tr class="${cls}"><td>${esc(spec.label)}</td><td>${userSiteInput(spec,value)}</td></tr>`;
   }).join("");
+  const gpsLat=Number.isFinite(r.lat) ? String(r.lat) : "";
+  const gpsLon=Number.isFinite(r.lon) ? String(r.lon) : "";
+  return visibleRows + `<tr style="display:none"><td>GPS</td><td><input data-key="GPS_lat" value="${esc(gpsLat)}"><input data-key="GPS_lon" value="${esc(gpsLon)}"></td></tr>`;
 }
 
 function userSiteDisplayValue(spec, value){
   if(spec.type==="period") return value ? `${esc(value)} měsíců` : "";
   if(spec.type==="yesno") return yesNoFixed(value, "ne");
   return esc(value);
+}
+
+function dateInputValueFromAny(v){
+  const d=v instanceof Date ? v : parseDateValue(v);
+  if(!d || isNaN(d.getTime())) return "";
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+function showControlDateDisplay(r){
+  const lastBox=document.getElementById("detailLastCheck");
+  const nextBox=document.getElementById("detailNextCheck");
+  if(lastBox) lastBox.textContent=formatDateCz(parseDateValue(r.posledni)) || r.posledni || "-";
+  if(nextBox) nextBox.textContent=displayNext(r) || r.pristi || "-";
+}
+
+function showControlDateInputs(r){
+  const lastBox=document.getElementById("detailLastCheck");
+  const nextBox=document.getElementById("detailNextCheck");
+  if(lastBox) lastBox.innerHTML=`<input id="detailLastCheckInput" type="date" value="${esc(dateInputValueFromAny(r.posledni))}">`;
+  if(nextBox) nextBox.innerHTML=`<input id="detailNextCheckInput" type="date" value="${esc(dateInputValueFromAny(computedNextDate(r)))}">`;
+  const lastInput=document.getElementById("detailLastCheckInput");
+  const nextInput=document.getElementById("detailNextCheckInput");
+  const periodInput=document.querySelector('#detailTable [data-key="Perioda kontrol"]');
+  if(lastInput && nextInput){
+    const recalc=()=>{
+      const d=parseDateValue(lastInput.value);
+      if(!d) return;
+      const months=periodInput && periodInput.value==="12" ? 12 : periodInput && periodInput.value==="6" ? 6 : periodMonths(selectedSite || r);
+      nextInput.value=dateInputValueFromAny(addMonths(d, months));
+    };
+    lastInput.addEventListener("change",recalc);
+    if(periodInput) periodInput.addEventListener("change",recalc);
+  }
 }
 
 
@@ -2572,10 +2660,21 @@ async function saveAllDataEdits(){
     editedRaw[spec.key]=value;
   });
 
+  const gpsLat=safe(document.querySelector('#detailTable [data-key="GPS_lat"]')?.value);
+  const gpsLon=safe(document.querySelector('#detailTable [data-key="GPS_lon"]')?.value);
+  if(gpsLat) editedRaw["GPS_lat"]=gpsLat;
+  if(gpsLon) editedRaw["GPS_lon"]=gpsLon;
+
+  const lastCheck=safe(document.getElementById("detailLastCheckInput")?.value);
+  const nextCheck=safe(document.getElementById("detailNextCheckInput")?.value);
+  if(lastCheck) editedRaw["Poslední_kontrola"]=lastCheck;
+  if(nextCheck) editedRaw["Příští_kontrola"]=nextCheck;
+
   const watchSelf=yesNoFixed(editedRaw["Hlídáme sami termín"],"ne")==="ano";
 
   try{
-    const {doc,setDoc}=fb.fsMod;
+    const selectedKey=detailKey(selectedSite) || selectedSite.id;
+    const {doc,setDoc,serverTimestamp}=fb.fsMod;
     const edit = {
       rawEdits: editedRaw,
       name: editedRaw["Název"] || editedRaw["Adresa / umístění"] || "",
@@ -2583,20 +2682,42 @@ async function saveAllDataEdits(){
       source: editedRaw["Popis_zdroje"] || "",
       notes: editedRaw["Poznámky"] || "",
       gpsAddress: editedRaw["Adresa_GPS"] || "",
+      gpsLat,
+      gpsLon,
+      lastCheck,
+      nextCheck,
       noOrder: watchSelf,
       updatedBy: currentUser.email,
       updatedAt: new Date().toISOString()
     };
 
-    await setDoc(doc(db,"siteEdits",selectedSite.id), edit, {merge:true});
+    const firebaseDocId=selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "";
+    if(firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
+      const mergedRaw={...(selectedSite.raw||{}), ...editedRaw, Firebase_doc_id:firebaseDocId};
+      if(!mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+firebaseDocId;
+      const lat=num(mergedRaw["GPS_lat"]);
+      const lon=num(mergedRaw["GPS_lon"]);
+      const firebaseUpdate={
+        raw:mergedRaw,
+        dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(mergedRaw) : [],
+        name:mergedRaw["Název"] || mergedRaw["Adresa / umístění"] || mergedRaw["Adresa_GPS"] || "",
+        lat:Number.isFinite(lat) ? lat : null,
+        lon:Number.isFinite(lon) ? lon : null,
+        updatedBy:currentUser.email,
+        updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+      };
+      await setDoc(doc(db,"sitesUnified",firebaseDocId), firebaseUpdate, {merge:true});
+    }
 
-    editCache[selectedSite.id] = {...(editCache[selectedSite.id]||{}), ...edit};
-    rows = rows.map(r=>r.id===selectedSite.id ? applyEditToRow(r) : r);
-    selectedSite = rows.find(r=>r.id===selectedSite.id) || selectedSite;
+    await setDoc(doc(db,"siteEdits",selectedKey), edit, {merge:true});
+
+    editCache[selectedKey] = {...(editCache[selectedKey]||editCache[selectedSite.id]||{}), ...edit};
+    rows = rows.map(r=>detailKey(r)===selectedKey ? applyEditToRow(r) : r);
+    selectedSite = rows.find(r=>detailKey(r)===selectedKey) || selectedSite;
 
     if(st) st.textContent="Data uložena.";
     render();
-    window.openDetailById(selectedSite.id);
+    window.openDetailById(selectedKey);
   }catch(e){
     if(st) st.textContent="Chyba uložení dat: "+e.message;
   }
@@ -2891,14 +3012,13 @@ window.openDetail=function(i){
   document.getElementById("detailSub").textContent=r.zdroj||"";
   document.getElementById("detailTable").classList.remove("data-edit-table");
   document.getElementById("detailTable").innerHTML=detailTable(r);
-  const lastBox=document.getElementById("detailLastCheck");
-  const nextBox=document.getElementById("detailNextCheck");
-  if(lastBox) lastBox.textContent=formatDateCz(parseDateValue(r.posledni)) || r.posledni || "-";
-  if(nextBox) nextBox.textContent=displayNext(r) || r.pristi || "-";
+  showControlDateDisplay(r);
   const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
   const editDataToggleBtn=document.getElementById("editDataToggleBtn");
+  const calcDataGpsBtn=document.getElementById("calcDataGpsBtn");
   const saveDataBtn=document.getElementById("saveDataEditsBtn");
   const cancelDataEditBtn=document.getElementById("cancelDataEditBtn");
+  if(calcDataGpsBtn){ calcDataGpsBtn.style.display="none"; calcDataGpsBtn.onclick=dataAddressToGps; }
 
   if(editDataToggleBtn){
     editDataToggleBtn.style.display="block";
@@ -2906,7 +3026,9 @@ window.openDetail=function(i){
       const table=document.getElementById("detailTable");
       table.classList.add("data-edit-table");
       table.innerHTML=editableDataTable(selectedSite);
+      showControlDateInputs(selectedSite);
       editDataToggleBtn.style.display="none";
+      if(calcDataGpsBtn) calcDataGpsBtn.style.display="block";
       if(saveDataBtn) saveDataBtn.style.display="block";
       if(cancelDataEditBtn) cancelDataEditBtn.style.display="block";
       const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
@@ -2916,7 +3038,7 @@ window.openDetail=function(i){
   if(saveDataBtn){ saveDataBtn.style.display="none"; saveDataBtn.onclick=saveAllDataEdits; }
   if(cancelDataEditBtn){
     cancelDataEditBtn.style.display="none";
-    cancelDataEditBtn.onclick=()=>window.openDetailById(selectedSite.id);
+    cancelDataEditBtn.onclick=()=>window.openDetailById(detailKey(selectedSite) || selectedSite.id);
   }
   const addDataRowBtn=document.getElementById("addDataRowBtn");
   if(addDataRowBtn) addDataRowBtn.onclick=addNewDataRowToTable;
@@ -3247,13 +3369,13 @@ document.getElementById("saveEditBtn").onclick=async()=>{
     updatedAt:new Date().toISOString()
   };
   try{
+    const selectedKey=detailKey(selectedSite) || selectedSite.id;
     const {doc,setDoc}=fb.fsMod;
-    await setDoc(doc(db,"siteEdits",selectedSite.id),edit,{merge:true});
-    editCache[selectedSite.id]=edit;
-    const selectedId=selectedSite.id;
-    rows=rows.map(r=>r.id===selectedId?applyEditToRow(r):r);
-    selectedSite=rows.find(r=>r.id===selectedId) || selectedSite;
-    render(); window.openDetailById(selectedId);
+    await setDoc(doc(db,"siteEdits",selectedKey),edit,{merge:true});
+    editCache[selectedKey]={...(editCache[selectedKey]||editCache[selectedSite.id]||{}),...edit};
+    rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
+    selectedSite=rows.find(r=>detailKey(r)===selectedKey) || selectedSite;
+    render(); window.openDetailById(selectedKey);
     st.textContent="Úpravy uloženy.";
   }catch(e){st.textContent="Chyba uložení: "+e.message;}
 };
@@ -4494,6 +4616,7 @@ setTimeout(()=>{
 .fbUnifiedGrid label{display:block;font-size:12px;font-weight:800;color:#475569;margin-bottom:3px}
 .fbUnifiedGrid input,.fbUnifiedGrid textarea,.fbUnifiedGrid select{width:100%;min-height:38px;padding:7px 9px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;background:#fff}
 .fbUnifiedGrid textarea{min-height:74px}
+.fbUnifiedDates{margin:8px 0}
 .fbUnifiedNotice{border:1px solid #bbf7d0;background:#ecfdf5;color:#166534;border-radius:12px;padding:9px;margin:8px 0;font-weight:700;font-size:13px}
 .fbUnifiedErr{border-color:#fecaca!important;background:#fef2f2!important;color:#991b1b!important}
 #fbUnifiedPanel button{min-height:42px;border-radius:10px;border:1px solid #e2e8f0;font-weight:800;cursor:pointer}
@@ -4604,10 +4727,35 @@ setTimeout(()=>{
       "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
       "Jihomoravský kraj","Olomoucký kraj","Moravskoslezský kraj","Zlínský kraj","Slovensko"
     ];
-    const set=new Set(["", ...defaults]);
-    (window.rows || []).forEach(r=>{if(r && r.kraj) set.add(r.kraj);});
-    if(current) set.add(current);
-    return [...set].map(v=>`<option value="${esc(v)}" ${v===current ? "selected" : ""}>${esc(v || "Vyber kraj")}</option>`).join("");
+    const map=new Map();
+    const add=v=>{
+      const clean=val(v);
+      const key=rawKeyNorm(clean);
+      if(!key && !map.has("")) map.set("", "");
+      if(key && !map.has(key)) map.set(key, clean);
+    };
+    add("");
+    defaults.forEach(add);
+    (window.rows || []).forEach(r=>{if(r && r.kraj) add(r.kraj);});
+    if(current) add(current);
+    const currentKey=rawKeyNorm(current);
+    return [...map.entries()].map(([key,v])=>`<option value="${esc(v)}" ${key===currentKey ? "selected" : ""}>${esc(v || "Vyber kraj")}</option>`).join("");
+  }
+  function dateInputFromDate(date){
+    if(!date || isNaN(date.getTime())) return "";
+    const y=date.getFullYear();
+    const m=String(date.getMonth()+1).padStart(2,"0");
+    const d=String(date.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+  function addMonthsToInput(value, months){
+    if(!value) return "";
+    const d=new Date(value+"T00:00:00");
+    if(isNaN(d.getTime())) return "";
+    const day=d.getDate();
+    d.setMonth(d.getMonth()+months);
+    if(d.getDate()!==day) d.setDate(0);
+    return dateInputFromDate(d);
   }
   function status(msg,bad=false){
     const s=document.getElementById("fbUnifiedStatus");
@@ -4733,6 +4881,10 @@ setTimeout(()=>{
     panel.innerHTML=`
       <div class="fbUnifiedHead"><div><h2>Přidat nové místo</h2><p class="small">Ukládá se do stejné Firebase databáze jako ostatní body.</p><div class="fbDbBadge">Kolekce: <b>${FB_COLLECTION}</b></div></div><button class="fbSecondary" id="fbUnifiedClose" type="button">Zavřít</button></div>
       <div id="fbUnifiedStatus" class="fbUnifiedNotice">Připraveno. Vyplň aspoň název/adresu a GPS.</div>
+      <div class="fbUnifiedDates control-dates-strong">
+        <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><input id="fbUnifiedLastCheck" type="date"></div>
+        <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><input id="fbUnifiedNextCheck" type="date"></div>
+      </div>
       <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Vyhledat na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
       <div class="fbUnifiedGrid">${FB_USER_FIELDS.map(field).join("")}${FB_HIDDEN_KEYS.map(k=>`<input type="hidden" data-fb-key="${esc(k)}">`).join("")}</div>`;
     document.body.appendChild(panel);
@@ -4741,6 +4893,15 @@ setTimeout(()=>{
     document.getElementById("fbUnifiedFind").onclick=findOnMap;
     document.getElementById("fbUnifiedSave").onclick=savePoint;
     document.getElementById("fbUnifiedClear").onclick=clearForm;
+    const last=document.getElementById("fbUnifiedLastCheck");
+    const next=document.getElementById("fbUnifiedNextCheck");
+    const period=panel.querySelector('[data-fb-key="Perioda kontrol"]');
+    if(last && next){
+      last.addEventListener("change",()=>{
+        const months=period && period.value==="6" ? 6 : 12;
+        next.value=addMonthsToInput(last.value, months);
+      });
+    }
   }
   function openPanel(e){
     if(e){e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}
@@ -4762,6 +4923,10 @@ setTimeout(()=>{
     raw["Hlídáme sami termín"]=yesNo(raw["Hlídáme sami termín"],"ne");
     raw["Smlouva ano/ne"]=yesNo(raw["Smlouva ano/ne"],"ne");
     if(raw["Perioda kontrol"]!=="6") raw["Perioda kontrol"]="12";
+    const last=val(document.getElementById("fbUnifiedLastCheck")?.value);
+    const next=val(document.getElementById("fbUnifiedNextCheck")?.value);
+    if(last) raw["Poslední_kontrola"]=last;
+    if(next) raw["Příští_kontrola"]=next;
     if(!raw["Zdroj_dat"]) raw["Zdroj_dat"]="Firebase";
     return compactFirebaseRaw(raw);
   }
@@ -4858,7 +5023,7 @@ setTimeout(()=>{
       const res=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address),{headers:{"Accept":"application/json"}});
       const data=await res.json();
       if(!data || !data[0]){status("Adresa nebyla nalezena.",true);return;}
-      setField("Adresa_GPS",data[0].display_name || address);
+      setField("Adresa_GPS",`${data[0].lat}, ${data[0].lon}`);
       setField("GPS_lat",data[0].lat);
       setField("GPS_lon",data[0].lon);
       status("GPS doplněno.");
@@ -5036,6 +5201,8 @@ setTimeout(()=>{
   }
   function clearForm(){
     document.querySelectorAll("#fbUnifiedPanel [data-fb-key]").forEach(el=>el.value="");
+    const last=document.getElementById("fbUnifiedLastCheck"); if(last) last.value="";
+    const next=document.getElementById("fbUnifiedNextCheck"); if(next) next.value="";
     const period=document.querySelector('#fbUnifiedPanel [data-fb-key="Perioda kontrol"]'); if(period) period.value="12";
     document.querySelectorAll('#fbUnifiedPanel [data-fb-key="Hlídáme sami termín"], #fbUnifiedPanel [data-fb-key="Smlouva ano/ne"]').forEach(el=>el.value="ne");
     status("Formulář vymazán.");
