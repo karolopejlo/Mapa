@@ -96,6 +96,16 @@ button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:whit
 .item:hover{background:#eff6ff}.item-title{font-weight:700;font-size:13px}.item-meta{font-size:12px;color:#64748b;line-height:1.35}
 .pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
 .red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef3c7;color:#92400e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
+#statusFilter.status-red{background:#fee2e2;color:#991b1b;border-color:#fecaca;font-weight:800}
+#statusFilter.status-orange{background:#ffedd5;color:#9a3412;border-color:#fed7aa;font-weight:800}
+#statusFilter.status-yellow{background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:800}
+#statusFilter.status-green{background:#dcfce7;color:#166534;border-color:#bbf7d0;font-weight:800}
+#statusFilter.status-pink{background:#fdf2f8;color:#9d174d;border-color:#fbcfe8;font-weight:800}
+#statusFilter option.status-red{background:#fee2e2;color:#991b1b}
+#statusFilter option.status-orange{background:#ffedd5;color:#9a3412}
+#statusFilter option.status-yellow{background:#fef3c7;color:#92400e}
+#statusFilter option.status-green{background:#dcfce7;color:#166534}
+#statusFilter option.status-pink{background:#fdf2f8;color:#9d174d}
 .drawer{position:fixed;right:0;top:0;height:100vh;width:min(760px,100vw);background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 35px #0003;z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
 .drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between;gap:10px}.x{width:auto}
 .card{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;margin:10px 0}
@@ -977,7 +987,7 @@ button,input,select,textarea{
 <div class="card" id="protocolCard">
   <h3>Protokol / potvrzení o provedené zkoušce</h3>
   <button class="primary" id="toggleProtocolBtn" type="button">Vyplnit protokol</button>
-  <p class="small">Protokol se uloží k vybranému místu do Firebase.</p>
+  <p class="small">Protokol se uloží k vybranému místu.</p>
   <form id="protocolForm" style="display:none;margin-top:8px">
     <label>Datum provedení kontroly zdroje</label>
     <input type="date" id="protoDate" required>
@@ -1184,7 +1194,7 @@ button,input,select,textarea{
   </div>
   <label>Poznámky</label><textarea id="editNotes"></textarea>
   <div class="row" style="margin-top:8px">
-    <button class="primary" id="saveEditBtn">Uložit úpravy do Firebase</button>
+    <button class="primary" id="saveEditBtn">Uložit úpravy</button>
     <button class="secondary" id="cancelEditBtn">Zrušit</button>
     <button class="danger" id="deleteSiteBtn" type="button">Smazat místo</button>
   </div>
@@ -1192,7 +1202,7 @@ button,input,select,textarea{
 
 <div class="card" id="newSiteCard" style="order:-100" style="display:none">
   <h3>Přidat nové místo</h3>
-  <p class="small">Nové místo se uloží do Firebase kolekce <b>sites</b> a zobrazí se v mapě bez úpravy CSV.</p>
+  <p class="small">Nové místo se uloží a zobrazí se v mapě.</p>
 
   <label><div class="legacy-newsite-fields">Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
   <label>Adresa pro GPS / mapu</label><input id="newGpsAddress" placeholder="Ulice číslo, město, Česká republika">
@@ -1787,7 +1797,7 @@ function setNewSiteModeTitle(){
   const title=document.getElementById("drawerTitle");
   const sub=document.getElementById("drawerSub");
   if(title) title.textContent="Přidat nové místo";
-  if(sub) sub.textContent="Vyplň údaje a ulož do Firebase.";
+  if(sub) sub.textContent="Vyplň údaje a ulož místo.";
 }
 function clearNewSiteMode(){
   const drawerEl=document.getElementById("drawer");
@@ -2080,7 +2090,7 @@ function openNewSiteForm(){
 setTimeout(()=>{const n=document.getElementById("newName"); if(n){n.focus(); n.scrollIntoView({behavior:"smooth",block:"start"});}},100);
   document.getElementById("editCard").style.display="none";
   document.getElementById("detailTitle").textContent="Přidat nové místo";
-  document.getElementById("detailSub").textContent="Vyplň údaje a ulož do Firebase.";
+  document.getElementById("detailSub").textContent="Vyplň údaje a ulož místo.";
   document.getElementById("detailTable").innerHTML="<tr><td>Nové místo</td><td>Po uložení se zobrazí v mapě.</td></tr>";
   document.getElementById("newSiteStatus").textContent="";
 }
@@ -2294,18 +2304,68 @@ function render(){
 }
 function filters(){
   const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
+  const currentStatus=st.value;
+  const currentRegion=kr.value;
   st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
-  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Hlídáme termín sami"].forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;st.appendChild(o)});
+  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Hlídáme termín sami"].forEach(v=>{
+    const o=document.createElement("option");
+    o.value=v;
+    o.textContent=v;
+    const cls=statusFilterClass(v);
+    if(cls) o.className=cls;
+    if(cls==="status-red"){o.style.backgroundColor="#fee2e2";o.style.color="#991b1b";}
+    if(cls==="status-orange"){o.style.backgroundColor="#ffedd5";o.style.color="#9a3412";}
+    if(cls==="status-yellow"){o.style.backgroundColor="#fef3c7";o.style.color="#92400e";}
+    if(cls==="status-green"){o.style.backgroundColor="#dcfce7";o.style.color="#166534";}
+    if(cls==="status-pink"){o.style.backgroundColor="#fdf2f8";o.style.color="#9d174d";}
+    st.appendChild(o);
+  });
   APP_REGION_OPTIONS.forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;kr.appendChild(o)});
+  if([...st.options].some(o=>o.value===currentStatus)) st.value=currentStatus;
+  if([...kr.options].some(o=>o.value===currentRegion)) kr.value=currentRegion;
+  updateStatusFilterColor();
+}
+function statusFilterClass(v){
+  if(v==="Propadlá kontrola") return "status-red";
+  if(v==="1–30 dní k termínu") return "status-orange";
+  if(v==="Kontrola objednaná") return "status-yellow";
+  if(v==="OK / ostatní") return "status-green";
+  if(v==="Hlídáme termín sami") return "status-pink";
+  return "";
+}
+function updateStatusFilterColor(){
+  const st=document.getElementById("statusFilter");
+  if(!st) return;
+  st.classList.remove("status-red","status-orange","status-yellow","status-green","status-pink");
+  const cls=statusFilterClass(st.value);
+  if(cls) st.classList.add(cls);
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
 window.fit=fit;
 
 let mapFocusDetailKey="";
+let mapFocusReturnHandler=null;
 function setMapFocusMode(active){
   document.body.classList.toggle("map-focus-mode", !!active);
   setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},60);
   setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},300);
+}
+function showMapFocusLocation(lat,lon,title,subtitle,returnHandler){
+  if(!Number.isFinite(lat) || !Number.isFinite(lon)){
+    return;
+  }
+  mapFocusReturnHandler=typeof returnHandler==="function" ? returnHandler : null;
+  setMapFocusMode(true);
+  const latlng=[lat,lon];
+  setTimeout(()=>{
+    try{
+      map.setView(latlng, Math.max(map.getZoom() || 0, 16));
+      L.popup({closeButton:false,autoClose:true})
+        .setLatLng(latlng)
+        .setContent(`<b>${esc(title || "Bod na mapě")}</b>${subtitle ? `<br>${esc(subtitle)}` : ""}`)
+        .openOn(map);
+    }catch(e){}
+  },120);
 }
 function showSelectedSiteOnMap(){
   if(!selectedSite) return;
@@ -2317,27 +2377,21 @@ function showSelectedSiteOnMap(){
   mapFocusDetailKey=detailKey(selectedSite) || selectedSite.id;
   const drawer=document.getElementById("drawer");
   if(drawer) drawer.classList.remove("open");
-  setMapFocusMode(true);
-  const latlng=[selectedSite.lat, selectedSite.lon];
-  setTimeout(()=>{
-    try{
-      map.setView(latlng, Math.max(map.getZoom() || 0, 16));
-      L.popup({closeButton:false,autoClose:true})
-        .setLatLng(latlng)
-        .setContent(`<b>${esc(selectedSite.adresa || "Bez názvu")}</b><br>${esc(statusText(selectedSite))}`)
-        .openOn(map);
-    }catch(e){}
-  },120);
+  showMapFocusLocation(selectedSite.lat, selectedSite.lon, selectedSite.adresa || "Bez názvu", statusText(selectedSite), null);
 }
 function returnFromMapFocus(){
   const key=mapFocusDetailKey;
+  const handler=mapFocusReturnHandler;
+  mapFocusReturnHandler=null;
   setMapFocusMode(false);
   setTimeout(()=>{
     try{map.invalidateSize(true);}catch(e){}
-    if(key) window.openDetailById(key);
+    if(handler) handler();
+    else if(key) window.openDetailById(key);
   },180);
 }
 window.showSelectedSiteOnMap=showSelectedSiteOnMap;
+window.showMapFocusLocation=showMapFocusLocation;
 window.returnFromMapFocus=returnFromMapFocus;
 function siteDedupValue(v){
   return safe(v)
@@ -3399,7 +3453,7 @@ if(typeof window.bindLoginButtons==="function"){
 
 document.getElementById("closeDrawer").onclick=()=>document.getElementById("drawer").classList.remove("open");
 document.getElementById("search").addEventListener("input",render);
-document.getElementById("statusFilter").addEventListener("change",render);
+document.getElementById("statusFilter").addEventListener("change",()=>{updateStatusFilterColor();render();});
 document.getElementById("regionFilter").addEventListener("change",render);
 document.getElementById("fitBtn").addEventListener("click",fit);
 const mapBackBtn=document.getElementById("mapBackBtn");
@@ -4065,7 +4119,7 @@ setTimeout(()=>{
       <div class="drawer-head">
         <div>
           <h2>Přidat nové místo</h2>
-          <p class="small">Vyplň údaje a ulož bod do Firebase.</p>
+          <p class="small">Vyplň údaje a ulož bod.</p>
         </div>
         <button class="secondary x" type="button" id="closeOnlyNew">Zavřít</button>
       </div>
@@ -4077,7 +4131,7 @@ setTimeout(()=>{
           <div>
             <label>GPS</label>
             <button class="secondary" type="button" id="calcOnlyGpsBtn" style="width:100%;margin-bottom:6px">Dopočítat GPS</button>
-            <button class="primary" type="button" id="findOnlyGpsBtn" style="width:100%">Vyhledat na mapě</button>
+            <button class="primary" type="button" id="findOnlyGpsBtn" style="width:100%">Ukázat bod na mapě</button>
           </div>
           <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
           <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
@@ -4172,6 +4226,7 @@ setTimeout(()=>{
 
   function findOnlyNewGpsOnMap(){
     const st=document.getElementById("onlyNewStatus");
+    const raw=collectOnlyNewRaw();
     const latEl=document.getElementById("onlyNewGpsLat");
     const lonEl=document.getElementById("onlyNewGpsLon");
 
@@ -4203,9 +4258,16 @@ setTimeout(()=>{
         fillOpacity:.95
       }).addTo(window.map);
 
-      onlyNewTempMarker.bindPopup("Nový bod - náhled").openPopup();
-      window.map.setView(latlng,15);
-      window.map.invalidateSize(true);
+      onlyNewTempMarker.bindPopup("Nový bod - náhled");
+      const drawer=document.getElementById("drawer");
+      if(drawer) drawer.classList.remove("open");
+      const reopen=()=>{ const d=document.getElementById("drawer"); if(d) d.classList.add("open"); };
+      if(typeof window.showMapFocusLocation==="function"){
+        window.showMapFocusLocation(lat,lon,raw["Název"] || raw["Adresa / umístění"] || "Nový bod","náhled před uložením",reopen);
+      }else{
+        window.map.setView(latlng,15);
+        window.map.invalidateSize(true);
+      }
 
       if(st) st.textContent="Bod nalezen na mapě podle GPS.";
     }catch(e){
@@ -4279,7 +4341,7 @@ setTimeout(()=>{
         },{merge:true});
       }else throw new Error("Firebase není připravený, bod se neuložil.");
     }catch(e){
-      if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
+      if(st) st.textContent="Chyba uložení: "+e.message;
       return;
     }
 
@@ -4470,6 +4532,7 @@ setTimeout(()=>{
 
   function findAddOnMap(){
     const st=document.getElementById("onlyNewStatus");
+    const raw=collectAddRaw();
     const lat=parseFloat(String(document.getElementById("onlyNewGpsLat")?.value || "").replace(",","."));
     const lon=parseFloat(String(document.getElementById("onlyNewGpsLon")?.value || "").replace(",","."));
 
@@ -4492,9 +4555,16 @@ setTimeout(()=>{
         fillColor:"#2563eb",
         fillOpacity:.95
       }).addTo(window.map);
-      onlyNewTempMarker.bindPopup("Nový bod - náhled").openPopup();
-      window.map.setView(latlng,15);
-      window.map.invalidateSize(true);
+      onlyNewTempMarker.bindPopup("Nový bod - náhled");
+      const drawer=document.getElementById("drawer");
+      if(drawer) drawer.classList.remove("open");
+      const reopen=()=>{ const d=document.getElementById("drawer"); if(d) d.classList.add("open"); };
+      if(typeof window.showMapFocusLocation==="function"){
+        window.showMapFocusLocation(lat,lon,raw["Název"] || raw["Adresa / umístění"] || "Nový bod","náhled před uložením",reopen);
+      }else{
+        window.map.setView(latlng,15);
+        window.map.invalidateSize(true);
+      }
       if(st) st.textContent="Bod nalezen na mapě podle GPS.";
     }catch(e){
       if(st) st.textContent="Chyba zobrazení bodu: "+e.message;
@@ -4522,7 +4592,7 @@ setTimeout(()=>{
 
           <div class="full gps-actions">
             <button class="secondary" type="button" id="calcOnlyGps">Dopočítat GPS</button>
-            <button class="primary" type="button" id="findOnlyGps">Vyhledat na mapě</button>
+            <button class="primary" type="button" id="findOnlyGps">Ukázat bod na mapě</button>
           </div>
 
           <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
@@ -4624,7 +4694,7 @@ setTimeout(()=>{
         },{merge:true});
       }else throw new Error("Firebase není připravený, bod se neuložil.");
     }catch(e){
-      if(st) st.textContent="Chyba uložení do Firebase: "+e.message;
+      if(st) st.textContent="Chyba uložení: "+e.message;
       return;
     }
 
@@ -4837,6 +4907,11 @@ setTimeout(()=>{
 .fbUnifiedDates{margin:8px 0}
 .fbUnifiedNotice{border:1px solid #bbf7d0;background:#ecfdf5;color:#166534;border-radius:12px;padding:9px;margin:8px 0;font-weight:700;font-size:13px}
 .fbUnifiedErr{border-color:#fecaca!important;background:#fef2f2!important;color:#991b1b!important}
+.fbUnifiedNotice:not(.fbUnifiedErr),
+.fbDbBadge,
+.fbUnifiedHead .small{
+  display:none!important;
+}
 #fbUnifiedPanel button{min-height:42px;border-radius:10px;border:1px solid #e2e8f0;font-weight:800;cursor:pointer}
 .fbPrimary{background:#2563eb;color:white;border-color:#2563eb!important}
 .fbSecondary{background:#f1f5f9;color:#0f172a}
@@ -5097,13 +5172,13 @@ setTimeout(()=>{
     const overlay=document.createElement("div"); overlay.id="fbUnifiedOverlay"; overlay.onclick=closePanel; document.body.appendChild(overlay);
     const panel=document.createElement("div"); panel.id="fbUnifiedPanel";
     panel.innerHTML=`
-      <div class="fbUnifiedHead"><div><h2>Přidat nové místo</h2><p class="small">Ukládá se do stejné Firebase databáze jako ostatní body.</p><div class="fbDbBadge">Kolekce: <b>${FB_COLLECTION}</b></div></div><button class="fbSecondary" id="fbUnifiedClose" type="button">Zavřít</button></div>
+      <div class="fbUnifiedHead"><div><h2>Přidat nové místo</h2><p class="small">Nové místo se uloží mezi ostatní body.</p><div class="fbDbBadge">Kolekce: <b>${FB_COLLECTION}</b></div></div><button class="fbSecondary" id="fbUnifiedClose" type="button">Zavřít</button></div>
       <div id="fbUnifiedStatus" class="fbUnifiedNotice">Připraveno. Vyplň aspoň název/adresu a GPS.</div>
       <div class="fbUnifiedDates control-dates-strong">
         <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><input id="fbUnifiedLastCheck" type="date"></div>
         <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><input id="fbUnifiedNextCheck" type="date"></div>
       </div>
-      <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Vyhledat na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
+      <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Ukázat bod na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
       <div class="fbUnifiedGrid">${FB_USER_FIELDS.map(field).join("")}${FB_HIDDEN_KEYS.map(k=>`<input type="hidden" data-fb-key="${esc(k)}">`).join("")}</div>`;
     document.body.appendChild(panel);
     document.getElementById("fbUnifiedClose").onclick=closePanel;
@@ -5253,7 +5328,20 @@ setTimeout(()=>{
     try{
       if(previewMarker) map.removeLayer(previewMarker);
       previewMarker=L.circleMarker([lat,lon],{radius:10,color:"#111827",weight:2,fillColor:"#2563eb",fillOpacity:.95}).addTo(map);
-      previewMarker.bindPopup("Nový bod - náhled").openPopup(); map.setView([lat,lon],15); status("Bod zobrazen na mapě jako náhled.");
+      previewMarker.bindPopup("Nový bod - náhled");
+      closePanel();
+      const reopen=()=>{
+        ensurePanel();
+        document.getElementById("fbUnifiedOverlay").classList.add("open");
+        document.getElementById("fbUnifiedPanel").classList.add("open");
+        setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},80);
+      };
+      if(typeof window.showMapFocusLocation==="function"){
+        window.showMapFocusLocation(lat,lon,raw["Název"] || raw["Adresa / umístění"] || "Nový bod","náhled před uložením",reopen);
+      }else{
+        map.setView([lat,lon],15);
+        previewMarker.openPopup();
+      }
     }catch(e){status("Chyba mapy: "+e.message,true);}
   }
   function rowFromDoc(docId, d){
@@ -5415,7 +5503,7 @@ setTimeout(()=>{
       const visibleAfterReload=await refreshAfterSave(ref.id);
       if(visibleAfterReload) sideStatus("<b>Bod uložen.</b> Nové místo je načtené z Firebase stejně jako po refreshi.");
       return false;
-    }catch(e){status("Chyba uložení do Firebase: "+e.message,true);return false;}
+    }catch(e){status("Chyba uložení: "+e.message,true);return false;}
   }
   function clearForm(){
     document.querySelectorAll("#fbUnifiedPanel [data-fb-key]").forEach(el=>el.value="");
