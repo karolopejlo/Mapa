@@ -95,7 +95,7 @@ button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:whit
 .item{border:1px solid var(--border);border-radius:14px;padding:10px;background:white;cursor:pointer;margin-bottom:8px}
 .item:hover{background:#eff6ff}.item-title{font-weight:700;font-size:13px}.item-meta{font-size:12px;color:#64748b;line-height:1.35}
 .pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
-.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
+.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef3c7;color:#92400e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
 .drawer{position:fixed;right:0;top:0;height:100vh;width:min(760px,100vw);background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 35px #0003;z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
 .drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between;gap:10px}.x{width:auto}
 .card{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;margin:10px 0}
@@ -820,6 +820,111 @@ button,input,select,textarea{
   padding-top:10px;
 }
 
+/* FINÁLNÍ TELEFON/TABLET REŽIM */
+.map-back-btn{
+  display:none;
+  position:fixed;
+  left:12px;
+  right:12px;
+  bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:3600;
+  box-shadow:0 12px 30px rgba(15,23,42,.28);
+  border-color:#cbd5e1;
+}
+.map-focus-mode{
+  overflow:hidden;
+}
+.map-focus-mode .app{
+  display:block !important;
+  height:100dvh !important;
+}
+.map-focus-mode aside{
+  display:none !important;
+}
+.map-focus-mode #map{
+  position:fixed !important;
+  inset:0 !important;
+  width:100vw !important;
+  height:100dvh !important;
+  min-height:100dvh !important;
+  z-index:2500 !important;
+}
+.map-focus-mode .map-back-btn{
+  display:block;
+}
+@media(max-width:1024px){
+  html,body{
+    height:100dvh;
+    overflow:hidden;
+  }
+  .app{
+    height:100dvh !important;
+    grid-template-columns:1fr !important;
+    grid-template-rows:minmax(38dvh,46dvh) minmax(0,1fr) !important;
+  }
+  #map{
+    height:100% !important;
+    min-height:0 !important;
+  }
+  aside{
+    height:100% !important;
+    min-height:0 !important;
+    overflow:auto !important;
+    -webkit-overflow-scrolling:touch;
+    padding:10px 10px calc(14px + env(safe-area-inset-bottom)) !important;
+  }
+  aside h1{
+    font-size:17px;
+    line-height:1.2;
+    margin-bottom:8px;
+  }
+  aside .row{
+    grid-template-columns:1fr 1fr !important;
+  }
+  .stats{
+    grid-template-columns:1fr 1fr !important;
+    margin:10px 0;
+  }
+  .legend{
+    grid-template-columns:1fr 1fr;
+    gap:5px 8px;
+  }
+  .item{
+    min-height:58px;
+    margin-bottom:7px;
+  }
+  .drawer{
+    width:100vw !important;
+    height:100dvh !important;
+    overflow:auto !important;
+  }
+}
+@media(max-width:640px){
+  .app{
+    grid-template-rows:40dvh minmax(0,1fr) !important;
+  }
+  .legend{
+    grid-template-columns:1fr;
+  }
+  .data-edit-actions{
+    grid-template-columns:1fr !important;
+  }
+}
+@media(max-width:1024px) and (orientation:landscape){
+  .app{
+    grid-template-columns:minmax(320px,38vw) minmax(0,1fr) !important;
+    grid-template-rows:1fr !important;
+  }
+  aside{
+    order:0 !important;
+    border-right:1px solid var(--border) !important;
+    border-top:0 !important;
+  }
+  #map{
+    height:100dvh !important;
+  }
+}
+
 </style>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
@@ -863,7 +968,7 @@ button,input,select,textarea{
 <div><span class="dot" style="background:#16a34a"></span> Vše ostatní</div>
 </div>
 <div id="list"></div>
-</aside><div id="map"></div></div>
+</aside><div id="map"></div><button class="secondary map-back-btn" id="mapBackBtn" type="button">Zpět na detail</button></div>
 
 <div class="drawer" id="drawer">
 <div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
@@ -1035,6 +1140,7 @@ button,input,select,textarea{
 <div class="card"><h3>Data</h3><div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="secondary" type="button" id="toggleOrderedBtn">Kontrola objednána</button>
+  <button class="secondary" type="button" id="showSiteOnMapBtn">Ukázat bod na mapě</button>
   <button class="secondary" type="button" id="calcDataGpsBtn" style="display:none">Dopočítat GPS</button>
   <button class="primary" type="button" id="saveDataEditsBtn" style="display:none">Uložit data</button>
   <button class="secondary" type="button" id="cancelDataEditBtn" style="display:none">Zavřít</button>
@@ -1420,15 +1526,15 @@ function displayNext(r){
 }
 function color(r){
   const d=daysToComputedNext(r);
-  if(Number.isFinite(d) && d < 0) return "#dc2626";
   if(r.ordered === true) return "#eab308";
+  if(Number.isFinite(d) && d < 0) return "#dc2626";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "#f97316";
   return "#16a34a";
 }
 function statusText(r){
   const d=daysToComputedNext(r);
-  if(Number.isFinite(d) && d < 0) return "Propadlá kontrola";
   if(r.ordered === true) return "Kontrola objednaná";
+  if(Number.isFinite(d) && d < 0) return "Propadlá kontrola";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "1–30 dní k termínu";
   return "OK / ostatní";
 }
@@ -2194,6 +2300,45 @@ function filters(){
 }
 function fit(){const pts=filtered().filter(inCzSk).map(r=>[r.lat,r.lon]);if(pts.length)map.fitBounds(pts,{padding:[30,30]})}
 window.fit=fit;
+
+let mapFocusDetailKey="";
+function setMapFocusMode(active){
+  document.body.classList.toggle("map-focus-mode", !!active);
+  setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},60);
+  setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},300);
+}
+function showSelectedSiteOnMap(){
+  if(!selectedSite) return;
+  const st=document.getElementById("editStatus");
+  if(!Number.isFinite(selectedSite.lat) || !Number.isFinite(selectedSite.lon)){
+    if(st) st.textContent="Bod nemá platné GPS souřadnice.";
+    return;
+  }
+  mapFocusDetailKey=detailKey(selectedSite) || selectedSite.id;
+  const drawer=document.getElementById("drawer");
+  if(drawer) drawer.classList.remove("open");
+  setMapFocusMode(true);
+  const latlng=[selectedSite.lat, selectedSite.lon];
+  setTimeout(()=>{
+    try{
+      map.setView(latlng, Math.max(map.getZoom() || 0, 16));
+      L.popup({closeButton:false,autoClose:true})
+        .setLatLng(latlng)
+        .setContent(`<b>${esc(selectedSite.adresa || "Bez názvu")}</b><br>${esc(statusText(selectedSite))}`)
+        .openOn(map);
+    }catch(e){}
+  },120);
+}
+function returnFromMapFocus(){
+  const key=mapFocusDetailKey;
+  setMapFocusMode(false);
+  setTimeout(()=>{
+    try{map.invalidateSize(true);}catch(e){}
+    if(key) window.openDetailById(key);
+  },180);
+}
+window.showSelectedSiteOnMap=showSelectedSiteOnMap;
+window.returnFromMapFocus=returnFromMapFocus;
 function siteDedupValue(v){
   return safe(v)
     .toLowerCase()
@@ -3063,6 +3208,7 @@ window.openDetail=function(i){
   const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
   const editDataToggleBtn=document.getElementById("editDataToggleBtn");
   const toggleOrderedBtn=document.getElementById("toggleOrderedBtn");
+  const showSiteOnMapBtn=document.getElementById("showSiteOnMapBtn");
   const calcDataGpsBtn=document.getElementById("calcDataGpsBtn");
   const saveDataBtn=document.getElementById("saveDataEditsBtn");
   const cancelDataEditBtn=document.getElementById("cancelDataEditBtn");
@@ -3071,6 +3217,10 @@ window.openDetail=function(i){
     toggleOrderedBtn.style.display="block";
     updateOrderedButton();
     toggleOrderedBtn.onclick=toggleOrderedFromDetail;
+  }
+  if(showSiteOnMapBtn){
+    showSiteOnMapBtn.style.display="block";
+    showSiteOnMapBtn.onclick=showSelectedSiteOnMap;
   }
 
   if(editDataToggleBtn){
@@ -3219,12 +3369,25 @@ function fixMapView(){
 }
 
 function showApp(){
-  document.getElementById("startupScreen").style.display="none";
-  document.getElementById("mainApp").style.display="grid";
+  const startup=document.getElementById("startupScreen");
+  const app=document.getElementById("mainApp");
+  const loginRow=document.getElementById("mainLoginRow");
+  const topLogout=document.getElementById("topLogoutBtn");
+  if(startup) startup.style.display="none";
+  if(app) app.style.display="grid";
+  if(loginRow) loginRow.style.display="none";
+  if(topLogout) topLogout.style.display=currentUser ? "block" : "none";
+  setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); }catch(e){}},250);
 }
 function showLogin(){
-  document.getElementById("startupScreen").style.display="flex";
-  document.getElementById("mainApp").style.display="none";
+  const startup=document.getElementById("startupScreen");
+  const app=document.getElementById("mainApp");
+  const loginRow=document.getElementById("mainLoginRow");
+  const topLogout=document.getElementById("topLogoutBtn");
+  if(startup) startup.style.display="flex";
+  if(app) app.style.display="none";
+  if(loginRow) loginRow.style.display="none";
+  if(topLogout) topLogout.style.display="none";
 }
 
 if(typeof window.bindLoginButtons==="function"){
@@ -3239,6 +3402,8 @@ document.getElementById("search").addEventListener("input",render);
 document.getElementById("statusFilter").addEventListener("change",render);
 document.getElementById("regionFilter").addEventListener("change",render);
 document.getElementById("fitBtn").addEventListener("click",fit);
+const mapBackBtn=document.getElementById("mapBackBtn");
+if(mapBackBtn) mapBackBtn.onclick=returnFromMapFocus;
 document.getElementById("reloadEditBtn").onclick=async()=>{
   await loadEdits();
   await loadDeletedSites();
