@@ -660,9 +660,115 @@ button,input,select,textarea{
   color:#92400e;
   border-color:#f59e0b;
 }
+#deleteDataSiteBtn{
+  grid-column:2;
+}
+.save-toast{
+  position:fixed;
+  left:50%;
+  bottom:calc(18px + env(safe-area-inset-bottom));
+  transform:translate(-50%,24px);
+  opacity:0;
+  pointer-events:none;
+  z-index:6000;
+  padding:11px 16px;
+  border-radius:999px;
+  background:#166534;
+  color:white;
+  font-weight:800;
+  box-shadow:0 14px 34px rgba(15,23,42,.3);
+  transition:opacity .18s ease, transform .18s ease;
+}
+.save-toast.show{
+  opacity:1;
+  transform:translate(-50%,0);
+}
+.protocol-summary{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:8px 0 12px;
+  padding:10px;
+  border:1px solid #dbeafe;
+  border-radius:12px;
+  background:#eff6ff;
+}
+.protocol-summary div{
+  font-size:12px;
+  color:#1e3a8a;
+}
+.protocol-summary b{
+  display:block;
+  color:#0f172a;
+  font-size:13px;
+  margin-top:2px;
+  overflow-wrap:anywhere;
+}
+.photo-preview{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(82px,1fr));
+  gap:8px;
+  margin-top:8px;
+}
+.photo-preview img,
+.history-photos img{
+  width:100%;
+  aspect-ratio:1;
+  object-fit:cover;
+  border-radius:10px;
+  border:1px solid #cbd5e1;
+}
+.history-controls{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:8px;
+  align-items:center;
+  margin-bottom:10px;
+}
+.history-controls button{
+  min-height:36px;
+}
+.history-controls button:disabled{
+  opacity:.45;
+}
+.history-counter{
+  text-align:center;
+  font-weight:800;
+  color:#475569;
+}
+.history-detail-row{
+  display:grid;
+  grid-template-columns:145px 1fr;
+  gap:8px;
+  padding:5px 0;
+  border-bottom:1px solid #e2e8f0;
+}
+.history-detail-row span:first-child{
+  font-weight:800;
+  color:#475569;
+}
+.history-detail-row span:last-child{
+  overflow-wrap:anywhere;
+}
+.history-photos{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
+  gap:8px;
+  margin-top:8px;
+}
 @media(max-width:600px){
   .data-edit-actions{
     grid-template-columns:1fr;
+  }
+  #deleteDataSiteBtn{
+    grid-column:auto;
+  }
+  .protocol-summary{
+    grid-template-columns:1fr;
+  }
+  .history-detail-row{
+    grid-template-columns:1fr;
+    gap:2px;
   }
 }
 
@@ -680,7 +786,7 @@ button,input,select,textarea{
 
 /* UPRAVY PROTOKOLU A DAT 3 */
 .proto-device-select-wrap.hidden,.proto-device-input-wrap.hidden{display:none!important}
-#protocolForm .protocol-point{margin-top:22px!important;padding-top:16px!important;border-top:2px solid #e2e8f0!important}
+#protocolForm .protocol-point{margin-top:12px!important;padding-top:0!important;border-top:0!important}
 #protocolForm input,#protocolForm select{min-height:34px!important;padding:6px 8px!important}
 #protocolForm textarea{min-height:50px!important;padding:6px 8px!important}
 .data-edit-table input,.data-edit-table select,.data-edit-table textarea{min-height:32px!important;padding:6px 8px!important;font-size:13px!important}
@@ -940,6 +1046,7 @@ button,input,select,textarea{
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 
 </head>
 <body>
@@ -979,6 +1086,7 @@ button,input,select,textarea{
 </div>
 <div id="list"></div>
 </aside><div id="map"></div><button class="secondary map-back-btn" id="mapBackBtn" type="button">Zpět na detail</button></div>
+<div id="saveToast" class="save-toast">Uloženo.</div>
 
 <div class="drawer" id="drawer">
 <div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
@@ -991,6 +1099,16 @@ button,input,select,textarea{
   <form id="protocolForm" style="display:none;margin-top:8px">
     <label>Datum provedení kontroly zdroje</label>
     <input type="date" id="protoDate" required>
+
+    <div class="protocol-summary" id="protoSummary">
+      <div>Adresa<b id="protoSummaryAddress">-</b></div>
+      <div>Zařízení<b id="protoSummaryDevice">-</b></div>
+      <div>Výrobní číslo<b id="protoSummarySerial">-</b></div>
+      <div>Umístění zdroje<b id="protoSummaryLocation">-</b></div>
+      <div>Perioda<b id="protoSummaryPeriod">-</b></div>
+    </div>
+
+    <h4>Základní údaje zdroje</h4>
 
     <div id="protoDeviceInputWrap" class="proto-device-input-wrap">
       <label>Kontrolované zařízení – typ</label>
@@ -1013,6 +1131,8 @@ button,input,select,textarea{
     </div>
 
     <label>Plomba</label><input id="protoSeal">
+
+    <h4>Místo a provozní údaje</h4>
 
     <label class="protocol-point">1) Místo kontroly</label>
     <input id="protoPlace">
@@ -1057,7 +1177,8 @@ button,input,select,textarea{
       <div><label>Pom. bat. (Vdc)</label><input id="protoAuxBatVdc"></div>
       <div><label>Rozvážení 1 (Vdc)</label><input id="protoUnbalance1"></div>
       <div><label>Rozvážení 2 (Vdc)</label><input id="protoUnbalance2"></div>
-    </div>
+</div>
+    <h4>Umístění a zařízení</h4>
 
     <label class="protocol-point">5) Umístění jističů UPS a záložního zařízení v objektu</label>
     <textarea id="protoBreakersLocation"></textarea>
@@ -1099,6 +1220,8 @@ button,input,select,textarea{
     </div>
     <label>Jiné OOPP / vstup</label><input id="protoOtherAccess">
 
+    <h4>Kontakty a dostupnost</h4>
+
     <label class="protocol-point">9) Kontakty</label>
     <textarea id="protoContacts"></textarea>
 
@@ -1122,6 +1245,8 @@ button,input,select,textarea{
       <option value="12 měsíců">12 měsíců</option>
     </select>
 
+    <h4>Výsledek, poznámky a fotografie</h4>
+
     <label class="protocol-point">12) Zařízení pracuje ve vyhovujících podmínkách</label>
     <select id="protoConditions">
       <option value="">Vyber</option>
@@ -1133,6 +1258,10 @@ button,input,select,textarea{
 
     <label class="protocol-point">13) Poznámky</label>
     <textarea id="protoNotes"></textarea>
+
+    <label>Fotografie k bodu z telefonu</label>
+    <input id="protoPhotos" type="file" accept="image/*" capture="environment" multiple>
+    <div id="protoPhotoPreview" class="photo-preview"></div>
 
     <div class="edit-grid">
       <div><label>Za objednavatele</label><input id="protoClientSign" placeholder="čitelně + podpis"></div>
@@ -1150,6 +1279,7 @@ button,input,select,textarea{
 <div class="card"><h3>Data</h3><div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="secondary" type="button" id="toggleOrderedBtn">Kontrola objednána</button>
+  <button class="danger" type="button" id="deleteDataSiteBtn">Smazat bod</button>
   <button class="secondary" type="button" id="showSiteOnMapBtn">Ukázat bod na mapě</button>
   <button class="secondary" type="button" id="calcDataGpsBtn" style="display:none">Dopočítat GPS</button>
   <button class="primary" type="button" id="saveDataEditsBtn" style="display:none">Uložit data</button>
@@ -2193,6 +2323,7 @@ async function deleteSelectedSite(){
       await loadExtraSites();
       render();
     }
+    showSaveConfirmation("Bod smazán.");
   }catch(e){
     st.textContent="Chyba při mazání: "+e.message;
   }
@@ -2914,6 +3045,7 @@ async function saveAllDataEdits(){
     selectedSite = rows.find(r=>detailKey(r)===selectedKey) || selectedSite;
 
     if(st) st.textContent="Data uložena.";
+    showSaveConfirmation("Data uložena.");
     render();
     window.openDetailById(selectedKey);
   }catch(e){
@@ -2962,6 +3094,7 @@ async function toggleOrderedFromDetail(){
     rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
     selectedSite=rows.find(r=>detailKey(r)===selectedKey) || {...selectedSite, ordered};
     if(st) st.textContent=ordered ? "Kontrola označena jako objednaná." : "Objednání kontroly zrušeno.";
+    showSaveConfirmation(ordered ? "Kontrola objednána." : "Objednání zrušeno.");
     render();
     window.openDetailById(selectedKey);
   }catch(e){
@@ -3272,6 +3405,11 @@ window.openDetail=function(i){
     updateOrderedButton();
     toggleOrderedBtn.onclick=toggleOrderedFromDetail;
   }
+  const deleteDataSiteBtn=document.getElementById("deleteDataSiteBtn");
+  if(deleteDataSiteBtn){
+    deleteDataSiteBtn.style.display="block";
+    deleteDataSiteBtn.onclick=deleteSelectedSite;
+  }
   if(showSiteOnMapBtn){
     showSiteOnMapBtn.style.display="block";
     showSiteOnMapBtn.onclick=showSelectedSiteOnMap;
@@ -3314,6 +3452,108 @@ window.openDetail=function(i){
   document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
   loadHistory(r.id);
 }
+let detailHistoryItems=[];
+let detailHistoryIndex=0;
+
+function historyTimeValue(item){
+  const raw=item?.createdAt || item?.checkDate || item?.date || 0;
+  if(raw && typeof raw.toDate==="function") return raw.toDate().getTime();
+  const d=new Date(raw || 0);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function historyDateLabel(item){
+  if(item?.checkDate) return item.checkDate;
+  if(item?.date) return item.date;
+  const raw=item?.createdAt;
+  if(raw && typeof raw.toDate==="function") return formatDateCz(raw.toDate());
+  const d=new Date(raw || 0);
+  return isNaN(d.getTime()) ? "bez data" : formatDateCz(d);
+}
+
+function historyObjectSummary(obj){
+  if(!obj || typeof obj!=="object") return "";
+  const labels={
+    lift:"Výtah",vent:"Vent. výt. šachty",machineLight:"Osvětlení strojovny",chuc:"CHÚC",
+    damper:"Klapka",skylight:"Světlík",gate:"Vrata",ats:"ATS",rpo:"RPO",no:"NO",
+    sprinkler:"Sprinkler",csTs:"CS/TS",blue:"modrá",b:"B",c:"C",garage:"garáže",
+    carLift:"auto výtah",barrier:"závora",parkingHouse:"park. dům",permit:"povolení",
+    training:"školení",shoes:"boty",vest:"vesta",helmet:"helma",wcOk:"WC OK",
+    wcNok:"WC NOK",lightOk:"Osvětlení OK",lightNok:"Osvětlení NOK",ladder:"Žebřík",
+    stairs:"Schody",lowCeiling:"Snížený strop",extremeTemp:"Extrémní teploty",
+    other:"jiné"
+  };
+  return Object.entries(obj)
+    .filter(([,value])=>value===true || (value!==false && safe(value)))
+    .map(([key,value])=>{
+      const label=labels[key] || key;
+      return value===true ? label : `${label}: ${value}`;
+    })
+    .join(", ");
+}
+
+function renderHistory(){
+  const history=document.getElementById("history");
+  if(!history) return;
+
+  if(!detailHistoryItems.length){
+    history.textContent="Zatím žádný záznam.";
+    return;
+  }
+
+  if(detailHistoryIndex<0) detailHistoryIndex=0;
+  if(detailHistoryIndex>=detailHistoryItems.length) detailHistoryIndex=detailHistoryItems.length-1;
+
+  const d=detailHistoryItems[detailHistoryIndex];
+  const rows=[
+    ["Typ záznamu", d._type || "Záznam"],
+    ["Datum", historyDateLabel(d)],
+    ["Technik", d.technician || d.techSign || d.createdBy || d.technicianEmail || ""],
+    ["Zařízení", d.deviceType || d.siteSource || ""],
+    ["Výrobní číslo", d.serial || ""],
+    ["Adresa", d.place || d.siteAddress || d.siteName || ""],
+    ["Umístění PBZ", d.pbzLocation || ""],
+    ["Perioda", d.period || ""],
+    ["Výsledek", d.result || d.conditions || ""],
+    ["Reset diagnostiky", d.resetDiagnostics || ""],
+    ["Baterie", [d.batteryCount ? `${d.batteryCount} ks` : "", d.capacityAh ? `${d.capacityAh} Ah` : "", d.setCount ? `${d.setCount} sad` : ""].filter(Boolean).join(", ")],
+    ["Měření AC", [d.inputVac&&`vstup ${d.inputVac} Vac`, d.output1Vac&&`výstup 1 ${d.output1Vac} Vac`, d.output2Vac&&`výstup 2 ${d.output2Vac} Vac`].filter(Boolean).join(", ")],
+    ["Měření DC", [d.mainBatVdc&&`hl. bat. ${d.mainBatVdc} Vdc`, d.auxBatVdc&&`pom. bat. ${d.auxBatVdc} Vdc`].filter(Boolean).join(", ")],
+    ["Jističe", d.breakersLocation || ""],
+    ["Zálohovaná zařízení", historyObjectSummary(d.backedDevices)],
+    ["Ovládání", d.controlLocation || ""],
+    ["Vstup / OOPP", historyObjectSummary(d.access)],
+    ["Kontakty", d.contacts || ""],
+    ["Dostupnost", historyObjectSummary(d.availability)],
+    ["Zjištění / poznámky", d.issues || d.notes || d.conditionsReason || ""],
+    ["Doporučení", d.recommendation || ""]
+  ].filter(([,value])=>safe(value));
+
+  const photos=(d.photoLinks||[]).filter(Boolean);
+  history.innerHTML=`
+    <div class="history-controls">
+      <button class="secondary" type="button" id="historyPrevBtn">Předchozí</button>
+      <div class="history-counter">${detailHistoryIndex+1} / ${detailHistoryItems.length}</div>
+      <button class="secondary" type="button" id="historyNextBtn">Další</button>
+    </div>
+    <div class="history-item">
+      ${rows.map(([label,value])=>`<div class="history-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join("")}
+      ${photos.length ? `<div class="history-photos">${photos.map((url,idx)=>`<a href="${esc(url)}" target="_blank"><img src="${esc(url)}" alt="Foto ${idx+1}"></a>`).join("")}</div>` : ""}
+    </div>
+  `;
+
+  const prev=document.getElementById("historyPrevBtn");
+  const next=document.getElementById("historyNextBtn");
+  if(prev){
+    prev.disabled=detailHistoryIndex<=0;
+    prev.onclick=()=>{detailHistoryIndex--;renderHistory();};
+  }
+  if(next){
+    next.disabled=detailHistoryIndex>=detailHistoryItems.length-1;
+    next.onclick=()=>{detailHistoryIndex++;renderHistory();};
+  }
+}
+
 async function loadHistory(siteId){
   const history=document.getElementById("history");
   if(!firebaseReady){
@@ -3325,15 +3565,21 @@ async function loadHistory(siteId){
   try{
     const {collection,query,where,getDocs}=fb.fsMod;
     const items=[];
+    const historySiteIds=[siteId, selectedSite ? detailKey(selectedSite) : ""]
+      .map(x=>String(x || ""))
+      .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
 
     async function readCollection(colName,typeLabel){
       try{
-        const q=query(collection(db,colName),where("siteId","==",siteId));
-        const snap=await getDocs(q);
-        snap.forEach(docSnap=>{
-          const d=docSnap.data();
-          items.push({...d,_type:typeLabel,_id:docSnap.id});
-        });
+        for(const id of historySiteIds){
+          const q=query(collection(db,colName),where("siteId","==",id));
+          const snap=await getDocs(q);
+          snap.forEach(docSnap=>{
+            if(items.some(item=>item._collection===colName && item._id===docSnap.id)) return;
+            const d=docSnap.data();
+            items.push({...d,_type:typeLabel,_collection:colName,_id:docSnap.id});
+          });
+        }
       }catch(e){
         console.warn("Historie kolekce nejde načíst",colName,e);
       }
@@ -3343,38 +3589,16 @@ async function loadHistory(siteId){
     await readCollection("protocols","Protokol");
 
     if(!items.length){
+      detailHistoryItems=[];
+      detailHistoryIndex=0;
       history.textContent="Zatím žádný záznam.";
       return;
     }
 
-    items.sort((a,b)=>{
-      const ad=(a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || a.checkDate || a.date || 0)).getTime();
-      const bd=(b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || b.checkDate || b.date || 0)).getTime();
-      return bd-ad;
-    });
-
-    history.innerHTML="";
-    items.forEach(d=>{
-      const date=d.checkDate || d.date || "";
-      const title=d._type || "Záznam";
-      const result=d.result || d.conditions || "";
-      const tech=d.technician || d.techSign || d.createdBy || d.technicianEmail || "";
-      const issues=d.issues || d.notes || d.conditionsReason || "";
-      const recommendation=d.recommendation || "";
-      const links=(d.photoLinks||[]).map(u=>`<a href="${esc(u)}" target="_blank">${esc(u)}</a>`).join("");
-
-      const div=document.createElement("div");
-      div.className="history-item";
-      div.innerHTML=`
-        <b>${esc(title)} <span class="history-date">${esc(date || "bez data")}</span></b><br>
-        ${result ? "Výsledek: "+esc(result)+"<br>" : ""}
-        ${tech ? "Technik: "+esc(tech)+"<br>" : ""}
-        ${issues ? "Zjištění/poznámky: "+esc(issues)+"<br>" : ""}
-        ${recommendation ? "Doporučení: "+esc(recommendation)+"<br>" : ""}
-        ${links ? `<div class="link-list">${links}</div>` : ""}
-      `;
-      history.appendChild(div);
-    });
+    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
+    detailHistoryItems=items;
+    detailHistoryIndex=0;
+    renderHistory();
   }catch(e){
     history.textContent="Chyba načtení historie: "+e.message;
   }
@@ -3443,6 +3667,17 @@ function showLogin(){
   if(loginRow) loginRow.style.display="none";
   if(topLogout) topLogout.style.display="none";
 }
+
+let saveToastTimer=null;
+function showSaveConfirmation(message="Uloženo."){
+  const toast=document.getElementById("saveToast");
+  if(!toast) return;
+  toast.textContent=message;
+  toast.classList.add("show");
+  clearTimeout(saveToastTimer);
+  saveToastTimer=setTimeout(()=>toast.classList.remove("show"),2200);
+}
+window.showSaveConfirmation=showSaveConfirmation;
 
 if(typeof window.bindLoginButtons==="function"){
   window.bindLoginButtons();
@@ -3564,6 +3799,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       savedRef=await addDoc(collection(db,"sites"),data);
     }
     st.textContent="Nové místo uloženo.";
+    showSaveConfirmation("Nové místo uloženo.");
     document.getElementById("newName").value="";
     document.getElementById("newGpsAddress").value="";
     document.getElementById("newGpsLat").value="";
@@ -3649,6 +3885,7 @@ document.getElementById("saveEditBtn").onclick=async()=>{
     selectedSite=rows.find(r=>detailKey(r)===selectedKey) || selectedSite;
     render(); window.openDetailById(selectedKey);
     st.textContent="Úpravy uloženy.";
+    showSaveConfirmation("Úpravy uloženy.");
   }catch(e){st.textContent="Chyba uložení: "+e.message;}
 };
 const serviceForm=document.getElementById("serviceForm");
@@ -3668,7 +3905,9 @@ if(serviceForm){
     try{
       const {collection,addDoc,serverTimestamp}=fb.fsMod;
       await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
-      st.textContent="Uloženo."; loadHistory(selectedSite.id);
+      st.textContent="Uloženo.";
+      showSaveConfirmation("Servisní záznam uložen.");
+      loadHistory(selectedSite.id);
     }catch(err){st.textContent="Chyba uložení: "+err.message;}
   });
 }
@@ -3690,11 +3929,11 @@ function splitPossibleSources(text){
 function sourceOptionsFromSite(site){
   const raw=site?.raw || {};
   const candidates=[
-    site?.zdroj,
-    get(raw,"Jaký zdroj"),
-    get(raw,"Zdroj"),
+    protocolDeviceTypeFromSite(site),
     get(raw,"Popis_zdroje"),
     get(raw,"Kontrolované zařízení"),
+    get(raw,"Jaký zdroj"),
+    get(raw,"Typ zařízení"),
     get(raw,"Typ"),
     get(raw,"Serviska")
   ].filter(Boolean);
@@ -3724,7 +3963,13 @@ function populateProtocolDeviceSelect(){
   const select=document.getElementById("protoDeviceTypeSelect");
   const input=document.getElementById("protoDeviceType");
   if(!selectedSite || !input || !select) return;
-  const rawSource=[selectedSite?.zdroj, selectedSite?.raw?.["Jaký zdroj"], selectedSite?.raw?.["Zdroj"], selectedSite?.raw?.["Popis_zdroje"]].filter(Boolean).join(" ");
+  const rawSource=[
+    protocolDeviceTypeFromSite(selectedSite),
+    selectedSite?.raw?.["Jaký zdroj"],
+    selectedSite?.raw?.["Popis_zdroje"],
+    selectedSite?.raw?.["Kontrolované zařízení"],
+    selectedSite?.raw?.["Typ zařízení"]
+  ].filter(Boolean).join(" ");
   const hasPlus=rawSource.includes("+");
   const devices=hasPlus ? rawSource.split("+").map(x=>x.trim()).filter(Boolean) : sourceOptionsFromSite(selectedSite);
   select.innerHTML='<option value="">Vyber zařízení</option>';
@@ -3736,8 +3981,9 @@ function populateProtocolDeviceSelect(){
   }else{
     if(inputWrap) inputWrap.classList.remove("hidden");
     if(selectWrap) selectWrap.classList.add("hidden");
-    input.value=devices[0]||selectedSite.zdroj||"";
+    input.value=devices[0]||protocolDeviceTypeFromSite(selectedSite)||"";
   }
+  updateProtocolSummary();
 }
 
 function resetProtocolTechnicalFieldsForNewDevice(){
@@ -3753,6 +3999,7 @@ function resetProtocolTechnicalFieldsForNewDevice(){
 
   const sel=document.getElementById("protoDeviceSelect");
   if(sel && sel.value) document.getElementById("protoDeviceType").value=sel.value;
+  updateProtocolSummary();
 }
 
 function pickRawValue(raw, names){
@@ -3775,6 +4022,167 @@ function setCheckbox(id,value){
   el.checked = value === true || String(value).toLowerCase()==="true" || String(value).toLowerCase()==="ano";
 }
 
+function protocolDeviceTypeFromSite(site){
+  const raw=site?.raw || {};
+  const explicit=pickRawValue(raw,[
+    "Popis_zdroje","Jaký zdroj","Kontrolované zařízení","Kontrolované zařízení – typ",
+    "Kontrolovane zarizeni","Typ zařízení","Typ zarizeni","Typ","Serviska"
+  ]);
+  if(explicit) return explicit;
+
+  const source=safe(site?.zdroj);
+  const serial=protocolSerialFromSite(site);
+  if(source && dataNormFixed(source)!==dataNormFixed(serial)) return source;
+  return "";
+}
+
+function protocolSerialFromSite(site){
+  const raw=site?.raw || {};
+  return pickRawValue(raw,[
+    "Výrobní č.","Výrobní číslo","Výrobní_číslo","Vyrobni cislo",
+    "Sériové číslo","Seriové číslo","Serial","SN","Zdroj"
+  ]);
+}
+
+function protocolSourceLocationFromSite(site){
+  const raw=site?.raw || {};
+  return pickRawValue(raw,[
+    "Umístění zdroje","Umístění_zdroje","Umístění","Umisteni",
+    "Adresa_GPS","Adresa / umístění"
+  ]);
+}
+
+function updateProtocolSummary(){
+  const set=(id,value)=>{
+    const el=document.getElementById(id);
+    if(el) el.textContent=safe(value) || "-";
+  };
+  set("protoSummaryAddress", val("protoPlace"));
+  set("protoSummaryDevice", val("protoDeviceTypeSelect") || val("protoDeviceType") || val("protoDeviceSelect"));
+  set("protoSummarySerial", val("protoSerial"));
+  set("protoSummaryLocation", val("protoPbzLocation"));
+  set("protoSummaryPeriod", val("protoPeriod"));
+}
+
+let protoPhotoPreviewUrls=[];
+let protocolPrefillSiteId="";
+
+function resetProtocolFormForSelectedSite(siteId){
+  const key=String(siteId || "");
+  if(protocolPrefillSiteId===key) return;
+  const form=document.getElementById("protocolForm");
+  if(form) form.reset();
+  const photoInput=document.getElementById("protoPhotos");
+  if(photoInput) photoInput.value="";
+  renderProtocolPhotoPreview();
+  protocolPrefillSiteId=key;
+}
+
+function renderProtocolPhotoPreview(){
+  const box=document.getElementById("protoPhotoPreview");
+  const input=document.getElementById("protoPhotos");
+  if(!box || !input) return;
+  protoPhotoPreviewUrls.forEach(url=>URL.revokeObjectURL(url));
+  protoPhotoPreviewUrls=[];
+  const files=Array.from(input.files || []);
+  box.innerHTML=files.map((file,idx)=>{
+    const url=URL.createObjectURL(file);
+    protoPhotoPreviewUrls.push(url);
+    return `<img src="${esc(url)}" alt="Fotografie ${idx+1}">`;
+  }).join("");
+}
+
+function storageSafeSegment(value){
+  return String(value || "bez-bodu")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9_-]+/gi,"_")
+    .replace(/^_+|_+$/g,"")
+    .slice(0,80) || "bez-bodu";
+}
+
+function getCompatStorage(){
+  const compat=window.firebase;
+  if(!compat || !compat.storage) throw new Error("Firebase Storage knihovna se nenačetla.");
+  if((!compat.apps || !compat.apps.length) && (window.__firebaseConfig || firebaseConfig)){
+    compat.initializeApp(window.__firebaseConfig || firebaseConfig);
+  }
+  return compat.storage();
+}
+
+function imageFileToJpegBlob(file,maxSide=1600,quality=.82){
+  return new Promise((resolve,reject)=>{
+    if(!file || !String(file.type || "").startsWith("image/")){
+      reject(new Error("Soubor není fotografie."));
+      return;
+    }
+
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      try{
+        let width=img.naturalWidth || img.width;
+        let height=img.naturalHeight || img.height;
+        const scale=Math.min(1, maxSide / Math.max(width,height));
+        width=Math.max(1, Math.round(width*scale));
+        height=Math.max(1, Math.round(height*scale));
+
+        const canvas=document.createElement("canvas");
+        canvas.width=width;
+        canvas.height=height;
+        const ctx=canvas.getContext("2d");
+        ctx.drawImage(img,0,0,width,height);
+        canvas.toBlob(blob=>{
+          URL.revokeObjectURL(url);
+          if(blob) resolve(blob);
+          else reject(new Error("Fotografii se nepodařilo připravit."));
+        },"image/jpeg",quality);
+      }catch(err){
+        URL.revokeObjectURL(url);
+        reject(err);
+      }
+    };
+    img.onerror=()=>{
+      URL.revokeObjectURL(url);
+      reject(new Error("Fotografii se nepodařilo načíst."));
+    };
+    img.src=url;
+  });
+}
+
+async function uploadProtocolPhotos(protocolId,st){
+  const input=document.getElementById("protoPhotos");
+  const files=Array.from(input?.files || []);
+  if(!files.length) return [];
+
+  const storage=getCompatStorage();
+  const siteFolder=storageSafeSegment(detailKey(selectedSite) || selectedSite?.id || "bod");
+  const links=[];
+
+  for(let i=0;i<files.length;i++){
+    const file=files[i];
+    if(st) st.textContent=`Nahrávám fotografii ${i+1}/${files.length}...`;
+
+    let uploadFile=file;
+    let contentType=file.type || "application/octet-stream";
+    let extension=(file.name.split(".").pop() || "").toLowerCase() || "jpg";
+
+    try{
+      uploadFile=await imageFileToJpegBlob(file);
+      contentType="image/jpeg";
+      extension="jpg";
+    }catch(e){
+      console.warn("Fotka se uloží bez zmenšení",e);
+    }
+
+    const name=`${Date.now()}_${i+1}_${storageSafeSegment(file.name || "foto")}.${extension}`;
+    const ref=storage.ref().child(`sitePhotos/${siteFolder}/${protocolId}/${name}`);
+    const snap=await ref.put(uploadFile,{contentType});
+    links.push(await snap.ref.getDownloadURL());
+  }
+
+  return links;
+}
+
 async function getLastProtocol(siteId){
   if(!firebaseReady || !db || !siteId) return null;
   try{
@@ -3794,20 +4202,29 @@ async function getLastProtocol(siteId){
 async function prefillProtocol(){
   if(!selectedSite) return;
 
+  resetProtocolFormForSelectedSite(selectedSite.id);
   const raw=selectedSite.raw || {};
   const last=await getLastProtocol(selectedSite.id);
 
   // základ z aktuálního místa
   populateProtocolDeviceSelect();
+  const address=selectedSite.adresa || pickRawValue(raw,["Název","Adresa / umístění","Adresa_GPS","Umístění"]);
+  const contacts=selectedSite.kontakt || pickRawValue(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
+  const period=periodMonths(selectedSite) === 12 ? "12 měsíců" : "6 měsíců";
+  const deviceType=protocolDeviceTypeFromSite(selectedSite);
+  const serial=protocolSerialFromSite(selectedSite);
+  const sourceLocation=protocolSourceLocationFromSite(selectedSite);
+
   document.getElementById("protoDate").value = new Date().toISOString().slice(0,10);
-  document.getElementById("protoPlace").value = selectedSite.adresa || pickRawValue(raw,["Adresa_GPS","Umístění","Umístění zdroje"]);
-  document.getElementById("protoContacts").value = selectedSite.kontakt || pickRawValue(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
+  document.getElementById("protoPlace").value = address;
+  document.getElementById("protoContacts").value = contacts;
   document.getElementById("protoTechSign").value = currentUser?.displayName || currentUser?.email || "";
-  document.getElementById("protoPeriod").value = periodMonths(selectedSite) === 12 ? "12 měsíců" : "6 měsíců";
-  document.getElementById("protoDeviceType").value = selectedSite.zdroj || pickRawValue(raw,["Jaký zdroj","Zdroj","Popis_zdroje"]);
+  document.getElementById("protoPeriod").value = period;
+  document.getElementById("protoDeviceType").value = deviceType;
+  document.getElementById("protoSerial").value = serial;
+  document.getElementById("protoPbzLocation").value = sourceLocation;
 
   // předvyplnění z dat v indexu / CSV
-  setIfEmpty("protoSerial", pickRawValue(raw,["Výrobní č.","Výrobní číslo","Vyrobni cislo","SN","Serial","Sériové číslo"]));
   setIfEmpty("protoBatteryCount", pickRawValue(raw,["Počet baterií","Pocet baterii","Počet baterií (ks)","Baterie ks","Počet AKU"]));
   setIfEmpty("protoCapacity", pickRawValue(raw,["Kapacita","Kapacita (Ah)","Kapacita Ah","Ah"]));
   setIfEmpty("protoSetCount", pickRawValue(raw,["Počet sad","Pocet sad","Počet sad (ks)","Sady ks"]));
@@ -3816,7 +4233,6 @@ async function prefillProtocol(){
 
   setIfEmpty("protoOperator", pickRawValue(raw,["Provozovatel","Provozovatel zařízení"]));
   setIfEmpty("protoCustomer", pickRawValue(raw,["Objednatel","Faktura na","Protokol na","Objednatel zkoušky provozuschopnosti"]));
-  // Umístění PBZ se nechává prázdné, technik ho doplní na místě.
   setIfEmpty("protoBreakersLocation", pickRawValue(raw,["Umístění jističů","Jističe UPS","Jističe"]));
   setIfEmpty("protoControlLocation", pickRawValue(raw,["Umístění ovládání","Ovládání zálohovaných zařízení"]));
 
@@ -3828,7 +4244,7 @@ async function prefillProtocol(){
 
     setIfEmpty("protoOperator", last.operator);
     setIfEmpty("protoCustomer", last.customer);
-    // Umístění PBZ se z posledního protokolu nepředvyplňuje.
+    setIfEmpty("protoPbzLocation", last.pbzLocation);
     setIfEmpty("protoBatteryCount", last.batteryCount);
     setIfEmpty("protoCapacity", last.capacityAh);
     setIfEmpty("protoSetCount", last.setCount);
@@ -3898,6 +4314,8 @@ async function prefillProtocol(){
   }else{
     document.getElementById("protocolStatus").textContent="Předvyplněno z dat místa.";
   }
+
+  updateProtocolSummary();
 }
 
 function protocolPayload(){
@@ -4003,12 +4421,18 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   }
 
   try{
-    const {collection,addDoc,serverTimestamp}=fb.fsMod;
+    const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
+    const ref=doc(collection(db,"protocols"));
     const payload=protocolPayload();
+    payload.photoLinks=await uploadProtocolPhotos(ref.id,st);
     payload.createdAt=serverTimestamp();
     payload.createdBy=currentUser.email;
-    await addDoc(collection(db,"protocols"),payload);
-    st.textContent="Protokol uložen.";
+    await setDoc(ref,payload);
+    st.textContent=payload.photoLinks.length ? `Protokol uložen včetně ${payload.photoLinks.length} fotografií.` : "Protokol uložen.";
+    showSaveConfirmation("Protokol uložen.");
+    const photoInput=document.getElementById("protoPhotos");
+    if(photoInput) photoInput.value="";
+    renderProtocolPhotoPreview();
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
   }catch(err){
     st.textContent="Chyba uložení protokolu: "+err.message;
@@ -4023,6 +4447,7 @@ if(protoDeviceTypeSelectEl){
     const input=document.getElementById("protoDeviceType");
     resetProtocolTechnicalFieldsForNewDevice();
     if(input) input.value=protoDeviceTypeSelectEl.value;
+    updateProtocolSummary();
     const st=document.getElementById("protocolStatus");
     if(st) st.textContent="Vybráno zařízení – vyplň údaje pro tento zdroj.";
   });
@@ -4032,9 +4457,23 @@ const protoDeviceSelectEl=document.getElementById("protoDeviceSelect");
 if(protoDeviceSelectEl){
   protoDeviceSelectEl.addEventListener("change",()=>{
     resetProtocolTechnicalFieldsForNewDevice();
+    updateProtocolSummary();
     document.getElementById("protocolStatus").textContent="Vybrán jiný zdroj – vyplň hodnoty pro tento zdroj.";
   });
 }
+
+[
+  "protoPlace","protoDeviceType","protoSerial","protoPbzLocation","protoPeriod"
+].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el){
+    el.addEventListener("input",updateProtocolSummary);
+    el.addEventListener("change",updateProtocolSummary);
+  }
+});
+
+const protoPhotosEl=document.getElementById("protoPhotos");
+if(protoPhotosEl) protoPhotosEl.addEventListener("change",renderProtocolPhotoPreview);
 
 window.addEventListener("resize",fixMapView);
 window.addEventListener("DOMContentLoaded",()=>{
@@ -4359,6 +4798,7 @@ setTimeout(()=>{
     }
 
     if(st) st.textContent="Nové místo uloženo a zobrazeno na mapě.";
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Nové místo uloženo.");
 
     try{
       let visibleAfterReload=true;
@@ -4704,6 +5144,7 @@ setTimeout(()=>{
     }
 
     if(st) st.textContent="Nové místo uloženo.";
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Nové místo uloženo.");
 
     try{
       let visibleAfterReload=true;
@@ -5297,6 +5738,7 @@ setTimeout(()=>{
       migratedFromCsv:false
     };
     await database.collection(FB_COLLECTION).doc(duplicate.id).set(updateData,{merge:true});
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Bod aktualizován.");
     const localData={...(duplicate.data||{}),...updateData,updatedAt:new Date().toISOString()};
     const row=rowFromDoc(duplicate.id,localData);
     await unhideOpenedRow(database,row);
@@ -5497,6 +5939,7 @@ setTimeout(()=>{
       const row=rowFromDoc(ref.id,localData);
       await unhideOpenedRow(database,row);
       status("Bod uložen. Zobrazuji v mapě...");
+      if(window.showSaveConfirmation) window.showSaveConfirmation("Bod uložen.");
       if(previewMarker){try{map.removeLayer(previewMarker);}catch(_e){} previewMarker=null;}
       closePanel();
       window.__lastSavedFirebaseSiteDocId=ref.id;
