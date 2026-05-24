@@ -651,9 +651,12 @@ button,input,select,textarea{
 }
 .data-edit-actions{
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:8px;
-  margin:10px 0;
+  margin:12px 0 4px;
+}
+.data-edit-actions button{
+  min-height:40px;
 }
 .ordered-toggle-active{
   background:#fef3c7;
@@ -661,7 +664,7 @@ button,input,select,textarea{
   border-color:#f59e0b;
 }
 #deleteDataSiteBtn{
-  grid-column:2;
+  grid-column:auto;
 }
 .save-toast{
   position:fixed;
@@ -731,6 +734,14 @@ button,input,select,textarea{
 .history-controls button:disabled{
   opacity:.45;
 }
+.history-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+}
+.history-actions button{
+  min-height:36px;
+}
 .history-counter{
   text-align:center;
   font-weight:800;
@@ -756,12 +767,33 @@ button,input,select,textarea{
   gap:8px;
   margin-top:8px;
 }
-@media(max-width:600px){
+.site-photo-upload{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:8px;
+  align-items:end;
+}
+.site-photo-upload input{
+  width:100%;
+  min-height:38px;
+  padding:7px 9px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:#fff;
+}
+.site-photos-empty{
+  color:#64748b;
+  font-size:13px;
+}
+@media(max-width:900px){
   .data-edit-actions{
-    grid-template-columns:1fr;
+    grid-template-columns:1fr 1fr;
   }
-  #deleteDataSiteBtn{
-    grid-column:auto;
+}
+@media(max-width:600px){
+  .data-edit-actions,
+  .site-photo-upload{
+    grid-template-columns:1fr;
   }
   .protocol-summary{
     grid-template-columns:1fr;
@@ -1245,7 +1277,7 @@ button,input,select,textarea{
       <option value="12 měsíců">12 měsíců</option>
     </select>
 
-    <h4>Výsledek, poznámky a fotografie</h4>
+    <h4>Výsledek a poznámky</h4>
 
     <label class="protocol-point">12) Zařízení pracuje ve vyhovujících podmínkách</label>
     <select id="protoConditions">
@@ -1258,10 +1290,6 @@ button,input,select,textarea{
 
     <label class="protocol-point">13) Poznámky</label>
     <textarea id="protoNotes"></textarea>
-
-    <label>Fotografie k bodu z telefonu</label>
-    <input id="protoPhotos" type="file" accept="image/*" capture="environment" multiple>
-    <div id="protoPhotoPreview" class="photo-preview"></div>
 
     <div class="edit-grid">
       <div><label>Za objednavatele</label><input id="protoClientSign" placeholder="čitelně + podpis"></div>
@@ -1276,7 +1304,12 @@ button,input,select,textarea{
 </div>
 
 
-<div class="card"><h3>Data</h3><div class="data-edit-actions">
+<div class="card"><h3>Data</h3>
+<div class="control-dates-strong" id="controlDatesRow">
+  <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><b id="detailLastCheck">-</b></div>
+  <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><b id="detailNextCheck">-</b></div>
+</div><table id="detailTable"></table>
+<div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="secondary" type="button" id="toggleOrderedBtn">Kontrola objednána</button>
   <button class="danger" type="button" id="deleteDataSiteBtn">Smazat bod</button>
@@ -1289,10 +1322,21 @@ button,input,select,textarea{
   <div><label>Název nového údaje</label><input id="newDataKey" placeholder="např. Kontakt, Smlouva, Poznámky"></div>
   <div><label>Hodnota</label><input id="newDataValue" placeholder="Hodnota údaje"></div>
   <button class="secondary" type="button" id="addDataRowBtn">Přidat řádek</button>
-</div><div class="control-dates-strong" id="controlDatesRow">
-  <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><b id="detailLastCheck">-</b></div>
-  <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><b id="detailNextCheck">-</b></div>
-</div><table id="detailTable"></table><p id="editStatus" class="small"></p></div>
+</div><p id="editStatus" class="small"></p></div>
+
+<div class="card" id="sitePhotosCard">
+  <h3>Fotografie bodu</h3>
+  <div class="site-photo-upload">
+    <div>
+      <label>Fotografie z telefonu</label>
+      <input id="sitePhotosInput" type="file" accept="image/*" capture="environment" multiple>
+    </div>
+    <button class="primary" type="button" id="uploadSitePhotosBtn">Uložit fotografie</button>
+  </div>
+  <div id="sitePhotoPreview" class="photo-preview"></div>
+  <div id="sitePhotosList" class="history-photos"></div>
+  <p id="sitePhotosStatus" class="small"></p>
+</div>
 <div class="card" id="legacyEditTools" style="display:none">
   <div class="row">
     <button class="secondary" id="editBtn">Upravit údaje</button>
@@ -2189,7 +2233,7 @@ function populateNewRegionOptions(){
   const el=document.getElementById("newRegion");
   if(!el) return;
   const current=el.value;
-  const regions=[...new Set(rows.map(r=>r.kraj).filter(Boolean))].sort();
+  const regions=typeof window.appRegionOptions==="function" ? window.appRegionOptions() : APP_REGION_OPTIONS.slice();
   el.innerHTML='<option value="">Vyber kraj</option>';
   regions.forEach(v=>{
     const o=document.createElement("option");
@@ -2228,12 +2272,70 @@ setTimeout(()=>{const n=document.getElementById("newName"); if(n){n.focus(); n.s
 
 async function geocodeAddressGeneric(address){
   const q=encodeURIComponent(address);
-  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${q}`;
+  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q=${q}`;
   const res=await fetch(url,{headers:{"Accept":"application/json"}});
   if(!res.ok) throw new Error("Geokódování selhalo");
   const data=await res.json();
   if(!Array.isArray(data)||!data.length) return null;
-  return {lat:data[0].lat, lon:data[0].lon, display:data[0].display_name || ""};
+  return {lat:data[0].lat, lon:data[0].lon, display:data[0].display_name || "", address:data[0].address || {}};
+}
+
+function regionTextNorm(v){
+  return safe(v)
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^\p{L}\p{N}]+/gu," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function inferRegionFromAddressText(text, addressObj={}){
+  const combined=regionTextNorm([
+    text,
+    addressObj.state,
+    addressObj.region,
+    addressObj.county,
+    addressObj.city,
+    addressObj.town,
+    addressObj.village,
+    addressObj.country,
+    addressObj.country_code
+  ].filter(Boolean).join(" "));
+  if(!combined) return "";
+
+  if(/\b(sk|slovensko|slovakia|bratislava|trnava|poprad|zilina|zvolen|banska bystrica|nitra|kosice)\b/.test(combined)) return "Slovensko";
+
+  const direct=APP_REGION_OPTIONS.find(region=>regionTextNorm(region) && combined.includes(regionTextNorm(region)));
+  if(direct) return direct;
+
+  const hints=[
+    ["Hlavní město Praha",["praha","prague"]],
+    ["Jihomoravský kraj",["brno","brno venkov","blansko","breclav","hodonin","vyskov","znojmo"]],
+    ["Středočeský kraj",["kladno","kralupy","melnik","nymburk","benesov","kolin","kutna hora","pribram","rakovnik","beroun","mlada boleslav"]],
+    ["Jihočeský kraj",["ceske budejovice","cesky krumlov","jindrichuv hradec","pisek","prachatice","strakonice","tabor","cimelice"]],
+    ["Plzeňský kraj",["plzen","klatovy","rokycany","tachov","domazlice","plzen sever","plzen jih"]],
+    ["Karlovarský kraj",["karlovy vary","cheb","sokolov","vejprty"]],
+    ["Ústecký kraj",["usti nad labem","decin","chomutov","litomerice","louny","most","teplice"]],
+    ["Liberecký kraj",["liberec","jablonec","semily","ceska lipa","turnov"]],
+    ["Královéhradecký kraj",["hradec kralove","jicin","nachod","trutnov","rychnov","vrchlabi","pec pod snezkou"]],
+    ["Pardubický kraj",["pardubice","chrudim","svitavy","usti nad orlici","chocen","vamberk"]],
+    ["Kraj Vysočina",["jihlava","havlickuv brod","pelhrimov","trebic","zdar nad sazavou","humpolec","pacov","velke mezirici"]],
+    ["Olomoucký kraj",["olomouc","prostejov","prerov","sumperk","jesenik","slatinice"]],
+    ["Moravskoslezský kraj",["ostrava","opava","frydek mistek","karvina","novy jicin","bruntal","cesky tesin"]],
+    ["Zlínský kraj",["zlin","kromeriz","uherske hradiste","uhersky brod","vsetin","slusovice","luhacovice"]]
+  ];
+  for(const [region,words] of hints){
+    if(words.some(word=>combined.includes(word))) return region;
+  }
+  return "";
+}
+
+function setRegionFieldValue(selector,region){
+  const clean=safe(region);
+  if(!clean) return;
+  const el=document.querySelector(selector);
+  if(!el || safe(el.value)) return;
+  el.value=clean;
 }
 
 function isoDateFromAny(v){
@@ -2737,7 +2839,7 @@ function shouldHideDataRow(k){
 
 
 async function reverseGeocodeGpsGeneric(lat,lon){
-  const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+  const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
   const res=await fetch(url,{headers:{"Accept":"application/json"}});
   if(!res.ok) throw new Error("Reverse geokódování selhalo");
   const data=await res.json();
@@ -2756,9 +2858,14 @@ async function dataAddressToGps(){
     let latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');
     let lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');
     let gpsTextEl=document.querySelector('#detailTable [data-key="Adresa_GPS"]');
+    let regionEl=document.querySelector('#detailTable [data-key="Kraj"]');
     if(latEl)latEl.value=r.lat;
     if(lonEl)lonEl.value=r.lon;
     if(gpsTextEl)gpsTextEl.value=`${r.lat}, ${r.lon}`;
+    if(regionEl && !safe(regionEl.value)){
+      const region=inferRegionFromAddressText(r.display || addrEl.value, r.address || {});
+      if(region) regionEl.value=region;
+    }
     if(st)st.textContent="GPS souřadnice doplněny.";
   }catch(e){if(st)st.textContent="Chyba: "+e.message;}
 }
@@ -3450,6 +3557,8 @@ window.openDetail=function(i){
   document.getElementById("editNotes").value=r.poznamky||"";
   document.getElementById("technician").value=currentUser?.displayName||currentUser?.email||"";
   document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
+  resetSitePhotoInput();
+  loadSitePhotos(r);
   loadHistory(r.id);
 }
 let detailHistoryItems=[];
@@ -3492,6 +3601,30 @@ function historyObjectSummary(obj){
     .join(", ");
 }
 
+function isHistoryAdmin(){
+  const email=safe((currentUser && currentUser.email) || (window.currentUser && window.currentUser.email)).toLowerCase();
+  return !!email && email.endsWith("@astip.cz");
+}
+
+async function deleteCurrentHistoryProtocol(){
+  const item=detailHistoryItems[detailHistoryIndex];
+  const history=document.getElementById("history");
+  if(!item || item._collection!=="protocols" || !item._id) return;
+  if(!isHistoryAdmin()){
+    if(history) history.insertAdjacentHTML("afterbegin",'<p class="small">Mazat protokoly může jen správce.</p>');
+    return;
+  }
+  if(!confirm("Opravdu smazat tento uložený protokol z historie?")) return;
+  try{
+    const {doc,deleteDoc}=fb.fsMod;
+    await deleteDoc(doc(db,"protocols",item._id));
+    showSaveConfirmation("Protokol smazán.");
+    await loadHistory(selectedSite?.id || item.siteId);
+  }catch(e){
+    if(history) history.insertAdjacentHTML("afterbegin",`<p class="small">Chyba mazání protokolu: ${esc(e.message)}</p>`);
+  }
+}
+
 function renderHistory(){
   const history=document.getElementById("history");
   if(!history) return;
@@ -3505,6 +3638,7 @@ function renderHistory(){
   if(detailHistoryIndex>=detailHistoryItems.length) detailHistoryIndex=detailHistoryItems.length-1;
 
   const d=detailHistoryItems[detailHistoryIndex];
+  const canDeleteProtocol=isHistoryAdmin() && d._collection==="protocols";
   const rows=[
     ["Typ záznamu", d._type || "Záznam"],
     ["Datum", historyDateLabel(d)],
@@ -3529,7 +3663,7 @@ function renderHistory(){
     ["Doporučení", d.recommendation || ""]
   ].filter(([,value])=>safe(value));
 
-  const photos=(d.photoLinks||[]).filter(Boolean);
+  const photos=d._collection==="protocols" ? [] : (d.photoLinks||[]).filter(Boolean);
   history.innerHTML=`
     <div class="history-controls">
       <button class="secondary" type="button" id="historyPrevBtn">Předchozí</button>
@@ -3539,6 +3673,7 @@ function renderHistory(){
     <div class="history-item">
       ${rows.map(([label,value])=>`<div class="history-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join("")}
       ${photos.length ? `<div class="history-photos">${photos.map((url,idx)=>`<a href="${esc(url)}" target="_blank"><img src="${esc(url)}" alt="Foto ${idx+1}"></a>`).join("")}</div>` : ""}
+      ${canDeleteProtocol ? '<div class="history-actions"><button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button></div>' : ""}
     </div>
   `;
 
@@ -3552,6 +3687,8 @@ function renderHistory(){
     next.disabled=detailHistoryIndex>=detailHistoryItems.length-1;
     next.onclick=()=>{detailHistoryIndex++;renderHistory();};
   }
+  const del=document.getElementById("deleteHistoryProtocolBtn");
+  if(del) del.onclick=deleteCurrentHistoryProtocol;
 }
 
 async function loadHistory(siteId){
@@ -4064,7 +4201,6 @@ function updateProtocolSummary(){
   set("protoSummaryPeriod", val("protoPeriod"));
 }
 
-let protoPhotoPreviewUrls=[];
 let protocolPrefillSiteId="";
 
 function resetProtocolFormForSelectedSite(siteId){
@@ -4072,24 +4208,7 @@ function resetProtocolFormForSelectedSite(siteId){
   if(protocolPrefillSiteId===key) return;
   const form=document.getElementById("protocolForm");
   if(form) form.reset();
-  const photoInput=document.getElementById("protoPhotos");
-  if(photoInput) photoInput.value="";
-  renderProtocolPhotoPreview();
   protocolPrefillSiteId=key;
-}
-
-function renderProtocolPhotoPreview(){
-  const box=document.getElementById("protoPhotoPreview");
-  const input=document.getElementById("protoPhotos");
-  if(!box || !input) return;
-  protoPhotoPreviewUrls.forEach(url=>URL.revokeObjectURL(url));
-  protoPhotoPreviewUrls=[];
-  const files=Array.from(input.files || []);
-  box.innerHTML=files.map((file,idx)=>{
-    const url=URL.createObjectURL(file);
-    protoPhotoPreviewUrls.push(url);
-    return `<img src="${esc(url)}" alt="Fotografie ${idx+1}">`;
-  }).join("");
 }
 
 function storageSafeSegment(value){
@@ -4149,38 +4268,129 @@ function imageFileToJpegBlob(file,maxSide=1600,quality=.82){
   });
 }
 
-async function uploadProtocolPhotos(protocolId,st){
-  const input=document.getElementById("protoPhotos");
+let sitePhotoPreviewUrls=[];
+
+function resetSitePhotoInput(){
+  const input=document.getElementById("sitePhotosInput");
+  if(input) input.value="";
+  renderSitePhotoPreview();
+}
+
+function renderSitePhotoPreview(){
+  const box=document.getElementById("sitePhotoPreview");
+  const input=document.getElementById("sitePhotosInput");
+  if(!box || !input) return;
+  sitePhotoPreviewUrls.forEach(url=>URL.revokeObjectURL(url));
+  sitePhotoPreviewUrls=[];
+  const files=Array.from(input.files || []);
+  box.innerHTML=files.map((file,idx)=>{
+    const url=URL.createObjectURL(file);
+    sitePhotoPreviewUrls.push(url);
+    return `<img src="${esc(url)}" alt="Nová fotografie ${idx+1}">`;
+  }).join("");
+}
+
+function sitePhotoKeys(site=selectedSite){
+  return [site ? detailKey(site) : "", site?.id || ""]
+    .map(x=>String(x || ""))
+    .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
+}
+
+function renderSitePhotos(items=[]){
+  const list=document.getElementById("sitePhotosList");
+  if(!list) return;
+  if(!items.length){
+    list.innerHTML='<div class="site-photos-empty">Zatím nejsou uložené žádné fotografie.</div>';
+    return;
+  }
+  list.innerHTML=items.map((item,idx)=>`<a href="${esc(item.url)}" target="_blank"><img src="${esc(item.url)}" alt="Fotografie bodu ${idx+1}"></a>`).join("");
+}
+
+async function loadSitePhotos(site=selectedSite){
+  const st=document.getElementById("sitePhotosStatus");
+  if(!st) return;
+  if(!firebaseReady || !db || !site){
+    st.textContent="";
+    renderSitePhotos([]);
+    return;
+  }
+  st.textContent="Načítám fotografie...";
+  try{
+    const {collection,query,where,getDocs}=fb.fsMod;
+    const keys=sitePhotoKeys(site);
+    const items=[];
+    for(const key of keys){
+      for(const field of ["siteId","siteKey"]){
+        const q=query(collection(db,"sitePhotos"),where(field,"==",key));
+        const snap=await getDocs(q);
+        snap.forEach(docSnap=>{
+          if(items.some(item=>item._id===docSnap.id)) return;
+          items.push({...docSnap.data(),_id:docSnap.id});
+        });
+      }
+    }
+    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
+    renderSitePhotos(items);
+    st.textContent=items.length ? `Načteno fotografií: ${items.length}.` : "";
+  }catch(e){
+    st.textContent="Chyba načtení fotografií: "+e.message;
+  }
+}
+
+async function uploadSitePhotos(){
+  const st=document.getElementById("sitePhotosStatus");
+  const input=document.getElementById("sitePhotosInput");
   const files=Array.from(input?.files || []);
-  if(!files.length) return [];
+  if(!st) return;
+  if(!selectedSite){st.textContent="Není vybraný bod.";return;}
+  if(!firebaseReady || !db){st.textContent="Firebase není nastavený.";return;}
+  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+  if(!files.length){st.textContent="Nejdřív vyber fotografie.";return;}
 
-  const storage=getCompatStorage();
-  const siteFolder=storageSafeSegment(detailKey(selectedSite) || selectedSite?.id || "bod");
-  const links=[];
+  try{
+    const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
+    const storage=getCompatStorage();
+    const keys=sitePhotoKeys(selectedSite);
+    const siteKey=keys[0] || selectedSite.id || "bod";
+    const siteId=selectedSite.id || siteKey;
 
-  for(let i=0;i<files.length;i++){
-    const file=files[i];
-    if(st) st.textContent=`Nahrávám fotografii ${i+1}/${files.length}...`;
+    for(let i=0;i<files.length;i++){
+      const file=files[i];
+      st.textContent=`Nahrávám fotografii ${i+1}/${files.length}...`;
+      let uploadFile=file;
+      let contentType=file.type || "application/octet-stream";
+      let extension=(file.name.split(".").pop() || "").toLowerCase() || "jpg";
+      try{
+        uploadFile=await imageFileToJpegBlob(file);
+        contentType="image/jpeg";
+        extension="jpg";
+      }catch(e){
+        console.warn("Fotka se uloží bez zmenšení",e);
+      }
 
-    let uploadFile=file;
-    let contentType=file.type || "application/octet-stream";
-    let extension=(file.name.split(".").pop() || "").toLowerCase() || "jpg";
-
-    try{
-      uploadFile=await imageFileToJpegBlob(file);
-      contentType="image/jpeg";
-      extension="jpg";
-    }catch(e){
-      console.warn("Fotka se uloží bez zmenšení",e);
+      const photoRef=doc(collection(db,"sitePhotos"));
+      const storagePath=`sitePhotos/${storageSafeSegment(siteKey)}/${photoRef.id}_${storageSafeSegment(file.name || "foto")}.${extension}`;
+      const snap=await storage.ref().child(storagePath).put(uploadFile,{contentType});
+      const url=await snap.ref.getDownloadURL();
+      await setDoc(photoRef,{
+        siteId,
+        siteKey,
+        siteName:selectedSite.adresa || "",
+        url,
+        storagePath,
+        fileName:file.name || "",
+        uploadedBy:currentUser.email || "",
+        createdAt:serverTimestamp()
+      });
     }
 
-    const name=`${Date.now()}_${i+1}_${storageSafeSegment(file.name || "foto")}.${extension}`;
-    const ref=storage.ref().child(`sitePhotos/${siteFolder}/${protocolId}/${name}`);
-    const snap=await ref.put(uploadFile,{contentType});
-    links.push(await snap.ref.getDownloadURL());
+    st.textContent=`Uloženo fotografií: ${files.length}.`;
+    showSaveConfirmation("Fotografie uloženy.");
+    resetSitePhotoInput();
+    await loadSitePhotos(selectedSite);
+  }catch(e){
+    st.textContent="Chyba uložení fotografií: "+e.message;
   }
-
-  return links;
 }
 
 async function getLastProtocol(siteId){
@@ -4424,15 +4634,11 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
     const ref=doc(collection(db,"protocols"));
     const payload=protocolPayload();
-    payload.photoLinks=await uploadProtocolPhotos(ref.id,st);
     payload.createdAt=serverTimestamp();
     payload.createdBy=currentUser.email;
     await setDoc(ref,payload);
-    st.textContent=payload.photoLinks.length ? `Protokol uložen včetně ${payload.photoLinks.length} fotografií.` : "Protokol uložen.";
+    st.textContent="Protokol uložen.";
     showSaveConfirmation("Protokol uložen.");
-    const photoInput=document.getElementById("protoPhotos");
-    if(photoInput) photoInput.value="";
-    renderProtocolPhotoPreview();
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
   }catch(err){
     st.textContent="Chyba uložení protokolu: "+err.message;
@@ -4472,8 +4678,10 @@ if(protoDeviceSelectEl){
   }
 });
 
-const protoPhotosEl=document.getElementById("protoPhotos");
-if(protoPhotosEl) protoPhotosEl.addEventListener("change",renderProtocolPhotoPreview);
+const sitePhotosInputEl=document.getElementById("sitePhotosInput");
+if(sitePhotosInputEl) sitePhotosInputEl.addEventListener("change",renderSitePhotoPreview);
+const uploadSitePhotosBtn=document.getElementById("uploadSitePhotosBtn");
+if(uploadSitePhotosBtn) uploadSitePhotosBtn.addEventListener("click",uploadSitePhotos);
 
 window.addEventListener("resize",fixMapView);
 window.addEventListener("DOMContentLoaded",()=>{
@@ -4640,17 +4848,21 @@ setTimeout(()=>{
         if(g){
           if(latEl) latEl.value=g.lat;
           if(lonEl) lonEl.value=g.lon;
+          const region=inferRegionFromAddressText(g.display || address, g.address || {});
+          setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
           if(st) st.textContent="GPS doplněno.";
           return;
         }
       }
 
-      const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address);
+      const url="https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q="+encodeURIComponent(address);
       const res=await fetch(url,{headers:{"Accept":"application/json"}});
       const data=await res.json();
       if(data && data[0]){
         if(latEl) latEl.value=data[0].lat;
         if(lonEl) lonEl.value=data[0].lon;
+        const region=inferRegionFromAddressText(data[0].display_name || address, data[0].address || {});
+        setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
         if(st) st.textContent="GPS doplněno.";
       }else{
         if(st) st.textContent="Adresa nebyla nalezena.";
@@ -4742,12 +4954,23 @@ setTimeout(()=>{
       raw:raw
     };
 
+    if(!raw["Kraj"]){
+      raw["Kraj"]=inferRegionFromAddressText(raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "");
+    }
+    row.kraj=raw["Kraj"] || row.kraj || "";
+
     try{
       const address=raw["Adresa / umístění"]||raw["Adresa_GPS"]||"";
       if(address && typeof geocodeAddressGeneric==="function"){
         if(st) st.textContent="Dopočítávám GPS...";
         const g=await geocodeAddressGeneric(address);
-        if(g){row.lat=Number(g.lat); row.lon=Number(g.lon); row.raw["GPS_lat"]=row.lat; row.raw["GPS_lon"]=row.lon;}
+        if(g){
+          row.lat=Number(g.lat);
+          row.lon=Number(g.lon);
+          row.raw["GPS_lat"]=row.lat;
+          row.raw["GPS_lon"]=row.lon;
+          if(!row.raw["Kraj"]) row.raw["Kraj"]=inferRegionFromAddressText(g.display || address, g.address || {});
+        }
       }
     }catch(e){}
 
@@ -4951,10 +5174,10 @@ setTimeout(()=>{
       if(typeof geocodeAddressGeneric==="function"){
         g=await geocodeAddressGeneric(address);
       }else{
-        const url="https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address);
+        const url="https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q="+encodeURIComponent(address);
         const res=await fetch(url,{headers:{"Accept":"application/json"}});
         const data=await res.json();
-        if(data && data[0]) g={lat:data[0].lat, lon:data[0].lon};
+        if(data && data[0]) g={lat:data[0].lat, lon:data[0].lon, display:data[0].display_name || "", address:data[0].address || {}};
       }
 
       if(!g){
@@ -4964,6 +5187,8 @@ setTimeout(()=>{
 
       if(latEl) latEl.value=g.lat;
       if(lonEl) lonEl.value=g.lon;
+      const region=inferRegionFromAddressText(g.display || address, g.address || {});
+      setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
       if(st) st.textContent="GPS doplněno.";
     }catch(e){
       if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
@@ -5084,6 +5309,12 @@ setTimeout(()=>{
 
     let row=buildRowFromRaw(raw);
 
+    if(!raw["Kraj"]){
+      raw["Kraj"]=inferRegionFromAddressText(raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "");
+      row.raw["Kraj"]=raw["Kraj"] || row.raw["Kraj"] || "";
+      row.kraj=raw["Kraj"] || row.kraj || "";
+    }
+
     if(!Number.isFinite(row.lat) || !Number.isFinite(row.lon)){
       try{
         const address=raw["Adresa / umístění"] || raw["Adresa_GPS"] || "";
@@ -5095,6 +5326,7 @@ setTimeout(()=>{
             row.lon=Number(g.lon);
             row.raw["GPS_lat"]=row.lat;
             row.raw["GPS_lon"]=row.lon;
+            if(!row.raw["Kraj"]) row.raw["Kraj"]=inferRegionFromAddressText(g.display || address, g.address || {});
           }
         }
       }catch(e){}
@@ -5755,12 +5987,15 @@ setTimeout(()=>{
     if(!address){status("Vyplň nejdřív adresu / umístění.",true);return;}
     try{
       status("Dopočítávám GPS...");
-      const res=await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="+encodeURIComponent(address),{headers:{"Accept":"application/json"}});
-      const data=await res.json();
-      if(!data || !data[0]){status("Adresa nebyla nalezena.",true);return;}
-      setField("Adresa_GPS",`${data[0].lat}, ${data[0].lon}`);
-      setField("GPS_lat",data[0].lat);
-      setField("GPS_lon",data[0].lon);
+      const found=typeof geocodeAddressGeneric==="function" ? await geocodeAddressGeneric(address) : null;
+      if(!found){status("Adresa nebyla nalezena.",true);return;}
+      setField("Adresa_GPS",`${found.lat}, ${found.lon}`);
+      setField("GPS_lat",found.lat);
+      setField("GPS_lon",found.lon);
+      if(!val(raw["Kraj"]) && typeof inferRegionFromAddressText==="function"){
+        const region=inferRegionFromAddressText(found.display || address, found.address || {});
+        if(region) setField("Kraj",region);
+      }
       status("GPS doplněno.");
     }catch(e){status("Chyba dopočtu GPS: "+e.message,true);}
   }
@@ -5908,6 +6143,20 @@ setTimeout(()=>{
     if(!raw["Název"] && !raw["Adresa / umístění"]){status("Vyplň Název nebo Adresa / umístění.",true);return false;}
     if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Klikni Dopočítat GPS, aby se bod mohl zobrazit na mapě.",true);return false;}
     raw["GPS_lat"]=String(lat); raw["GPS_lon"]=String(lon);
+    if(!raw["Kraj"] && typeof inferRegionFromAddressText==="function"){
+      const address=raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "";
+      let region=inferRegionFromAddressText(address);
+      if(!region && address && typeof geocodeAddressGeneric==="function"){
+        try{
+          const found=await geocodeAddressGeneric(address);
+          region=inferRegionFromAddressText(found?.display || address, found?.address || {});
+        }catch(_e){}
+      }
+      if(region){
+        raw["Kraj"]=region;
+        setField("Kraj",region);
+      }
+    }
     try{
       status("Kontroluji duplicitu...");
       const duplicate=await findDuplicateDoc(database,raw);
@@ -5944,17 +6193,18 @@ setTimeout(()=>{
       closePanel();
       window.__lastSavedFirebaseSiteDocId=ref.id;
       const visibleAfterReload=await refreshAfterSave(ref.id);
+      clearForm(true);
       if(visibleAfterReload) sideStatus("<b>Bod uložen.</b> Nové místo je načtené z Firebase stejně jako po refreshi.");
       return false;
     }catch(e){status("Chyba uložení: "+e.message,true);return false;}
   }
-  function clearForm(){
+  function clearForm(silent=false){
     document.querySelectorAll("#fbUnifiedPanel [data-fb-key]").forEach(el=>el.value="");
     const last=document.getElementById("fbUnifiedLastCheck"); if(last) last.value="";
     const next=document.getElementById("fbUnifiedNextCheck"); if(next) next.value="";
     const period=document.querySelector('#fbUnifiedPanel [data-fb-key="Perioda kontrol"]'); if(period) period.value="12";
     document.querySelectorAll('#fbUnifiedPanel [data-fb-key="Hlídáme sami termín"], #fbUnifiedPanel [data-fb-key="Smlouva ano/ne"]').forEach(el=>el.value="ne");
-    status("Formulář vymazán.");
+    if(!silent) status("Formulář vymazán.");
   }
   function bind(){
     const add=document.getElementById("addSiteBtn");
