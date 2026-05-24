@@ -785,6 +785,61 @@ button,input,select,textarea{
   color:#64748b;
   font-size:13px;
 }
+.site-photo-viewer{
+  display:grid;
+  gap:8px;
+}
+.site-photo-main{
+  display:block;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  overflow:hidden;
+  background:#f8fafc;
+}
+.site-photo-main img{
+  display:block;
+  width:100%;
+  max-height:360px;
+  object-fit:contain;
+  background:#0f172a;
+}
+.site-photo-nav{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  gap:8px;
+  align-items:center;
+}
+.site-photo-nav span{
+  font-size:13px;
+  font-weight:800;
+  color:#475569;
+  text-align:center;
+}
+.site-photo-thumbs{
+  display:flex;
+  gap:6px;
+  overflow:auto;
+  padding-bottom:2px;
+}
+.site-photo-thumb{
+  border:2px solid transparent;
+  border-radius:10px;
+  padding:0;
+  background:#fff;
+  width:54px;
+  height:54px;
+  flex:0 0 auto;
+  overflow:hidden;
+}
+.site-photo-thumb.active{
+  border-color:#2563eb;
+}
+.site-photo-thumb img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
 @media(max-width:900px){
   .data-edit-actions{
     grid-template-columns:1fr 1fr;
@@ -1659,7 +1714,18 @@ const APP_REGION_OPTIONS = [
   "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
   "Jihomoravský kraj","Olomoucký kraj","Moravskoslezský kraj","Zlínský kraj","Slovensko"
 ];
+const APP_ADMIN_EMAILS = [
+  "jan.soldan@astip.cz",
+  "jansoldan@astip.cz"
+];
 window.appRegionOptions = () => APP_REGION_OPTIONS.slice();
+function currentUserEmail(){
+  return safe((currentUser && currentUser.email) || (window.currentUser && window.currentUser.email)).toLowerCase();
+}
+function isAppAdmin(){
+  const email=currentUserEmail();
+  return !!email && APP_ADMIN_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
+}
 function siteId(raw,i){return first(raw,["Klíč_adresy","ID_mista","Název","Adresa_GPS","Adresa / umístění","Umístění"]) || String(i)}
 function rawGps(r){return Number.isFinite(r.lat)&&Number.isFinite(r.lon)}
 function inCzSk(r){return rawGps(r)&&r.lat>=47&&r.lat<=51.5&&r.lon>=12&&r.lon<=23}
@@ -1829,6 +1895,15 @@ function applyEditToRow(r){
   if(e.ordered !== undefined) updatedRaw["Kontrola objednaná"] = e.ordered ? "ANO" : "NE";
   if(Number.isFinite(lat)) updatedRaw["Upravené GPS_lat"] = String(lat);
   if(Number.isFinite(lon)) updatedRaw["Upravené GPS_lon"] = String(lon);
+  const regionValue=canonicalRegionValue(rawEdits["Kraj"] || r.kraj) || inferRegionFromAddressText([
+    rawEdits["Kraj"],
+    updatedRaw["Kraj"],
+    updatedRaw["Název"],
+    updatedRaw["Adresa / umístění"],
+    updatedRaw["Adresa_GPS"],
+    updatedRaw["Umístění zdroje"],
+    r.adresa
+  ].filter(Boolean).join(" "));
 
   return {...r,
     raw: updatedRaw,
@@ -1836,7 +1911,7 @@ function applyEditToRow(r){
     kontakt:e.contact || rawEdits["Kontakt"] || r.kontakt,
     zdroj:e.source || rawEdits["Popis_zdroje"] || r.zdroj,
     poznamky:e.notes || rawEdits["Poznámky"] || rawEdits["Důležitá poznámka"] || r.poznamky,
-    kraj:rawEdits["Kraj"] || r.kraj,
+    kraj:regionValue || rawEdits["Kraj"] || r.kraj,
     posledni:e.lastCheck || r.posledni,
     pristi:e.nextCheck || r.pristi,
     lat:Number.isFinite(lat) ? lat : r.lat,
@@ -1853,11 +1928,17 @@ function normalize(data){
     const adresa=first(raw,["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"]);
     const zdroj=first(raw,["Popis_zdroje","Zdroj","Jaký zdroj"]);
     const kontakt=first(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
+    const rawRegion=first(raw,["Kraj","Region","Kraj / oblast"]);
+    const region=canonicalRegionValue(rawRegion) || inferRegionFromAddressText([
+      rawRegion,
+      adresa,
+      first(raw,["Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"])
+    ].filter(Boolean).join(" "));
     const r={
       id:siteId(raw,i), i, raw, lat, lon,
       gpsAddress:first(raw,["Adresa_GPS","Adresa / umístění","Umístění"]),
       adresa, zdroj, kontakt,
-      kraj:first(raw,["Kraj"]),
+      kraj:region || rawRegion,
       poznamky:first(raw,["Poznámky_mapy","Poznámky","DŮLEŽITÁ POZNÁMKA"]),
       pristi:first(raw,["Příští_kontrola","Příští plánovaná kontrola","Příští kontrola"]),
       posledni:first(raw,["Poslední_kontrola","Poslední proběhlá kontrola","Poslední kontrola"]),
@@ -2270,16 +2351,6 @@ setTimeout(()=>{const n=document.getElementById("newName"); if(n){n.focus(); n.s
 }
 
 
-async function geocodeAddressGeneric(address){
-  const q=encodeURIComponent(address);
-  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q=${q}`;
-  const res=await fetch(url,{headers:{"Accept":"application/json"}});
-  if(!res.ok) throw new Error("Geokódování selhalo");
-  const data=await res.json();
-  if(!Array.isArray(data)||!data.length) return null;
-  return {lat:data[0].lat, lon:data[0].lon, display:data[0].display_name || "", address:data[0].address || {}};
-}
-
 function regionTextNorm(v){
   return safe(v)
     .toLowerCase()
@@ -2287,6 +2358,41 @@ function regionTextNorm(v){
     .replace(/[^\p{L}\p{N}]+/gu," ")
     .replace(/\s+/g," ")
     .trim();
+}
+
+function canonicalRegionValue(value){
+  const n=regionTextNorm(value);
+  if(!n) return "";
+  const aliases=[
+    ["Hlavní město Praha",["praha","hlavni mesto praha","prague"]],
+    ["Středočeský kraj",["stredocesky","stredocesky kraj","central bohemian"]],
+    ["Jihočeský kraj",["jihocesky","jihocesky kraj","south bohemian"]],
+    ["Plzeňský kraj",["plzensky","plzensky kraj","pilsen"]],
+    ["Karlovarský kraj",["karlovarsky","karlovarsky kraj"]],
+    ["Ústecký kraj",["ustecky","ustecky kraj"]],
+    ["Liberecký kraj",["liberecky","liberecky kraj"]],
+    ["Královéhradecký kraj",["kralovehradecky","kralovehradecky kraj"]],
+    ["Pardubický kraj",["pardubicky","pardubicky kraj"]],
+    ["Kraj Vysočina",["vysocina","kraj vysocina"]],
+    ["Jihomoravský kraj",["jihomoravsky","jihomoravsky kraj","south moravian"]],
+    ["Olomoucký kraj",["olomoucky","olomoucky kraj"]],
+    ["Moravskoslezský kraj",["moravskoslezsky","moravskoslezsky kraj"]],
+    ["Zlínský kraj",["zlinsky","zlinsky kraj"]],
+    ["Slovensko",["slovensko","slovakia","sk","slovenska republika"]]
+  ];
+  for(const region of APP_REGION_OPTIONS){
+    if(n===regionTextNorm(region) || n.includes(regionTextNorm(region))) return region;
+  }
+  for(const [region,words] of aliases){
+    if(words.some(word=>{
+      const wn=regionTextNorm(word);
+      if(!wn) return false;
+      if(n===wn) return true;
+      if(wn.length<=2) return new RegExp(`(^|\\s)${wn}(\\s|$)`).test(n);
+      return n.includes(wn);
+    })) return region;
+  }
+  return "";
 }
 
 function inferRegionFromAddressText(text, addressObj={}){
@@ -2303,9 +2409,18 @@ function inferRegionFromAddressText(text, addressObj={}){
   ].filter(Boolean).join(" "));
   if(!combined) return "";
 
+  const fromAddress=canonicalRegionValue([
+    addressObj.state,
+    addressObj.region,
+    addressObj.county,
+    addressObj.country,
+    addressObj.country_code
+  ].filter(Boolean).join(" "));
+  if(fromAddress) return fromAddress;
+
   if(/\b(sk|slovensko|slovakia|bratislava|trnava|poprad|zilina|zvolen|banska bystrica|nitra|kosice)\b/.test(combined)) return "Slovensko";
 
-  const direct=APP_REGION_OPTIONS.find(region=>regionTextNorm(region) && combined.includes(regionTextNorm(region)));
+  const direct=canonicalRegionValue(combined);
   if(direct) return direct;
 
   const hints=[
@@ -2328,6 +2443,69 @@ function inferRegionFromAddressText(text, addressObj={}){
     if(words.some(word=>combined.includes(word))) return region;
   }
   return "";
+}
+
+function geocodeCandidateQueries(address){
+  const clean=safe(address).replace(/\s+/g," ");
+  if(!clean) return [];
+  const base=[
+    clean,
+    clean.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim(),
+    clean.replace(/\s+-.*$/,"").trim()
+  ].filter(Boolean);
+  const out=[];
+  base.forEach(q=>{
+    out.push(q);
+    out.push(`${q}, Česko`);
+    out.push(`${q}, Česká republika`);
+    out.push(`${q}, Czechia`);
+    out.push(`${q}, Slovensko`);
+    out.push(`${q}, Slovakia`);
+  });
+  return out.filter((q,idx,arr)=>q && arr.indexOf(q)===idx);
+}
+
+function geocodePickResult(data){
+  if(!Array.isArray(data) || !data.length) return null;
+  const usable=data
+    .map(item=>({item,lat:Number(item.lat),lon:Number(item.lon)}))
+    .filter(x=>Number.isFinite(x.lat) && Number.isFinite(x.lon));
+  if(!usable.length) return null;
+  const czSk=usable.find(x=>x.lat>=47 && x.lat<=51.5 && x.lon>=12 && x.lon<=23) || usable[0];
+  return {
+    lat:String(czSk.item.lat),
+    lon:String(czSk.item.lon),
+    display:czSk.item.display_name || "",
+    address:czSk.item.address || {}
+  };
+}
+
+async function geocodeAddressGeneric(address){
+  const queries=geocodeCandidateQueries(address);
+  if(!queries.length) return null;
+  let lastError=null;
+  for(const qText of queries){
+    for(const countrycodes of ["cz,sk",""]){
+      const params=new URLSearchParams({
+        format:"jsonv2",
+        addressdetails:"1",
+        limit:"5",
+        "accept-language":"cs",
+        q:qText
+      });
+      if(countrycodes) params.set("countrycodes",countrycodes);
+      try{
+        const res=await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`,{headers:{"Accept":"application/json"}});
+        if(!res.ok){lastError=new Error("Geokódování selhalo");continue;}
+        const picked=geocodePickResult(await res.json());
+        if(picked) return picked;
+      }catch(e){
+        lastError=e;
+      }
+    }
+  }
+  if(lastError) console.warn("Geokódování adresy nenašlo výsledek",lastError);
+  return null;
 }
 
 function setRegionFieldValue(selector,region){
@@ -2385,6 +2563,7 @@ async function deleteSelectedSite(){
   if(!selectedSite){st.textContent="Není vybrané místo.";return;}
   if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
   if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+  if(!isAppAdmin()){st.textContent="Mazat body může jen správce.";return;}
 
   const ok=confirm("Opravdu smazat toto místo i jeho uložené údaje z Firebase?\\n\\nPozor: místa z původního data.csv nepůjde fyzicky odstranit z CSV, ale uloží se jako skryté.");
   if(!ok) return;
@@ -2452,12 +2631,13 @@ function filtered(){
   const s=safe(document.getElementById("statusFilter").value);
   const k=safe(document.getElementById("regionFilter").value);
   const qn=searchNorm(q);
+  const kn=regionTextNorm(k);
 
   return rows.filter(r=>{
     const st=statusText(r);
 
     const okQ = !qn || rowMatchesSearch(r,qn);
-    const okK = !k || r.kraj === k;
+    const okK = !kn || regionTextNorm(rowRegion(r)) === kn;
 
     // Růžová je nezávislý příznak z původního Excelu.
     // Proto se filtruje samostatně přes isNoOrderSite(r).
@@ -2502,11 +2682,60 @@ function rowMatchesSearch(r,normalizedQuery){
   const compactQuery=normalizedQuery.replace(/\s+/g,"");
   return compactQuery.length>=3 && compactHay.includes(compactQuery);
 }
+function rowRegion(r){
+  return canonicalRegionValue(r && r.kraj) || inferRegionFromAddressText(rowSearchText(r));
+}
 function syncRowIndexes(){
   rows.forEach((r,i)=>{r.i=i;});
 }
 function detailKey(r){
   return editCacheKeyForRow(r);
+}
+function siteRecordKeys(site=selectedSite){
+  const raw=(site && site.raw) || {};
+  const docId=safe(site && (site.firebaseDocId || raw["Firebase_doc_id"]));
+  const values=[
+    site ? detailKey(site) : "",
+    site && site.id,
+    docId,
+    raw["Firebase_doc_id"],
+    raw["Klíč_adresy"],
+    docId ? `firebase_${docId}` : "",
+    docId ? `firebase_site_${docId}` : ""
+  ];
+  return values
+    .map(x=>String(x || "").trim())
+    .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
+}
+function recordMatchesSite(record,site=selectedSite){
+  if(!record || !site) return false;
+  const keys=siteRecordKeys(site);
+  const recordKeys=[
+    record.siteId,
+    record.siteKey,
+    record.siteDocId,
+    record.firebaseDocId,
+    ...(Array.isArray(record.siteKeys) ? record.siteKeys : [])
+  ].map(x=>String(x || "").trim()).filter(Boolean);
+  if(recordKeys.some(k=>keys.includes(k))) return true;
+
+  const raw=site.raw || {};
+  const siteTexts=[
+    site.adresa,
+    site.gpsAddress,
+    raw["Název"],
+    raw["Adresa / umístění"],
+    raw["Adresa_GPS"],
+    raw["Umístění"],
+    raw["Umístění zdroje"]
+  ].map(searchNorm).filter(x=>x.length>=4);
+  const recordTexts=[
+    record.siteName,
+    record.siteAddress,
+    record.place,
+    record.pbzLocation
+  ].map(searchNorm).filter(x=>x.length>=4);
+  return siteTexts.some(a=>recordTexts.some(b=>a===b || (a.length>=10 && b.length>=10 && (a.includes(b) || b.includes(a)))));
 }
 window.openDetailById=function(id){
   const key=String(id || "");
@@ -2854,7 +3083,13 @@ async function dataAddressToGps(){
   try{
     if(st)st.textContent="Dopočítávám GPS z adresy...";
     const r=await geocodeAddressGeneric(addrEl.value.trim());
-    if(!r){if(st)st.textContent="Adresa nebyla nalezena.";return;}
+    if(!r){
+      const region=inferRegionFromAddressText(addrEl.value.trim());
+      const regionEl=document.querySelector('#detailTable [data-key="Kraj"]');
+      if(regionEl && !safe(regionEl.value) && region) regionEl.value=region;
+      if(st)st.textContent=region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.";
+      return;
+    }
     let latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');
     let lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');
     let gpsTextEl=document.querySelector('#detailTable [data-key="Adresa_GPS"]');
@@ -3514,7 +3749,7 @@ window.openDetail=function(i){
   }
   const deleteDataSiteBtn=document.getElementById("deleteDataSiteBtn");
   if(deleteDataSiteBtn){
-    deleteDataSiteBtn.style.display="block";
+    deleteDataSiteBtn.style.display=isAppAdmin() ? "block" : "none";
     deleteDataSiteBtn.onclick=deleteSelectedSite;
   }
   if(showSiteOnMapBtn){
@@ -3602,8 +3837,7 @@ function historyObjectSummary(obj){
 }
 
 function isHistoryAdmin(){
-  const email=safe((currentUser && currentUser.email) || (window.currentUser && window.currentUser.email)).toLowerCase();
-  return !!email && email.endsWith("@astip.cz");
+  return isAppAdmin();
 }
 
 async function deleteCurrentHistoryProtocol(){
@@ -3702,20 +3936,37 @@ async function loadHistory(siteId){
   try{
     const {collection,query,where,getDocs}=fb.fsMod;
     const items=[];
-    const historySiteIds=[siteId, selectedSite ? detailKey(selectedSite) : ""]
+    const historySiteIds=[siteId, ...siteRecordKeys(selectedSite)]
       .map(x=>String(x || ""))
       .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
 
     async function readCollection(colName,typeLabel){
       try{
+        const addDocSnap=docSnap=>{
+          if(items.some(item=>item._collection===colName && item._id===docSnap.id)) return;
+          const d=docSnap.data();
+          items.push({...d,_type:typeLabel,_collection:colName,_id:docSnap.id});
+        };
         for(const id of historySiteIds){
-          const q=query(collection(db,colName),where("siteId","==",id));
-          const snap=await getDocs(q);
+          for(const lookup of [
+            ["siteId","==",id],
+            ["siteKey","==",id],
+            ["siteKeys","array-contains",id]
+          ]){
+            const q=query(collection(db,colName),where(...lookup));
+            const snap=await getDocs(q);
+            snap.forEach(addDocSnap);
+          }
+        }
+        try{
+          const snap=await getDocs(collection(db,colName));
           snap.forEach(docSnap=>{
             if(items.some(item=>item._collection===colName && item._id===docSnap.id)) return;
             const d=docSnap.data();
-            items.push({...d,_type:typeLabel,_collection:colName,_id:docSnap.id});
+            if(recordMatchesSite(d,selectedSite)) items.push({...d,_type:typeLabel,_collection:colName,_id:docSnap.id});
           });
+        }catch(e){
+          console.warn("Fallback načtení historie nejde použít",colName,e);
         }
       }catch(e){
         console.warn("Historie kolekce nejde načíst",colName,e);
@@ -4041,7 +4292,8 @@ if(serviceForm){
 
     try{
       const {collection,addDoc,serverTimestamp}=fb.fsMod;
-      await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
+      const keys=siteRecordKeys(selectedSite);
+      await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
       st.textContent="Uloženo.";
       showSaveConfirmation("Servisní záznam uložen.");
       loadHistory(selectedSite.id);
@@ -4269,6 +4521,8 @@ function imageFileToJpegBlob(file,maxSide=1600,quality=.82){
 }
 
 let sitePhotoPreviewUrls=[];
+let sitePhotoItems=[];
+let sitePhotoIndex=0;
 
 function resetSitePhotoInput(){
   const input=document.getElementById("sitePhotosInput");
@@ -4291,19 +4545,46 @@ function renderSitePhotoPreview(){
 }
 
 function sitePhotoKeys(site=selectedSite){
-  return [site ? detailKey(site) : "", site?.id || ""]
-    .map(x=>String(x || ""))
-    .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
+  return siteRecordKeys(site);
 }
 
-function renderSitePhotos(items=[]){
+function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   const list=document.getElementById("sitePhotosList");
   if(!list) return;
-  if(!items.length){
+  if(Array.isArray(items) && items!==sitePhotoItems){
+    sitePhotoItems=items;
+    if(!preserveIndex) sitePhotoIndex=0;
+  }
+  if(!sitePhotoItems.length){
     list.innerHTML='<div class="site-photos-empty">Zatím nejsou uložené žádné fotografie.</div>';
     return;
   }
-  list.innerHTML=items.map((item,idx)=>`<a href="${esc(item.url)}" target="_blank"><img src="${esc(item.url)}" alt="Fotografie bodu ${idx+1}"></a>`).join("");
+  sitePhotoIndex=Math.max(0,Math.min(sitePhotoIndex,sitePhotoItems.length-1));
+  const item=sitePhotoItems[sitePhotoIndex];
+  list.innerHTML=`
+    <div class="site-photo-viewer">
+      <a class="site-photo-main" href="${esc(item.url)}" target="_blank">
+        <img src="${esc(item.url)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
+      </a>
+      <div class="site-photo-nav">
+        <button class="secondary" type="button" id="sitePhotoPrevBtn" ${sitePhotoItems.length<=1 ? "disabled" : ""}>Předchozí</button>
+        <span>${sitePhotoIndex+1} / ${sitePhotoItems.length}</span>
+        <button class="secondary" type="button" id="sitePhotoNextBtn" ${sitePhotoItems.length<=1 ? "disabled" : ""}>Další</button>
+      </div>
+      <div class="site-photo-thumbs">
+        ${sitePhotoItems.map((photo,idx)=>`<button class="site-photo-thumb ${idx===sitePhotoIndex ? "active" : ""}" type="button" data-photo-idx="${idx}"><img src="${esc(photo.url)}" alt="Náhled ${idx+1}"></button>`).join("")}
+      </div>
+    </div>`;
+  const prev=document.getElementById("sitePhotoPrevBtn");
+  const next=document.getElementById("sitePhotoNextBtn");
+  if(prev) prev.onclick=()=>{sitePhotoIndex=(sitePhotoIndex-1+sitePhotoItems.length)%sitePhotoItems.length;renderSitePhotos(sitePhotoItems,true);};
+  if(next) next.onclick=()=>{sitePhotoIndex=(sitePhotoIndex+1)%sitePhotoItems.length;renderSitePhotos(sitePhotoItems,true);};
+  list.querySelectorAll("[data-photo-idx]").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      sitePhotoIndex=Number(btn.getAttribute("data-photo-idx")) || 0;
+      renderSitePhotos(sitePhotoItems,true);
+    });
+  });
 }
 
 async function loadSitePhotos(site=selectedSite){
@@ -4328,6 +4609,26 @@ async function loadSitePhotos(site=selectedSite){
           items.push({...docSnap.data(),_id:docSnap.id});
         });
       }
+      try{
+        const q=query(collection(db,"sitePhotos"),where("siteKeys","array-contains",key));
+        const snap=await getDocs(q);
+        snap.forEach(docSnap=>{
+          if(items.some(item=>item._id===docSnap.id)) return;
+          items.push({...docSnap.data(),_id:docSnap.id});
+        });
+      }catch(e){
+        console.warn("Fotografie podle siteKeys nejde načíst",e);
+      }
+    }
+    try{
+      const snap=await getDocs(collection(db,"sitePhotos"));
+      snap.forEach(docSnap=>{
+        if(items.some(item=>item._id===docSnap.id)) return;
+        const data=docSnap.data();
+        if(recordMatchesSite(data,site)) items.push({...data,_id:docSnap.id});
+      });
+    }catch(e){
+      console.warn("Fallback načtení fotografií nejde použít",e);
     }
     items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
     renderSitePhotos(items);
@@ -4375,6 +4676,8 @@ async function uploadSitePhotos(){
       await setDoc(photoRef,{
         siteId,
         siteKey,
+        siteKeys:keys,
+        firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
         siteName:selectedSite.adresa || "",
         url,
         storagePath,
@@ -4393,16 +4696,33 @@ async function uploadSitePhotos(){
   }
 }
 
-async function getLastProtocol(siteId){
-  if(!firebaseReady || !db || !siteId) return null;
+async function getLastProtocol(site=selectedSite){
+  if(!firebaseReady || !db || !site) return null;
   try{
-    const {collection,query,where,orderBy,limit,getDocs}=fb.fsMod;
-    const q=query(collection(db,"protocols"),where("siteId","==",siteId),orderBy("createdAt","desc"),limit(1));
-    const snap=await getDocs(q);
-    if(snap.empty) return null;
-    let data=null;
-    snap.forEach(d=>data=d.data());
-    return data;
+    const {collection,query,where,getDocs}=fb.fsMod;
+    const keys=siteRecordKeys(site);
+    const items=[];
+    const addSnap=snap=>snap.forEach(docSnap=>{
+      if(items.some(item=>item._id===docSnap.id)) return;
+      items.push({...docSnap.data(),_id:docSnap.id});
+    });
+    for(const id of keys){
+      for(const lookup of [["siteId","==",id],["siteKey","==",id],["siteKeys","array-contains",id]]){
+        addSnap(await getDocs(query(collection(db,"protocols"),where(...lookup))));
+      }
+    }
+    try{
+      const snap=await getDocs(collection(db,"protocols"));
+      snap.forEach(docSnap=>{
+        if(items.some(item=>item._id===docSnap.id)) return;
+        const data=docSnap.data();
+        if(recordMatchesSite(data,site)) items.push({...data,_id:docSnap.id});
+      });
+    }catch(e){
+      console.warn("Fallback posledního protokolu nejde použít",e);
+    }
+    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
+    return items[0] || null;
   }catch(e){
     console.warn("Nepodařilo se načíst poslední protokol:",e);
     return null;
@@ -4414,7 +4734,7 @@ async function prefillProtocol(){
 
   resetProtocolFormForSelectedSite(selectedSite.id);
   const raw=selectedSite.raw || {};
-  const last=await getLastProtocol(selectedSite.id);
+  const last=await getLastProtocol(selectedSite);
 
   // základ z aktuálního místa
   populateProtocolDeviceSelect();
@@ -4531,6 +4851,9 @@ async function prefillProtocol(){
 function protocolPayload(){
   return {
     siteId:selectedSite?.id || "",
+    siteKey:siteRecordKeys(selectedSite)[0] || selectedSite?.id || "",
+    siteKeys:siteRecordKeys(selectedSite),
+    firebaseDocId:selectedSite?.firebaseDocId || selectedSite?.raw?.["Firebase_doc_id"] || "",
     siteName:selectedSite?.adresa || "",
     siteSource:selectedSite?.zdroj || "",
     technicianEmail:currentUser?.email || "",
@@ -4865,7 +5188,9 @@ setTimeout(()=>{
         setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
         if(st) st.textContent="GPS doplněno.";
       }else{
-        if(st) st.textContent="Adresa nebyla nalezena.";
+        const region=inferRegionFromAddressText(address);
+        setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+        if(st) st.textContent=region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.";
       }
     }catch(e){
       if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
@@ -5181,7 +5506,9 @@ setTimeout(()=>{
       }
 
       if(!g){
-        if(st) st.textContent="Adresa nebyla nalezena.";
+        const region=inferRegionFromAddressText(address);
+        setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+        if(st) st.textContent=region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.";
         return;
       }
 
@@ -5988,7 +6315,12 @@ setTimeout(()=>{
     try{
       status("Dopočítávám GPS...");
       const found=typeof geocodeAddressGeneric==="function" ? await geocodeAddressGeneric(address) : null;
-      if(!found){status("Adresa nebyla nalezena.",true);return;}
+      if(!found){
+        const region=typeof inferRegionFromAddressText==="function" ? inferRegionFromAddressText(address) : "";
+        if(region && !val(raw["Kraj"])) setField("Kraj",region);
+        status(region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.",true);
+        return;
+      }
       setField("Adresa_GPS",`${found.lat}, ${found.lon}`);
       setField("GPS_lat",found.lat);
       setField("GPS_lon",found.lon);
