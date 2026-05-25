@@ -1679,6 +1679,12 @@ if(firebaseReady){
       const topLogoutBtn=document.getElementById("topLogoutBtn");
       if(topLogoutBtn) topLogoutBtn.style.display="block";
       showApp();
+      if(selectedSite){
+        setTimeout(()=>{
+          try{ loadHistory(selectedSite.id); }catch(e){}
+          try{ loadSitePhotos(selectedSite); }catch(e){}
+        },250);
+      }
     }
     else {
       setTimeout(()=>{
@@ -1725,6 +1731,32 @@ function currentUserEmail(){
 function isAppAdmin(){
   const email=currentUserEmail();
   return !!email && APP_ADMIN_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
+}
+function waitForFirebaseUser(timeoutMs=3000){
+  if(!firebaseReady || !auth) return Promise.resolve(currentUser || window.currentUser || null);
+  if(currentUser || window.currentUser) return Promise.resolve(currentUser || window.currentUser);
+  return new Promise(resolve=>{
+    let done=false;
+    let unsub=null;
+    const finish=user=>{
+      if(done) return;
+      done=true;
+      if(unsub) try{unsub();}catch(e){}
+      currentUser=user || currentUser || window.currentUser || null;
+      window.currentUser=currentUser;
+      resolve(currentUser);
+    };
+    const timer=setTimeout(()=>finish(currentUser || window.currentUser || null),timeoutMs);
+    try{
+      unsub=fb.authMod.onAuthStateChanged(auth,user=>{
+        clearTimeout(timer);
+        finish(user);
+      });
+    }catch(e){
+      clearTimeout(timer);
+      finish(currentUser || window.currentUser || null);
+    }
+  });
 }
 function siteId(raw,i){return first(raw,["Klíč_adresy","ID_mista","Název","Adresa_GPS","Adresa / umístění","Umístění"]) || String(i)}
 function rawGps(r){return Number.isFinite(r.lat)&&Number.isFinite(r.lon)}
@@ -2480,6 +2512,39 @@ function geocodePickResult(data){
   };
 }
 
+function geocodePickPhoton(data){
+  const features=Array.isArray(data?.features) ? data.features : [];
+  const usable=features.map(feature=>{
+    const coords=feature?.geometry?.coordinates || [];
+    const lon=Number(coords[0]);
+    const lat=Number(coords[1]);
+    return {feature,lat,lon};
+  }).filter(x=>Number.isFinite(x.lat) && Number.isFinite(x.lon));
+  if(!usable.length) return null;
+  const czSk=usable.find(x=>x.lat>=47 && x.lat<=51.5 && x.lon>=12 && x.lon<=23) || usable[0];
+  const p=czSk.feature.properties || {};
+  const display=[
+    p.name,
+    p.street,
+    p.housenumber,
+    p.city || p.town || p.village,
+    p.state,
+    p.country
+  ].filter(Boolean).join(", ");
+  return {
+    lat:String(czSk.lat),
+    lon:String(czSk.lon),
+    display,
+    address:{
+      state:p.state || "",
+      county:p.county || "",
+      city:p.city || p.town || p.village || "",
+      country:p.country || "",
+      country_code:p.countrycode || ""
+    }
+  };
+}
+
 async function geocodeAddressGeneric(address){
   const queries=geocodeCandidateQueries(address);
   if(!queries.length) return null;
@@ -2502,6 +2567,17 @@ async function geocodeAddressGeneric(address){
       }catch(e){
         lastError=e;
       }
+    }
+  }
+  for(const qText of queries.slice(0,6)){
+    try{
+      const params=new URLSearchParams({q:qText,limit:"5",lang:"cs"});
+      const res=await fetch(`https://photon.komoot.io/api/?${params.toString()}`,{headers:{"Accept":"application/json"}});
+      if(!res.ok){lastError=new Error("Geokódování selhalo");continue;}
+      const picked=geocodePickPhoton(await res.json());
+      if(picked) return picked;
+    }catch(e){
+      lastError=e;
     }
   }
   if(lastError) console.warn("Geokódování adresy nenašlo výsledek",lastError);
@@ -2737,6 +2813,32 @@ function recordMatchesSite(record,site=selectedSite){
   ].map(searchNorm).filter(x=>x.length>=4);
   return siteTexts.some(a=>recordTexts.some(b=>a===b || (a.length>=10 && b.length>=10 && (a.includes(b) || b.includes(a)))));
 }
+function siteRecordTextKeys(site=selectedSite){
+  if(!site) return [];
+  const raw=site.raw || {};
+  return [
+    site.adresa,
+    site.gpsAddress,
+    raw["Název"],
+    raw["Adresa / umístění"],
+    raw["Adresa_GPS"],
+    raw["Umístění"],
+    raw["Umístění zdroje"]
+  ]
+    .map(x=>String(x || "").trim())
+    .filter((x,idx,arr)=>x.length>=4 && arr.indexOf(x)===idx);
+}
+Object.assign(window,{
+  geocodeAddressGeneric,
+  inferRegionFromAddressText,
+  canonicalRegionValue,
+  regionTextNorm,
+  siteRecordKeys,
+  siteRecordTextKeys,
+  recordMatchesSite,
+  waitForFirebaseUser,
+  isAppAdmin
+});
 window.openDetailById=function(id){
   const key=String(id || "");
   const idx=rows.findIndex(r=>detailKey(r)===key);
@@ -3932,6 +4034,11 @@ async function loadHistory(siteId){
     return;
   }
   history.textContent="Načítám historii…";
+  const signedUser=await waitForFirebaseUser();
+  if(!signedUser){
+    history.textContent="Čekám na přihlášení, historie se načte po přihlášení.";
+    return;
+  }
 
   try{
     const {collection,query,where,getDocs}=fb.fsMod;
@@ -3951,11 +4058,28 @@ async function loadHistory(siteId){
           for(const lookup of [
             ["siteId","==",id],
             ["siteKey","==",id],
+            ["firebaseDocId","==",id],
             ["siteKeys","array-contains",id]
           ]){
-            const q=query(collection(db,colName),where(...lookup));
-            const snap=await getDocs(q);
-            snap.forEach(addDocSnap);
+            try{
+              const q=query(collection(db,colName),where(...lookup));
+              const snap=await getDocs(q);
+              snap.forEach(addDocSnap);
+            }catch(e){
+              console.warn("Historie dotaz selhal",colName,lookup[0],e);
+            }
+          }
+        }
+        const textKeys=siteRecordTextKeys(selectedSite).slice(0,8);
+        for(const value of textKeys){
+          for(const field of ["siteName","siteAddress","place"]){
+            try{
+              const q=query(collection(db,colName),where(field,"==",value));
+              const snap=await getDocs(q);
+              snap.forEach(addDocSnap);
+            }catch(e){
+              console.warn("Historie textový dotaz selhal",colName,field,e);
+            }
           }
         }
         try{
@@ -3991,6 +4115,8 @@ async function loadHistory(siteId){
     history.textContent="Chyba načtení historie: "+e.message;
   }
 }
+
+window.loadHistory=loadHistory;
 
 
 
@@ -4520,6 +4646,15 @@ function imageFileToJpegBlob(file,maxSide=1600,quality=.82){
   });
 }
 
+function blobToDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result || ""));
+    reader.onerror=()=>reject(new Error("Fotografii se nepodařilo převést."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 let sitePhotoPreviewUrls=[];
 let sitePhotoItems=[];
 let sitePhotoIndex=0;
@@ -4596,18 +4731,38 @@ async function loadSitePhotos(site=selectedSite){
     return;
   }
   st.textContent="Načítám fotografie...";
+  const signedUser=await waitForFirebaseUser();
+  if(!signedUser){
+    st.textContent="Čekám na přihlášení, fotografie se načtou po přihlášení.";
+    renderSitePhotos([]);
+    return;
+  }
   try{
     const {collection,query,where,getDocs}=fb.fsMod;
     const keys=sitePhotoKeys(site);
     const items=[];
     for(const key of keys){
       for(const field of ["siteId","siteKey"]){
-        const q=query(collection(db,"sitePhotos"),where(field,"==",key));
+        try{
+          const q=query(collection(db,"sitePhotos"),where(field,"==",key));
+          const snap=await getDocs(q);
+          snap.forEach(docSnap=>{
+            if(items.some(item=>item._id===docSnap.id)) return;
+            items.push({...docSnap.data(),_id:docSnap.id});
+          });
+        }catch(e){
+          console.warn("Fotografie dotaz selhal",field,e);
+        }
+      }
+      try{
+        const q=query(collection(db,"sitePhotos"),where("firebaseDocId","==",key));
         const snap=await getDocs(q);
         snap.forEach(docSnap=>{
           if(items.some(item=>item._id===docSnap.id)) return;
           items.push({...docSnap.data(),_id:docSnap.id});
         });
+      }catch(e){
+        console.warn("Fotografie podle firebaseDocId nejde načíst",e);
       }
       try{
         const q=query(collection(db,"sitePhotos"),where("siteKeys","array-contains",key));
@@ -4618,6 +4773,21 @@ async function loadSitePhotos(site=selectedSite){
         });
       }catch(e){
         console.warn("Fotografie podle siteKeys nejde načíst",e);
+      }
+    }
+    const textKeys=siteRecordTextKeys(site).slice(0,8);
+    for(const value of textKeys){
+      for(const field of ["siteName","siteAddress","place"]){
+        try{
+          const q=query(collection(db,"sitePhotos"),where(field,"==",value));
+          const snap=await getDocs(q);
+          snap.forEach(docSnap=>{
+            if(items.some(item=>item._id===docSnap.id)) return;
+            items.push({...docSnap.data(),_id:docSnap.id});
+          });
+        }catch(e){
+          console.warn("Fotografie textový dotaz selhal",field,e);
+        }
       }
     }
     try{
@@ -4645,12 +4815,12 @@ async function uploadSitePhotos(){
   if(!st) return;
   if(!selectedSite){st.textContent="Není vybraný bod.";return;}
   if(!firebaseReady || !db){st.textContent="Firebase není nastavený.";return;}
-  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
+  const signedUser=await waitForFirebaseUser();
+  if(!signedUser){st.textContent="Nejdřív se přihlaš.";return;}
   if(!files.length){st.textContent="Nejdřív vyber fotografie.";return;}
 
   try{
     const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
-    const storage=getCompatStorage();
     const keys=sitePhotoKeys(selectedSite);
     const siteKey=keys[0] || selectedSite.id || "bod";
     const siteId=selectedSite.id || siteKey;
@@ -4662,7 +4832,7 @@ async function uploadSitePhotos(){
       let contentType=file.type || "application/octet-stream";
       let extension=(file.name.split(".").pop() || "").toLowerCase() || "jpg";
       try{
-        uploadFile=await imageFileToJpegBlob(file);
+        uploadFile=await imageFileToJpegBlob(file,1200,.78);
         contentType="image/jpeg";
         extension="jpg";
       }catch(e){
@@ -4671,8 +4841,27 @@ async function uploadSitePhotos(){
 
       const photoRef=doc(collection(db,"sitePhotos"));
       const storagePath=`sitePhotos/${storageSafeSegment(siteKey)}/${photoRef.id}_${storageSafeSegment(file.name || "foto")}.${extension}`;
-      const snap=await storage.ref().child(storagePath).put(uploadFile,{contentType});
-      const url=await snap.ref.getDownloadURL();
+      let url="";
+      let savedStoragePath=storagePath;
+      let storageMode="storage";
+      try{
+        const storage=getCompatStorage();
+        const snap=await storage.ref().child(storagePath).put(uploadFile,{contentType});
+        url=await snap.ref.getDownloadURL();
+      }catch(storageError){
+        console.warn("Firebase Storage upload selhal, ukládám fotku do Firestore",storageError);
+        st.textContent=`Storage nepovolil fotografii ${i+1}, ukládám zmenšenou kopii...`;
+        storageMode="firestoreDataUrl";
+        savedStoragePath="";
+        let fallbackBlob=uploadFile;
+        try{
+          fallbackBlob=await imageFileToJpegBlob(file,850,.62);
+        }catch(e){}
+        url=await blobToDataUrl(fallbackBlob);
+        if(url.length>950000){
+          throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
+        }
+      }
       await setDoc(photoRef,{
         siteId,
         siteKey,
@@ -4680,9 +4869,10 @@ async function uploadSitePhotos(){
         firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
         siteName:selectedSite.adresa || "",
         url,
-        storagePath,
+        storagePath:savedStoragePath,
+        storageMode,
         fileName:file.name || "",
-        uploadedBy:currentUser.email || "",
+        uploadedBy:signedUser.email || "",
         createdAt:serverTimestamp()
       });
     }
@@ -4691,13 +4881,20 @@ async function uploadSitePhotos(){
     showSaveConfirmation("Fotografie uloženy.");
     resetSitePhotoInput();
     await loadSitePhotos(selectedSite);
+    st.textContent=`Fotografie uloženy (${files.length}).`;
+    showSaveConfirmation("Fotografie uloženy.");
   }catch(e){
     st.textContent="Chyba uložení fotografií: "+e.message;
   }
 }
 
+window.loadSitePhotos=loadSitePhotos;
+window.uploadSitePhotos=uploadSitePhotos;
+
 async function getLastProtocol(site=selectedSite){
   if(!firebaseReady || !db || !site) return null;
+  const signedUser=await waitForFirebaseUser();
+  if(!signedUser) return null;
   try{
     const {collection,query,where,getDocs}=fb.fsMod;
     const keys=siteRecordKeys(site);
@@ -4707,8 +4904,22 @@ async function getLastProtocol(site=selectedSite){
       items.push({...docSnap.data(),_id:docSnap.id});
     });
     for(const id of keys){
-      for(const lookup of [["siteId","==",id],["siteKey","==",id],["siteKeys","array-contains",id]]){
-        addSnap(await getDocs(query(collection(db,"protocols"),where(...lookup))));
+      for(const lookup of [["siteId","==",id],["siteKey","==",id],["firebaseDocId","==",id],["siteKeys","array-contains",id]]){
+        try{
+          addSnap(await getDocs(query(collection(db,"protocols"),where(...lookup))));
+        }catch(e){
+          console.warn("Poslední protokol dotaz selhal",lookup[0],e);
+        }
+      }
+    }
+    const textKeys=siteRecordTextKeys(site).slice(0,8);
+    for(const value of textKeys){
+      for(const field of ["siteName","siteAddress","place"]){
+        try{
+          addSnap(await getDocs(query(collection(db,"protocols"),where(field,"==",value))));
+        }catch(e){
+          console.warn("Poslední protokol textový dotaz selhal",field,e);
+        }
       }
     }
     try{
@@ -6314,18 +6525,20 @@ setTimeout(()=>{
     if(!address){status("Vyplň nejdřív adresu / umístění.",true);return;}
     try{
       status("Dopočítávám GPS...");
-      const found=typeof geocodeAddressGeneric==="function" ? await geocodeAddressGeneric(address) : null;
+      const geocode=window.geocodeAddressGeneric;
+      const inferRegion=window.inferRegionFromAddressText;
+      const found=typeof geocode==="function" ? await geocode(address) : null;
       if(!found){
-        const region=typeof inferRegionFromAddressText==="function" ? inferRegionFromAddressText(address) : "";
+        const region=typeof inferRegion==="function" ? inferRegion(address) : "";
         if(region && !val(raw["Kraj"])) setField("Kraj",region);
-        status(region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.",true);
+        status(region ? "GPS se nepodařilo dopočítat, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.",true);
         return;
       }
       setField("Adresa_GPS",`${found.lat}, ${found.lon}`);
       setField("GPS_lat",found.lat);
       setField("GPS_lon",found.lon);
-      if(!val(raw["Kraj"]) && typeof inferRegionFromAddressText==="function"){
-        const region=inferRegionFromAddressText(found.display || address, found.address || {});
+      if(!val(raw["Kraj"]) && typeof inferRegion==="function"){
+        const region=inferRegion(found.display || address, found.address || {});
         if(region) setField("Kraj",region);
       }
       status("GPS doplněno.");
@@ -6475,13 +6688,15 @@ setTimeout(()=>{
     if(!raw["Název"] && !raw["Adresa / umístění"]){status("Vyplň Název nebo Adresa / umístění.",true);return false;}
     if(!Number.isFinite(lat)||!Number.isFinite(lon)){status("Klikni Dopočítat GPS, aby se bod mohl zobrazit na mapě.",true);return false;}
     raw["GPS_lat"]=String(lat); raw["GPS_lon"]=String(lon);
-    if(!raw["Kraj"] && typeof inferRegionFromAddressText==="function"){
+    const inferRegion=window.inferRegionFromAddressText;
+    const geocode=window.geocodeAddressGeneric;
+    if(!raw["Kraj"] && typeof inferRegion==="function"){
       const address=raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "";
-      let region=inferRegionFromAddressText(address);
-      if(!region && address && typeof geocodeAddressGeneric==="function"){
+      let region=inferRegion(address);
+      if(!region && address && typeof geocode==="function"){
         try{
-          const found=await geocodeAddressGeneric(address);
-          region=inferRegionFromAddressText(found?.display || address, found?.address || {});
+          const found=await geocode(address);
+          region=inferRegion(found?.display || address, found?.address || {});
         }catch(_e){}
       }
       if(region){
