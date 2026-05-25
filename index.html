@@ -2783,6 +2783,10 @@ function siteRecordKeys(site=selectedSite){
     .map(x=>String(x || "").trim())
     .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
 }
+function selectedSiteDocId(site=selectedSite){
+  const raw=(site && site.raw) || {};
+  return safe(site && (site.firebaseDocId || raw["Firebase_doc_id"]));
+}
 function recordMatchesSite(record,site=selectedSite){
   if(!record || !site) return false;
   const keys=siteRecordKeys(site);
@@ -2834,10 +2838,12 @@ Object.assign(window,{
   canonicalRegionValue,
   regionTextNorm,
   siteRecordKeys,
+  selectedSiteDocId,
   siteRecordTextKeys,
   recordMatchesSite,
   waitForFirebaseUser,
-  isAppAdmin
+  isAppAdmin,
+  setRegionFieldValue
 });
 window.openDetailById=function(id){
   const key=String(id || "");
@@ -3938,6 +3944,28 @@ function historyObjectSummary(obj){
     .join(", ");
 }
 
+async function appendEmbeddedSiteItem(field,item,site=selectedSite){
+  const docId=selectedSiteDocId(site);
+  if(!docId || !firebaseReady || !db) return false;
+  const dataItem={...item};
+  try{
+    const {doc,setDoc,arrayUnion,serverTimestamp}=fb.fsMod;
+    await setDoc(doc(db,"sitesUnified",docId),{
+      [field]:arrayUnion(dataItem),
+      updatedAt:serverTimestamp()
+    },{merge:true});
+    if(site){
+      site.firebaseData=site.firebaseData || {};
+      site.firebaseData[field]=Array.isArray(site.firebaseData[field]) ? site.firebaseData[field] : [];
+      site.firebaseData[field].push(dataItem);
+    }
+    return true;
+  }catch(e){
+    console.warn("Záložní uložení do místa selhalo",field,e);
+    return false;
+  }
+}
+
 function isHistoryAdmin(){
   return isAppAdmin();
 }
@@ -4043,6 +4071,14 @@ async function loadHistory(siteId){
   try{
     const {collection,query,where,getDocs}=fb.fsMod;
     const items=[];
+    const embeddedProtocols=Array.isArray(selectedSite?.firebaseData?.protocolHistory) ? selectedSite.firebaseData.protocolHistory : [];
+    embeddedProtocols.forEach((item,idx)=>{
+      items.push({...item,_type:"Protokol",_collection:"embeddedProtocols",_id:item._id || `embedded_protocol_${idx}`});
+    });
+    const embeddedRecords=Array.isArray(selectedSite?.firebaseData?.serviceHistory) ? selectedSite.firebaseData.serviceHistory : [];
+    embeddedRecords.forEach((item,idx)=>{
+      items.push({...item,_type:"Servisní záznam",_collection:"embeddedServiceRecords",_id:item._id || `embedded_service_${idx}`});
+    });
     const historySiteIds=[siteId, ...siteRecordKeys(selectedSite)]
       .map(x=>String(x || ""))
       .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
@@ -4050,7 +4086,7 @@ async function loadHistory(siteId){
     async function readCollection(colName,typeLabel){
       try{
         const addDocSnap=docSnap=>{
-          if(items.some(item=>item._collection===colName && item._id===docSnap.id)) return;
+          if(items.some(item=>item._id===docSnap.id)) return;
           const d=docSnap.data();
           items.push({...d,_type:typeLabel,_collection:colName,_id:docSnap.id});
         };
@@ -4419,7 +4455,14 @@ if(serviceForm){
     try{
       const {collection,addDoc,serverTimestamp}=fb.fsMod;
       const keys=siteRecordKeys(selectedSite);
-      await addDoc(collection(db,"serviceRecords"),{siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:serverTimestamp()});
+      const servicePayload={_id:"service_"+Date.now(),siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:new Date().toISOString()};
+      const embeddedOk=await appendEmbeddedSiteItem("serviceHistory",servicePayload,selectedSite);
+      try{
+        await addDoc(collection(db,"serviceRecords"),{...servicePayload,createdAt:serverTimestamp()});
+      }catch(e){
+        console.warn("Samostatný servisní záznam se neuložil, používám zálohu v bodu",e);
+        if(!embeddedOk) throw e;
+      }
       st.textContent="Uloženo.";
       showSaveConfirmation("Servisní záznam uložen.");
       loadHistory(selectedSite.id);
@@ -4741,6 +4784,11 @@ async function loadSitePhotos(site=selectedSite){
     const {collection,query,where,getDocs}=fb.fsMod;
     const keys=sitePhotoKeys(site);
     const items=[];
+    const embeddedPhotos=Array.isArray(site?.firebaseData?.sitePhotosEmbedded) ? site.firebaseData.sitePhotosEmbedded : [];
+    embeddedPhotos.forEach((item,idx)=>{
+      if(items.some(photo=>photo._id===(item._id || `embedded_photo_${idx}`))) return;
+      items.push({...item,_id:item._id || `embedded_photo_${idx}`});
+    });
     for(const key of keys){
       for(const field of ["siteId","siteKey"]){
         try{
@@ -4832,7 +4880,7 @@ async function uploadSitePhotos(){
       let contentType=file.type || "application/octet-stream";
       let extension=(file.name.split(".").pop() || "").toLowerCase() || "jpg";
       try{
-        uploadFile=await imageFileToJpegBlob(file,1200,.78);
+        uploadFile=await imageFileToJpegBlob(file,900,.64);
         contentType="image/jpeg";
         extension="jpg";
       }catch(e){
@@ -4855,14 +4903,15 @@ async function uploadSitePhotos(){
         savedStoragePath="";
         let fallbackBlob=uploadFile;
         try{
-          fallbackBlob=await imageFileToJpegBlob(file,850,.62);
+          fallbackBlob=await imageFileToJpegBlob(file,650,.52);
         }catch(e){}
         url=await blobToDataUrl(fallbackBlob);
         if(url.length>950000){
           throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
         }
       }
-      await setDoc(photoRef,{
+      const photoPayload={
+        _id:photoRef.id,
         siteId,
         siteKey,
         siteKeys:keys,
@@ -4873,8 +4922,15 @@ async function uploadSitePhotos(){
         storageMode,
         fileName:file.name || "",
         uploadedBy:signedUser.email || "",
-        createdAt:serverTimestamp()
-      });
+        createdAt:new Date().toISOString()
+      };
+      const embeddedOk=await appendEmbeddedSiteItem("sitePhotosEmbedded",photoPayload,selectedSite);
+      try{
+        await setDoc(photoRef,{...photoPayload,createdAt:serverTimestamp()});
+      }catch(e){
+        console.warn("Samostatná fotka se neuložila, používám zálohu v bodu",e);
+        if(!embeddedOk) throw e;
+      }
     }
 
     st.textContent=`Uloženo fotografií: ${files.length}.`;
@@ -5168,9 +5224,16 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
     const ref=doc(collection(db,"protocols"));
     const payload=protocolPayload();
-    payload.createdAt=serverTimestamp();
+    payload._id=ref.id;
+    payload.createdAt=new Date().toISOString();
     payload.createdBy=currentUser.email;
-    await setDoc(ref,payload);
+    const embeddedOk=await appendEmbeddedSiteItem("protocolHistory",payload,selectedSite);
+    try{
+      await setDoc(ref,{...payload,createdAt:serverTimestamp()});
+    }catch(e){
+      console.warn("Samostatný protokol se neuložil, používám zálohu v bodu",e);
+      if(!embeddedOk) throw e;
+    }
     st.textContent="Protokol uložen.";
     showSaveConfirmation("Protokol uložen.");
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
@@ -5377,13 +5440,13 @@ setTimeout(()=>{
 
     try{
       if(st) st.textContent="Dopočítávám GPS...";
-      if(typeof geocodeAddressGeneric==="function"){
-        const g=await geocodeAddressGeneric(address);
+      if(typeof window.geocodeAddressGeneric==="function"){
+        const g=await window.geocodeAddressGeneric(address);
         if(g){
           if(latEl) latEl.value=g.lat;
           if(lonEl) lonEl.value=g.lon;
-          const region=inferRegionFromAddressText(g.display || address, g.address || {});
-          setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+          const region=window.inferRegionFromAddressText(g.display || address, g.address || {});
+          window.setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
           if(st) st.textContent="GPS doplněno.";
           return;
         }
@@ -5395,12 +5458,12 @@ setTimeout(()=>{
       if(data && data[0]){
         if(latEl) latEl.value=data[0].lat;
         if(lonEl) lonEl.value=data[0].lon;
-        const region=inferRegionFromAddressText(data[0].display_name || address, data[0].address || {});
-        setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+        const region=window.inferRegionFromAddressText(data[0].display_name || address, data[0].address || {});
+        window.setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
         if(st) st.textContent="GPS doplněno.";
       }else{
-        const region=inferRegionFromAddressText(address);
-        setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+        const region=window.inferRegionFromAddressText(address);
+        window.setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
         if(st) st.textContent=region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.";
       }
     }catch(e){
@@ -5491,21 +5554,21 @@ setTimeout(()=>{
     };
 
     if(!raw["Kraj"]){
-      raw["Kraj"]=inferRegionFromAddressText(raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "");
+      raw["Kraj"]=window.inferRegionFromAddressText(raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "");
     }
     row.kraj=raw["Kraj"] || row.kraj || "";
 
     try{
       const address=raw["Adresa / umístění"]||raw["Adresa_GPS"]||"";
-      if(address && typeof geocodeAddressGeneric==="function"){
+      if(address && typeof window.geocodeAddressGeneric==="function"){
         if(st) st.textContent="Dopočítávám GPS...";
-        const g=await geocodeAddressGeneric(address);
+        const g=await window.geocodeAddressGeneric(address);
         if(g){
           row.lat=Number(g.lat);
           row.lon=Number(g.lon);
           row.raw["GPS_lat"]=row.lat;
           row.raw["GPS_lon"]=row.lon;
-          if(!row.raw["Kraj"]) row.raw["Kraj"]=inferRegionFromAddressText(g.display || address, g.address || {});
+          if(!row.raw["Kraj"]) row.raw["Kraj"]=window.inferRegionFromAddressText(g.display || address, g.address || {});
         }
       }
     }catch(e){}
@@ -5707,8 +5770,8 @@ setTimeout(()=>{
       if(st) st.textContent="Dopočítávám GPS...";
       let g=null;
 
-      if(typeof geocodeAddressGeneric==="function"){
-        g=await geocodeAddressGeneric(address);
+      if(typeof window.geocodeAddressGeneric==="function"){
+        g=await window.geocodeAddressGeneric(address);
       }else{
         const url="https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=1&q="+encodeURIComponent(address);
         const res=await fetch(url,{headers:{"Accept":"application/json"}});
@@ -5717,16 +5780,16 @@ setTimeout(()=>{
       }
 
       if(!g){
-        const region=inferRegionFromAddressText(address);
-        setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+        const region=window.inferRegionFromAddressText(address);
+        window.setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
         if(st) st.textContent=region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.";
         return;
       }
 
       if(latEl) latEl.value=g.lat;
       if(lonEl) lonEl.value=g.lon;
-      const region=inferRegionFromAddressText(g.display || address, g.address || {});
-      setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
+      const region=window.inferRegionFromAddressText(g.display || address, g.address || {});
+      window.setRegionFieldValue('#newSiteOnlyCard [data-new-key="Kraj"]',region);
       if(st) st.textContent="GPS doplněno.";
     }catch(e){
       if(st) st.textContent="Chyba dopočtu GPS: "+e.message;
@@ -5848,7 +5911,7 @@ setTimeout(()=>{
     let row=buildRowFromRaw(raw);
 
     if(!raw["Kraj"]){
-      raw["Kraj"]=inferRegionFromAddressText(raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "");
+      raw["Kraj"]=window.inferRegionFromAddressText(raw["Adresa / umístění"] || raw["Název"] || raw["Adresa_GPS"] || "");
       row.raw["Kraj"]=raw["Kraj"] || row.raw["Kraj"] || "";
       row.kraj=raw["Kraj"] || row.kraj || "";
     }
@@ -5856,15 +5919,15 @@ setTimeout(()=>{
     if(!Number.isFinite(row.lat) || !Number.isFinite(row.lon)){
       try{
         const address=raw["Adresa / umístění"] || raw["Adresa_GPS"] || "";
-        if(address && typeof geocodeAddressGeneric==="function"){
+        if(address && typeof window.geocodeAddressGeneric==="function"){
           if(st) st.textContent="Dopočítávám GPS...";
-          const g=await geocodeAddressGeneric(address);
+          const g=await window.geocodeAddressGeneric(address);
           if(g){
             row.lat=Number(g.lat);
             row.lon=Number(g.lon);
             row.raw["GPS_lat"]=row.lat;
             row.raw["GPS_lon"]=row.lon;
-            if(!row.raw["Kraj"]) row.raw["Kraj"]=inferRegionFromAddressText(g.display || address, g.address || {});
+            if(!row.raw["Kraj"]) row.raw["Kraj"]=window.inferRegionFromAddressText(g.display || address, g.address || {});
           }
         }
       }catch(e){}
