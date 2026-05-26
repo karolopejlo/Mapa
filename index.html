@@ -6683,7 +6683,39 @@ setTimeout(()=>{
   function user(){
     const compat=ensureCompatFirebase();
     if(!compat) return null;
-    try{return compat.auth().currentUser;}catch(e){return null;}
+    try{return compat.auth().currentUser || window.__authReadyUser || window.currentUser || null;}catch(e){return window.__authReadyUser || window.currentUser || null;}
+  }
+  function waitCompatUser(timeoutMs=8000){
+    const compat=ensureCompatFirebase();
+    if(!compat || !compat.auth) return Promise.resolve(null);
+    const auth=compat.auth();
+    try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{}); }catch(e){}
+    if(auth.currentUser) return Promise.resolve(auth.currentUser);
+    return new Promise(resolve=>{
+      let done=false;
+      let unsub=null;
+      const finish=u=>{
+        if(done) return;
+        done=true;
+        if(unsub) try{unsub();}catch(e){}
+        if(u){
+          window.currentUser=u;
+          window.__authReadyUser=u;
+        }
+        resolve(u || null);
+      };
+      const timer=setTimeout(()=>finish(auth.currentUser || null),timeoutMs);
+      try{
+        unsub=auth.onAuthStateChanged(u=>{
+          if(!u) return;
+          clearTimeout(timer);
+          finish(u);
+        });
+      }catch(e){
+        clearTimeout(timer);
+        finish(auth.currentUser || null);
+      }
+    });
   }
   function dedupKeys(raw){
     return typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw || {}) : [];
@@ -6968,7 +7000,7 @@ setTimeout(()=>{
     return applyRowEdit(r);
   }
   async function saveUnifiedSiteRaw(rawInput, opts={}){
-    const database=db(), u=user();
+    const database=db(), u=await waitCompatUser();
     if(!database) throw new Error("Firebase není dostupný nebo není inicializovaný.");
     if(!u) throw new Error("Nejdřív se přihlaš přes Google.");
 
@@ -7003,9 +7035,15 @@ setTimeout(()=>{
     await unhideOpenedRow(database,row);
     return {duplicate:false,id:ref.id,row};
   }
-  async function loadFirebaseSites(openDocId=null){
+  async function loadFirebaseSites(openDocId=null, opts={}){
     const database=db(); if(!database){sideStatus("Firebase není dostupný.",true);return;}
     try{
+      const signedUser=await waitCompatUser();
+      if(!signedUser){
+        sideStatus("",false);
+        if(!opts.retryAuth) setTimeout(()=>loadFirebaseSites(openDocId,{retryAuth:true}),1200);
+        return [];
+      }
       sideStatus("Načítám body z Firebase...");
       const snap=await database.collection(FB_COLLECTION).get();
       const firebaseRows=[]; snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
@@ -7016,7 +7054,16 @@ setTimeout(()=>{
       window.__firebaseUnifiedRowsCount=loadedRows.length;
       sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.`);
       return loadedRows;
-    }catch(e){sideStatus("Chyba načtení z Firebase: "+e.message,true);}
+    }catch(e){
+      const message=String(e && (e.message || e.code) || e);
+      if(!opts.retryPermission && /permission|insufficient/i.test(message)){
+        sideStatus("",false);
+        setTimeout(()=>loadFirebaseSites(openDocId,{retryPermission:true}),1400);
+        return [];
+      }
+      sideStatus("Chyba načtení z Firebase: "+message,true);
+      return [];
+    }
   }
   async function refreshAfterSave(docId){
     const id=String(docId || "");
@@ -7041,7 +7088,7 @@ setTimeout(()=>{
     return false;
   }
   async function migrateCsvToFirebase(){
-    const database=db(), u=user();
+    const database=db(), u=await waitCompatUser();
     if(!database){sideStatus("Firebase není dostupný.",true);return;}
     if(!u){sideStatus("Nejdřív se přihlaš přes Google.",true);return;}
     const sourceRows=typeof window.getCurrentCsvRows==="function" ? window.getCurrentCsvRows() : [];
@@ -7070,7 +7117,7 @@ setTimeout(()=>{
   }
   async function savePoint(e){
     if(e){e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}
-    const database=db(), u=user();
+    const database=db(), u=await waitCompatUser();
     if(!database){status("Firebase není dostupný nebo není inicializovaný.",true);return false;}
     if(!u){status("Nejdřív se přihlaš přes Google.",true);return false;}
     let raw=getRaw(); const lat=num(raw["GPS_lat"]), lon=num(raw["GPS_lon"]);
@@ -7168,7 +7215,7 @@ setTimeout(()=>{
   try{
     const compat=ensureCompatFirebase();
     if(compat && compat.auth){
-      compat.auth().onAuthStateChanged(()=>loadFirebaseSites());
+      compat.auth().onAuthStateChanged(user=>{ if(user) loadFirebaseSites(); });
     }
   }catch(e){}
   window.loadFirebaseSitesUnified=loadFirebaseSites;
