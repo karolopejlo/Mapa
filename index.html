@@ -100,11 +100,13 @@ button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:whit
 #statusFilter.status-orange{background:#ffedd5;color:#9a3412;border-color:#fed7aa;font-weight:800}
 #statusFilter.status-yellow{background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:800}
 #statusFilter.status-green{background:#dcfce7;color:#166534;border-color:#bbf7d0;font-weight:800}
+#statusFilter.status-gray{background:#f1f5f9;color:#334155;border-color:#cbd5e1;font-weight:800}
 #statusFilter.status-pink{background:#fdf2f8;color:#9d174d;border-color:#fbcfe8;font-weight:800}
 #statusFilter option.status-red{background:#fee2e2;color:#991b1b}
 #statusFilter option.status-orange{background:#ffedd5;color:#9a3412}
 #statusFilter option.status-yellow{background:#fef3c7;color:#92400e}
 #statusFilter option.status-green{background:#dcfce7;color:#166534}
+#statusFilter option.status-gray{background:#f1f5f9;color:#334155}
 #statusFilter option.status-pink{background:#fdf2f8;color:#9d174d}
 .drawer{position:fixed;right:0;top:0;height:100vh;width:min(760px,100vw);background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 35px #0003;z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
 .drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between;gap:10px}.x{width:auto}
@@ -651,7 +653,7 @@ button,input,select,textarea{
 }
 .data-edit-actions{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
   gap:8px;
   margin:12px 0 4px;
 }
@@ -662,6 +664,11 @@ button,input,select,textarea{
   background:#fef3c7;
   color:#92400e;
   border-color:#f59e0b;
+}
+.stop-toggle-active{
+  background:#e2e8f0;
+  color:#334155;
+  border-color:#94a3b8;
 }
 #deleteDataSiteBtn{
   grid-column:auto;
@@ -1169,6 +1176,7 @@ button,input,select,textarea{
 <div><span class="dot" style="background:#dc2626"></span> Propadlé kontroly</div>
 <div><span class="dot" style="background:#f97316"></span> 1–30 dní k termínu</div>
 <div><span class="dot" style="background:#eab308"></span> Kontrola objednaná</div>
+<div><span class="dot" style="background:#64748b"></span> Stop Stav</div>
 <div><span class="dot" style="background:#16a34a"></span> Vše ostatní</div>
 </div>
 <div id="list"></div>
@@ -1367,6 +1375,7 @@ button,input,select,textarea{
 <div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="secondary" type="button" id="toggleOrderedBtn">Kontrola objednána</button>
+  <button class="secondary" type="button" id="toggleStopBtn">Stop Stav</button>
   <button class="danger" type="button" id="deleteDataSiteBtn">Smazat bod</button>
   <button class="secondary" type="button" id="showSiteOnMapBtn">Ukázat bod na mapě</button>
   <button class="secondary" type="button" id="calcDataGpsBtn" style="display:none">Dopočítat GPS</button>
@@ -1508,7 +1517,9 @@ Cena FZ: ..."></textarea>
     if(!firebase.apps.length){
       firebase.initializeApp(firebaseConfig);
     }
-    return firebase.auth();
+    const auth=firebase.auth();
+    try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{}); }catch(e){}
+    return auth;
   }
 
   function googleProvider(){
@@ -1523,6 +1534,7 @@ Cena FZ: ..."></textarea>
   window.loginPopup = async function(){
     const auth=initAuth();
     if(!auth) return;
+    try{ await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
 
     const isMobileOrTablet =
       /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
@@ -1551,6 +1563,7 @@ Cena FZ: ..."></textarea>
   function signOutAndReload(){
     const auth=initAuth();
     if(!auth) return;
+    window.__authReadyUser=null;
     auth.signOut().then(()=>location.reload()).catch(err=>{
       status("Odhlášení selhalo: " + (err.code || "") + " " + (err.message || err));
     });
@@ -1587,11 +1600,13 @@ Cena FZ: ..."></textarea>
     auth.onAuthStateChanged(async function(user){
       if(!user){
         window.currentUser=null;
+        window.__authReadyUser=null;
         status("");
         return;
       }
 
       window.currentUser=user;
+      window.__authReadyUser=user;
 
       const email=String(user.email || "").toLowerCase();
 
@@ -1650,6 +1665,7 @@ if(firebaseReady){
   fb={appMod,authMod,fsMod};
   app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
+  try{ await authMod.setPersistence(auth, authMod.browserLocalPersistence); }catch(e){ console.warn("Firebase persistence nejde nastavit",e); }
   db=fsMod.getFirestore(app);
   window.fb=fb;
   window.db=db;
@@ -1688,8 +1704,11 @@ if(firebaseReady){
     }
     else {
       setTimeout(()=>{
-        let compatUser=null;
-        try{ compatUser=window.firebase && firebase.auth ? firebase.auth().currentUser : null; }catch(e){}
+        let compatUser=window.__authReadyUser || null;
+        try{
+          const fbUser=window.firebase && firebase.auth ? firebase.auth().currentUser : null;
+          if(fbUser) compatUser=fbUser;
+        }catch(e){}
         if(compatUser){
           currentUser=compatUser;
           window.currentUser=compatUser;
@@ -1700,7 +1719,7 @@ if(firebaseReady){
         const topLogoutBtn=document.getElementById("topLogoutBtn");
         if(topLogoutBtn) topLogoutBtn.style.display="none";
         showLogin();
-      },300);
+      },1500);
     }
   });
 }
@@ -1715,6 +1734,28 @@ function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt
 function num(v){if(v===null||v===undefined||v==="")return null;const n=Number(String(v).trim().replace(",","."));return Number.isFinite(n)?n:null}
 function get(r,n){if(!r)return"";if(r[n]!==undefined)return r[n];const w=String(n).replace(/^\uFEFF/,"").trim().toLowerCase();for(const k of Object.keys(r)){if(String(k).replace(/^\uFEFF/,"").trim().toLowerCase()===w)return r[k]}return""}
 function first(r,a){for(const n of a){const v=safe(get(r,n));if(v)return v}return""}
+function simpleNorm(v){
+  return String(v||"").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[_\/\\,.;:()\-]+/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+function yesNoBool(v){
+  const n=simpleNorm(v);
+  if(["ano","yes","true","1","aktivni"].includes(n)) return true;
+  if(["ne","no","false","0",""].includes(n)) return false;
+  return n.includes("ano") || n.includes("aktivni");
+}
+function stopFlagFromRaw(raw){
+  const keys=["Stop Stav","Stop stav","Stop_stav","Stop","Zdroj ve Stop Stavu","Odstaveno","Mimo provoz"];
+  for(const k of keys){
+    const v=get(raw||{},k);
+    if(safe(v)) return yesNoBool(v) || simpleNorm(v).includes("stop") || simpleNorm(v).includes("mimo provoz");
+  }
+  const stav=first(raw||{},["Stav","Stav_kontroly","Stav pro mapu","Status"]);
+  return simpleNorm(stav).includes("stop") || simpleNorm(stav).includes("mimo provoz");
+}
 const APP_REGION_OPTIONS = [
   "Hlavní město Praha","Středočeský kraj","Jihočeský kraj","Plzeňský kraj","Karlovarský kraj",
   "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
@@ -1734,7 +1775,7 @@ function isAppAdmin(){
 }
 function waitForFirebaseUser(timeoutMs=3000){
   if(!firebaseReady || !auth) return Promise.resolve(currentUser || window.currentUser || null);
-  if(currentUser || window.currentUser) return Promise.resolve(currentUser || window.currentUser);
+  if(currentUser || window.currentUser || window.__authReadyUser) return Promise.resolve(currentUser || window.currentUser || window.__authReadyUser);
   return new Promise(resolve=>{
     let done=false;
     let unsub=null;
@@ -1742,7 +1783,7 @@ function waitForFirebaseUser(timeoutMs=3000){
       if(done) return;
       done=true;
       if(unsub) try{unsub();}catch(e){}
-      currentUser=user || currentUser || window.currentUser || null;
+      currentUser=user || currentUser || window.currentUser || window.__authReadyUser || null;
       window.currentUser=currentUser;
       resolve(currentUser);
     };
@@ -1808,6 +1849,7 @@ function displayNext(r){
 }
 function color(r){
   const d=daysToComputedNext(r);
+  if(r.stopped === true) return "#64748b";
   if(r.ordered === true) return "#eab308";
   if(Number.isFinite(d) && d < 0) return "#dc2626";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "#f97316";
@@ -1815,12 +1857,13 @@ function color(r){
 }
 function statusText(r){
   const d=daysToComputedNext(r);
+  if(r.stopped === true) return "Stop Stav";
   if(r.ordered === true) return "Kontrola objednaná";
   if(Number.isFinite(d) && d < 0) return "Propadlá kontrola";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "1–30 dní k termínu";
   return "OK / ostatní";
 }
-function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":"green"}
+function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":c==="#64748b"?"gray":"green"}
 
 function normPinkText(s){
   return String(s || "")
@@ -1925,6 +1968,7 @@ function applyEditToRow(r){
   if(e.lastCheck) updatedRaw["Upravená poslední kontrola"] = e.lastCheck;
   if(e.nextCheck) updatedRaw["Upravená další kontrola"] = e.nextCheck;
   if(e.ordered !== undefined) updatedRaw["Kontrola objednaná"] = e.ordered ? "ANO" : "NE";
+  if(e.stopped !== undefined) updatedRaw["Stop Stav"] = e.stopped ? "ANO" : "NE";
   if(Number.isFinite(lat)) updatedRaw["Upravené GPS_lat"] = String(lat);
   if(Number.isFinite(lon)) updatedRaw["Upravené GPS_lon"] = String(lon);
   const regionValue=canonicalRegionValue(rawEdits["Kraj"] || r.kraj) || inferRegionFromAddressText([
@@ -1950,6 +1994,7 @@ function applyEditToRow(r){
     lon:Number.isFinite(lon) ? lon : r.lon,
     gpsAddress:e.gpsAddress || r.gpsAddress,
     ordered:e.ordered !== undefined ? e.ordered === true : r.ordered,
+    stopped:e.stopped !== undefined ? e.stopped === true : stopFlagFromRaw(updatedRaw),
     noOrder:rawWatch ? rawWatch==="ano" : (e.noOrder === true ? true : r.noOrder),
     edit:e
   };
@@ -1978,6 +2023,7 @@ function normalize(data){
       stav:first(raw,["Stav_kontroly","Stav pro mapu"]),
       barva:first(raw,["Barva bodu","Barva_bodu"]),
       ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan")),
+      stopped:stopFlagFromRaw(raw),
       noOrder:(first(raw,["Hlídáme termín sami","Hlídáme sami termín","Hlídáme kontroly sami","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
     };
     return applyEditToRow(r);
@@ -2841,6 +2887,10 @@ Object.assign(window,{
   selectedSiteDocId,
   siteRecordTextKeys,
   recordMatchesSite,
+  refreshSiteDataFromFirebase,
+  applyLatestProtocolDateToRaw,
+  applyLatestProtocolToSite,
+  updateSiteControlDateFromProtocol,
   waitForFirebaseUser,
   isAppAdmin,
   setRegionFieldValue
@@ -2877,7 +2927,7 @@ function filters(){
   const currentStatus=st.value;
   const currentRegion=kr.value;
   st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
-  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","OK / ostatní","Hlídáme termín sami"].forEach(v=>{
+  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","Stop Stav","OK / ostatní","Hlídáme termín sami"].forEach(v=>{
     const o=document.createElement("option");
     o.value=v;
     o.textContent=v;
@@ -2887,6 +2937,7 @@ function filters(){
     if(cls==="status-orange"){o.style.backgroundColor="#ffedd5";o.style.color="#9a3412";}
     if(cls==="status-yellow"){o.style.backgroundColor="#fef3c7";o.style.color="#92400e";}
     if(cls==="status-green"){o.style.backgroundColor="#dcfce7";o.style.color="#166534";}
+    if(cls==="status-gray"){o.style.backgroundColor="#f1f5f9";o.style.color="#334155";}
     if(cls==="status-pink"){o.style.backgroundColor="#fdf2f8";o.style.color="#9d174d";}
     st.appendChild(o);
   });
@@ -2899,6 +2950,7 @@ function statusFilterClass(v){
   if(v==="Propadlá kontrola") return "status-red";
   if(v==="1–30 dní k termínu") return "status-orange";
   if(v==="Kontrola objednaná") return "status-yellow";
+  if(v==="Stop Stav") return "status-gray";
   if(v==="OK / ostatní") return "status-green";
   if(v==="Hlídáme termín sami") return "status-pink";
   return "";
@@ -2906,7 +2958,7 @@ function statusFilterClass(v){
 function updateStatusFilterColor(){
   const st=document.getElementById("statusFilter");
   if(!st) return;
-  st.classList.remove("status-red","status-orange","status-yellow","status-green","status-pink");
+  st.classList.remove("status-red","status-orange","status-yellow","status-green","status-gray","status-pink");
   const cls=statusFilterClass(st.value);
   if(cls) st.classList.add(cls);
 }
@@ -3509,6 +3561,12 @@ function updateOrderedButton(){
   btn.textContent=selectedSite.ordered === true ? "Objednáno" : "Kontrola objednána";
   btn.className=selectedSite.ordered === true ? "secondary ordered-toggle-active" : "secondary";
 }
+function updateStopButton(){
+  const btn=document.getElementById("toggleStopBtn");
+  if(!btn || !selectedSite) return;
+  btn.textContent=selectedSite.stopped === true ? "Stop Stav aktivní" : "Stop Stav";
+  btn.className=selectedSite.stopped === true ? "secondary stop-toggle-active" : "secondary";
+}
 
 async function toggleOrderedFromDetail(){
   const st=document.getElementById("editStatus");
@@ -3549,6 +3607,50 @@ async function toggleOrderedFromDetail(){
     window.openDetailById(selectedKey);
   }catch(e){
     if(st) st.textContent="Chyba uložení objednání: "+e.message;
+  }
+}
+
+async function toggleStopFromDetail(){
+  const st=document.getElementById("editStatus");
+  if(!selectedSite){ if(st) st.textContent="Není vybrané místo."; return; }
+  if(!firebaseReady){ if(st) st.textContent="Firebase není nastavený."; return; }
+  if(!currentUser){ if(st) st.textContent="Nejdřív se přihlaš."; return; }
+
+  const selectedKey=detailKey(selectedSite) || selectedSite.id;
+  const stopped=selectedSite.stopped !== true;
+  try{
+    const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    const existingEdit=editCache[selectedKey] || editCache[selectedSite.id] || {};
+    const edit={
+      stopped,
+      rawEdits:{...(existingEdit.rawEdits || {}),"Stop Stav":stopped ? "ANO" : "NE"},
+      updatedBy:currentUser.email,
+      updatedAt:new Date().toISOString()
+    };
+
+    const firebaseDocId=selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "";
+    if(firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
+      const mergedRaw={...(selectedSite.raw||{}), Firebase_doc_id:firebaseDocId};
+      mergedRaw["Stop Stav"]=stopped ? "ANO" : "NE";
+      if(!mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+firebaseDocId;
+      await setDoc(doc(db,"sitesUnified",firebaseDocId),{
+        raw:mergedRaw,
+        dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(mergedRaw) : [],
+        updatedBy:currentUser.email,
+        updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+      },{merge:true});
+    }
+
+    await setDoc(doc(db,"siteEdits",selectedKey),edit,{merge:true});
+    editCache[selectedKey]={...existingEdit,...edit};
+    rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
+    selectedSite=rows.find(r=>detailKey(r)===selectedKey) || {...selectedSite, stopped};
+    if(st) st.textContent=stopped ? "Zdroj je označený jako Stop Stav." : "Stop Stav byl zrušen.";
+    showSaveConfirmation(stopped ? "Stop Stav uložen." : "Stop Stav zrušen.");
+    render();
+    window.openDetailById(selectedKey);
+  }catch(e){
+    if(st) st.textContent="Chyba uložení Stop Stavu: "+e.message;
   }
 }
 
@@ -3845,6 +3947,7 @@ window.openDetail=function(i){
   const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
   const editDataToggleBtn=document.getElementById("editDataToggleBtn");
   const toggleOrderedBtn=document.getElementById("toggleOrderedBtn");
+  const toggleStopBtn=document.getElementById("toggleStopBtn");
   const showSiteOnMapBtn=document.getElementById("showSiteOnMapBtn");
   const calcDataGpsBtn=document.getElementById("calcDataGpsBtn");
   const saveDataBtn=document.getElementById("saveDataEditsBtn");
@@ -3854,6 +3957,11 @@ window.openDetail=function(i){
     toggleOrderedBtn.style.display="block";
     updateOrderedButton();
     toggleOrderedBtn.onclick=toggleOrderedFromDetail;
+  }
+  if(toggleStopBtn){
+    toggleStopBtn.style.display="block";
+    updateStopButton();
+    toggleStopBtn.onclick=toggleStopFromDetail;
   }
   const deleteDataSiteBtn=document.getElementById("deleteDataSiteBtn");
   if(deleteDataSiteBtn){
@@ -3966,6 +4074,116 @@ async function appendEmbeddedSiteItem(field,item,site=selectedSite){
   }
 }
 
+function protocolDateIso(item){
+  return isoDateFromAny(item?.date || item?.checkDate || item?.createdAt || "");
+}
+
+function protocolTimeValue(item){
+  const iso=protocolDateIso(item);
+  const d=parseDateValue(iso);
+  if(d) return d.getTime();
+  return historyTimeValue(item);
+}
+
+function latestProtocolDateFromSiteData(data){
+  const protocols=Array.isArray(data?.protocolHistory) ? data.protocolHistory : [];
+  const latest=protocols
+    .map(item=>({item,time:protocolTimeValue(item)}))
+    .filter(x=>Number.isFinite(x.time) && x.time>0)
+    .sort((a,b)=>b.time-a.time)[0];
+  return latest ? protocolDateIso(latest.item) : isoDateFromAny(data?.latestProtocolDate || "");
+}
+
+function applyLatestProtocolDateToRaw(raw,data){
+  const out={...(raw || {})};
+  const latest=latestProtocolDateFromSiteData(data);
+  if(!latest) return out;
+  out["Poslední_kontrola"]=latest;
+  const last=parseDateValue(latest);
+  if(last){
+    const months=Number(detectControlPeriod(out)) || periodMonths({raw:out});
+    out["Příští_kontrola"]=dateInputValueFromAny(addMonths(last, months));
+  }
+  return out;
+}
+
+function applyLatestProtocolToSite(protocol,site=selectedSite){
+  if(!protocol || !site) return;
+  const raw=applyLatestProtocolDateToRaw(site.raw || {},{protocolHistory:[protocol]});
+  site.raw=raw;
+  const refreshed=normalize([raw])[0];
+  Object.assign(site, refreshed, {
+    id:site.id,
+    i:site.i,
+    firebaseDocId:site.firebaseDocId || raw["Firebase_doc_id"] || "",
+    firebaseData:site.firebaseData || {}
+  });
+  if(selectedSite && detailKey(selectedSite)===detailKey(site)) selectedSite=site;
+}
+
+async function refreshSiteDataFromFirebase(site=selectedSite){
+  const docId=selectedSiteDocId(site);
+  if(!docId || !firebaseReady || !db || !fb.fsMod) return null;
+  try{
+    const {doc,getDoc}=fb.fsMod;
+    const snap=await getDoc(doc(db,"sitesUnified",docId));
+    if(!snap.exists()) return null;
+    const data=snap.data() || {};
+    const mergedRaw=applyLatestProtocolDateToRaw({...(site?.raw||{}), ...(data.raw||{})}, data);
+    if(site){
+      site.firebaseData=data;
+      site.raw=mergedRaw;
+      const refreshed=normalize([mergedRaw])[0];
+      Object.assign(site, refreshed, {
+        id:site.id,
+        i:site.i,
+        firebaseDocId:docId,
+        firebaseData:data
+      });
+    }
+    if(selectedSite && detailKey(selectedSite)===detailKey(site)){
+      selectedSite=site;
+    }
+    return data;
+  }catch(e){
+    console.warn("Čerstvé načtení dat bodu selhalo",e);
+    return null;
+  }
+}
+
+async function updateSiteControlDateFromProtocol(protocol,site=selectedSite){
+  const docId=selectedSiteDocId(site);
+  const latest=protocolDateIso(protocol);
+  if(!docId || !latest || !firebaseReady || !db) return false;
+  const raw=applyLatestProtocolDateToRaw({...(site?.raw || {})},{protocolHistory:[protocol]});
+  raw["Firebase_doc_id"]=docId;
+  if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
+  try{
+    const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    await setDoc(doc(db,"sitesUnified",docId),{
+      raw,
+      dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw) : [],
+      latestProtocolDate:latest,
+      updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+      updatedBy:currentUser?.email || ""
+    },{merge:true});
+    if(site){
+      site.raw=raw;
+      const refreshed=normalize([raw])[0];
+      Object.assign(site, refreshed, {
+        id:site.id,
+        i:site.i,
+        firebaseDocId:docId,
+        firebaseData:{...(site.firebaseData || {}), raw, latestProtocolDate:latest}
+      });
+    }
+    return true;
+  }catch(e){
+    console.warn("Uložení poslední kontroly z protokolu selhalo",e);
+    return false;
+  }
+}
+
 function isHistoryAdmin(){
   return isAppAdmin();
 }
@@ -3973,15 +4191,27 @@ function isHistoryAdmin(){
 async function deleteCurrentHistoryProtocol(){
   const item=detailHistoryItems[detailHistoryIndex];
   const history=document.getElementById("history");
-  if(!item || item._collection!=="protocols" || !item._id) return;
+  if(!item || item._type!=="Protokol" || !item._id) return;
   if(!isHistoryAdmin()){
     if(history) history.insertAdjacentHTML("afterbegin",'<p class="small">Mazat protokoly může jen správce.</p>');
     return;
   }
   if(!confirm("Opravdu smazat tento uložený protokol z historie?")) return;
   try{
-    const {doc,deleteDoc}=fb.fsMod;
-    await deleteDoc(doc(db,"protocols",item._id));
+    const {doc,deleteDoc,setDoc,serverTimestamp}=fb.fsMod;
+    try{ await deleteDoc(doc(db,"protocols",item._id)); }catch(e){ console.warn("Samostatný protokol se nepodařilo smazat",e); }
+    const docId=selectedSiteDocId(selectedSite);
+    if(docId){
+      const currentData=selectedSite?.firebaseData || {};
+      const protocolHistory=Array.isArray(currentData.protocolHistory) ? currentData.protocolHistory.filter(p=>String(p?._id || "")!==String(item._id)) : [];
+      const protocolRefs=Array.isArray(currentData.protocolRefs) ? currentData.protocolRefs.filter(p=>String(p?._id || "")!==String(item._id)) : [];
+      await setDoc(doc(db,"sitesUnified",docId),{
+        protocolHistory,
+        protocolRefs,
+        updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+      },{merge:true});
+      selectedSite.firebaseData={...currentData,protocolHistory,protocolRefs};
+    }
     showSaveConfirmation("Protokol smazán.");
     await loadHistory(selectedSite?.id || item.siteId);
   }catch(e){
@@ -4002,7 +4232,7 @@ function renderHistory(){
   if(detailHistoryIndex>=detailHistoryItems.length) detailHistoryIndex=detailHistoryItems.length-1;
 
   const d=detailHistoryItems[detailHistoryIndex];
-  const canDeleteProtocol=isHistoryAdmin() && d._collection==="protocols";
+  const canDeleteProtocol=isHistoryAdmin() && (d._type==="Protokol" || d._collection==="protocols" || d._collection==="embeddedProtocols" || d._collection==="protocolRefs");
   const rows=[
     ["Typ záznamu", d._type || "Záznam"],
     ["Datum", historyDateLabel(d)],
@@ -4069,16 +4299,49 @@ async function loadHistory(siteId){
   }
 
   try{
-    const {collection,query,where,getDocs}=fb.fsMod;
+    await refreshSiteDataFromFirebase(selectedSite);
+    const {collection,query,where,getDocs,doc,getDoc}=fb.fsMod;
     const items=[];
+    const addHistoryItem=item=>{
+      if(!item) return;
+      const id=String(item._id || "");
+      if(id && items.some(existing=>String(existing._id || "")===id)) return;
+      items.push(item);
+    };
     const embeddedProtocols=Array.isArray(selectedSite?.firebaseData?.protocolHistory) ? selectedSite.firebaseData.protocolHistory : [];
     embeddedProtocols.forEach((item,idx)=>{
-      items.push({...item,_type:"Protokol",_collection:"embeddedProtocols",_id:item._id || `embedded_protocol_${idx}`});
+      addHistoryItem({...item,_type:"Protokol",_collection:"embeddedProtocols",_id:item._id || `embedded_protocol_${idx}`});
     });
     const embeddedRecords=Array.isArray(selectedSite?.firebaseData?.serviceHistory) ? selectedSite.firebaseData.serviceHistory : [];
     embeddedRecords.forEach((item,idx)=>{
-      items.push({...item,_type:"Servisní záznam",_collection:"embeddedServiceRecords",_id:item._id || `embedded_service_${idx}`});
+      addHistoryItem({...item,_type:"Servisní záznam",_collection:"embeddedServiceRecords",_id:item._id || `embedded_service_${idx}`});
     });
+    const protocolRefs=Array.isArray(selectedSite?.firebaseData?.protocolRefs) ? selectedSite.firebaseData.protocolRefs : [];
+    for(const refItem of protocolRefs){
+      const id=safe(refItem && refItem._id);
+      if(!id || items.some(item=>String(item._id || "")===id)) continue;
+      try{
+        const snap=await getDoc(doc(db,"protocols",id));
+        if(snap.exists()) addHistoryItem({...snap.data(),_type:"Protokol",_collection:"protocols",_id:snap.id});
+        else addHistoryItem({...refItem,_type:"Protokol",_collection:"protocolRefs",_id:id});
+      }catch(e){
+        console.warn("Přímé načtení protokolu selhalo",id,e);
+        addHistoryItem({...refItem,_type:"Protokol",_collection:"protocolRefs",_id:id});
+      }
+    }
+    const serviceRefs=Array.isArray(selectedSite?.firebaseData?.serviceRefs) ? selectedSite.firebaseData.serviceRefs : [];
+    for(const refItem of serviceRefs){
+      const id=safe(refItem && refItem._id);
+      if(!id || items.some(item=>String(item._id || "")===id)) continue;
+      try{
+        const snap=await getDoc(doc(db,"serviceRecords",id));
+        if(snap.exists()) addHistoryItem({...snap.data(),_type:"Servisní záznam",_collection:"serviceRecords",_id:snap.id});
+        else addHistoryItem({...refItem,_type:"Servisní záznam",_collection:"serviceRefs",_id:id});
+      }catch(e){
+        console.warn("Přímé načtení servisního záznamu selhalo",id,e);
+        addHistoryItem({...refItem,_type:"Servisní záznam",_collection:"serviceRefs",_id:id});
+      }
+    }
     const historySiteIds=[siteId, ...siteRecordKeys(selectedSite)]
       .map(x=>String(x || ""))
       .filter((x,idx,arr)=>x && arr.indexOf(x)===idx);
@@ -4143,7 +4406,13 @@ async function loadHistory(siteId){
       return;
     }
 
-    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
+    items.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
+    const latestProtocol=items.find(item=>item._type==="Protokol");
+    if(latestProtocol && selectedSite){
+      applyLatestProtocolToSite(latestProtocol,selectedSite);
+      showControlDateDisplay(selectedSite);
+      render();
+    }
     detailHistoryItems=items;
     detailHistoryIndex=0;
     renderHistory();
@@ -4453,12 +4722,21 @@ if(serviceForm){
     }
 
     try{
-      const {collection,addDoc,serverTimestamp}=fb.fsMod;
+      const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
       const keys=siteRecordKeys(selectedSite);
-      const servicePayload={_id:"service_"+Date.now(),siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:new Date().toISOString()};
+      const serviceRef=doc(collection(db,"serviceRecords"));
+      const servicePayload={_id:serviceRef.id,siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:new Date().toISOString()};
       const embeddedOk=await appendEmbeddedSiteItem("serviceHistory",servicePayload,selectedSite);
+      await appendEmbeddedSiteItem("serviceRefs",{
+        _id:servicePayload._id,
+        siteId:servicePayload.siteId,
+        siteKey:servicePayload.siteKey,
+        firebaseDocId:servicePayload.firebaseDocId,
+        checkDate:servicePayload.checkDate,
+        createdAt:servicePayload.createdAt
+      },selectedSite);
       try{
-        await addDoc(collection(db,"serviceRecords"),{...servicePayload,createdAt:serverTimestamp()});
+        await setDoc(serviceRef,{...servicePayload,createdAt:serverTimestamp()});
       }catch(e){
         console.warn("Samostatný servisní záznam se neuložil, používám zálohu v bodu",e);
         if(!embeddedOk) throw e;
@@ -4781,22 +5059,40 @@ async function loadSitePhotos(site=selectedSite){
     return;
   }
   try{
-    const {collection,query,where,getDocs}=fb.fsMod;
+    await refreshSiteDataFromFirebase(site);
+    const {collection,query,where,getDocs,doc,getDoc}=fb.fsMod;
     const keys=sitePhotoKeys(site);
     const items=[];
+    const addPhoto=item=>{
+      if(!item || !safe(item.url)) return;
+      const id=String(item._id || "");
+      if(id && items.some(photo=>String(photo._id || "")===id)) return;
+      items.push(item);
+    };
     const embeddedPhotos=Array.isArray(site?.firebaseData?.sitePhotosEmbedded) ? site.firebaseData.sitePhotosEmbedded : [];
     embeddedPhotos.forEach((item,idx)=>{
-      if(items.some(photo=>photo._id===(item._id || `embedded_photo_${idx}`))) return;
-      items.push({...item,_id:item._id || `embedded_photo_${idx}`});
+      addPhoto({...item,_id:item._id || `embedded_photo_${idx}`});
     });
+    const photoRefs=Array.isArray(site?.firebaseData?.sitePhotoRefs) ? site.firebaseData.sitePhotoRefs : [];
+    for(const refItem of photoRefs){
+      const id=safe(refItem && refItem._id);
+      if(!id || items.some(photo=>String(photo._id || "")===id)) continue;
+      try{
+        const snap=await getDoc(doc(db,"sitePhotos",id));
+        if(snap.exists()) addPhoto({...snap.data(),_id:snap.id});
+        else addPhoto({...refItem,_id:id});
+      }catch(e){
+        console.warn("Přímé načtení fotografie selhalo",id,e);
+        addPhoto({...refItem,_id:id});
+      }
+    }
     for(const key of keys){
       for(const field of ["siteId","siteKey"]){
         try{
           const q=query(collection(db,"sitePhotos"),where(field,"==",key));
           const snap=await getDocs(q);
           snap.forEach(docSnap=>{
-            if(items.some(item=>item._id===docSnap.id)) return;
-            items.push({...docSnap.data(),_id:docSnap.id});
+            addPhoto({...docSnap.data(),_id:docSnap.id});
           });
         }catch(e){
           console.warn("Fotografie dotaz selhal",field,e);
@@ -4806,8 +5102,7 @@ async function loadSitePhotos(site=selectedSite){
         const q=query(collection(db,"sitePhotos"),where("firebaseDocId","==",key));
         const snap=await getDocs(q);
         snap.forEach(docSnap=>{
-          if(items.some(item=>item._id===docSnap.id)) return;
-          items.push({...docSnap.data(),_id:docSnap.id});
+          addPhoto({...docSnap.data(),_id:docSnap.id});
         });
       }catch(e){
         console.warn("Fotografie podle firebaseDocId nejde načíst",e);
@@ -4816,37 +5111,11 @@ async function loadSitePhotos(site=selectedSite){
         const q=query(collection(db,"sitePhotos"),where("siteKeys","array-contains",key));
         const snap=await getDocs(q);
         snap.forEach(docSnap=>{
-          if(items.some(item=>item._id===docSnap.id)) return;
-          items.push({...docSnap.data(),_id:docSnap.id});
+          addPhoto({...docSnap.data(),_id:docSnap.id});
         });
       }catch(e){
         console.warn("Fotografie podle siteKeys nejde načíst",e);
       }
-    }
-    const textKeys=siteRecordTextKeys(site).slice(0,8);
-    for(const value of textKeys){
-      for(const field of ["siteName","siteAddress","place"]){
-        try{
-          const q=query(collection(db,"sitePhotos"),where(field,"==",value));
-          const snap=await getDocs(q);
-          snap.forEach(docSnap=>{
-            if(items.some(item=>item._id===docSnap.id)) return;
-            items.push({...docSnap.data(),_id:docSnap.id});
-          });
-        }catch(e){
-          console.warn("Fotografie textový dotaz selhal",field,e);
-        }
-      }
-    }
-    try{
-      const snap=await getDocs(collection(db,"sitePhotos"));
-      snap.forEach(docSnap=>{
-        if(items.some(item=>item._id===docSnap.id)) return;
-        const data=docSnap.data();
-        if(recordMatchesSite(data,site)) items.push({...data,_id:docSnap.id});
-      });
-    }catch(e){
-      console.warn("Fallback načtení fotografií nejde použít",e);
     }
     items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
     renderSitePhotos(items);
@@ -4903,7 +5172,7 @@ async function uploadSitePhotos(){
         savedStoragePath="";
         let fallbackBlob=uploadFile;
         try{
-          fallbackBlob=await imageFileToJpegBlob(file,650,.52);
+          fallbackBlob=await imageFileToJpegBlob(file,420,.42);
         }catch(e){}
         url=await blobToDataUrl(fallbackBlob);
         if(url.length>950000){
@@ -4924,12 +5193,31 @@ async function uploadSitePhotos(){
         uploadedBy:signedUser.email || "",
         createdAt:new Date().toISOString()
       };
-      const embeddedOk=await appendEmbeddedSiteItem("sitePhotosEmbedded",photoPayload,selectedSite);
+      const photoRefPayload={
+        _id:photoRef.id,
+        siteId,
+        siteKey,
+        siteKeys:keys,
+        firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
+        url:storageMode==="storage" || url.length<180000 ? url : "",
+        storagePath:savedStoragePath,
+        storageMode,
+        fileName:file.name || "",
+        createdAt:photoPayload.createdAt
+      };
+      let photoDocOk=false;
       try{
         await setDoc(photoRef,{...photoPayload,createdAt:serverTimestamp()});
+        photoDocOk=true;
       }catch(e){
         console.warn("Samostatná fotka se neuložila, používám zálohu v bodu",e);
-        if(!embeddedOk) throw e;
+      }
+      const refOk=await appendEmbeddedSiteItem("sitePhotoRefs",photoRefPayload,selectedSite);
+      if(!photoDocOk){
+        const canEmbedFullPhoto=storageMode==="storage" || url.length<180000;
+        const embeddedOk=canEmbedFullPhoto ? await appendEmbeddedSiteItem("sitePhotosEmbedded",photoPayload,selectedSite) : false;
+        const refHasDisplayUrl=refOk && safe(photoRefPayload.url);
+        if(!embeddedOk && !refHasDisplayUrl) throw new Error("Fotografii se nepodařilo uložit ani k bodu.");
       }
     }
 
@@ -4952,9 +5240,26 @@ async function getLastProtocol(site=selectedSite){
   const signedUser=await waitForFirebaseUser();
   if(!signedUser) return null;
   try{
-    const {collection,query,where,getDocs}=fb.fsMod;
+    await refreshSiteDataFromFirebase(site);
+    const {collection,query,where,getDocs,doc,getDoc}=fb.fsMod;
     const keys=siteRecordKeys(site);
     const items=[];
+    const embeddedProtocols=Array.isArray(site?.firebaseData?.protocolHistory) ? site.firebaseData.protocolHistory : [];
+    embeddedProtocols.forEach((item,idx)=>{
+      items.push({...item,_id:item._id || `embedded_protocol_${idx}`});
+    });
+    const protocolRefs=Array.isArray(site?.firebaseData?.protocolRefs) ? site.firebaseData.protocolRefs : [];
+    for(const refItem of protocolRefs){
+      const id=safe(refItem && refItem._id);
+      if(!id || items.some(item=>String(item._id || "")===id)) continue;
+      try{
+        const snap=await getDoc(doc(db,"protocols",id));
+        if(snap.exists()) items.push({...snap.data(),_id:snap.id});
+        else items.push({...refItem,_id:id});
+      }catch(e){
+        items.push({...refItem,_id:id});
+      }
+    }
     const addSnap=snap=>snap.forEach(docSnap=>{
       if(items.some(item=>item._id===docSnap.id)) return;
       items.push({...docSnap.data(),_id:docSnap.id});
@@ -4988,7 +5293,7 @@ async function getLastProtocol(site=selectedSite){
     }catch(e){
       console.warn("Fallback posledního protokolu nejde použít",e);
     }
-    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
+    items.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
     return items[0] || null;
   }catch(e){
     console.warn("Nepodařilo se načíst poslední protokol:",e);
@@ -5228,14 +5533,24 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     payload.createdAt=new Date().toISOString();
     payload.createdBy=currentUser.email;
     const embeddedOk=await appendEmbeddedSiteItem("protocolHistory",payload,selectedSite);
+    await appendEmbeddedSiteItem("protocolRefs",{
+      _id:ref.id,
+      siteId:payload.siteId,
+      siteKey:payload.siteKey,
+      firebaseDocId:payload.firebaseDocId,
+      date:payload.date,
+      createdAt:payload.createdAt
+    },selectedSite);
     try{
       await setDoc(ref,{...payload,createdAt:serverTimestamp()});
     }catch(e){
       console.warn("Samostatný protokol se neuložil, používám zálohu v bodu",e);
       if(!embeddedOk) throw e;
     }
+    await updateSiteControlDateFromProtocol(payload,selectedSite);
     st.textContent="Protokol uložen.";
     showSaveConfirmation("Protokol uložen.");
+    render();
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
   }catch(err){
     st.textContent="Chyba uložení protokolu: "+err.message;
@@ -6234,7 +6549,7 @@ setTimeout(()=>{
   }
   const allowedRawKeys = new Set([
     ...FB_USER_FIELDS.map(f=>f.key),
-    "GPS_lat","GPS_lon","Příští_kontrola","Poslední_kontrola","Kontrola objednaná","Zdroj_dat","Firebase_doc_id","Klíč_adresy"
+    "GPS_lat","GPS_lon","Příští_kontrola","Poslední_kontrola","Kontrola objednaná","Stop Stav","Zdroj_dat","Firebase_doc_id","Klíč_adresy"
   ]);
   const rawKeyAliases = {
     "nazev":"Název",
@@ -6276,6 +6591,12 @@ setTimeout(()=>{
     "posledni probehla kontrola":"Poslední_kontrola",
     "kontrola objednana":"Kontrola objednaná",
     "objednano":"Kontrola objednaná",
+    "stop":"Stop Stav",
+    "stop stav":"Stop Stav",
+    "stop stav zdroje":"Stop Stav",
+    "zdroj ve stop stavu":"Stop Stav",
+    "odstaveno":"Stop Stav",
+    "mimo provoz":"Stop Stav",
     "zdroj dat":"Zdroj_dat",
     "firebase doc id":"Firebase_doc_id",
     "klic adresy":"Klíč_adresy"
@@ -6473,6 +6794,7 @@ setTimeout(()=>{
   function openPanel(e){
     if(e){e.preventDefault();e.stopPropagation();if(e.stopImmediatePropagation)e.stopImmediatePropagation();}
     ensurePanel(); document.getElementById("fbUnifiedOverlay").classList.add("open"); document.getElementById("fbUnifiedPanel").classList.add("open");
+    clearForm(true);
     status("Panel otevřen. Po uložení se bod hned otevře v detailu.");
     setTimeout(()=>{const first=document.querySelector('#fbUnifiedPanel [data-fb-key="Název"]') || document.querySelector('#fbUnifiedPanel input'); if(first) first.focus();},80);
     return false;
@@ -6502,6 +6824,7 @@ setTimeout(()=>{
     if(val(out["Adresa / umístění"]) && !val(out["Název"])) out["Název"]=out["Adresa / umístění"];
     if(val(out["Hlídáme sami termín"])) out["Hlídáme sami termín"]=yesNo(out["Hlídáme sami termín"],"ne");
     if(val(out["Smlouva ano/ne"])) out["Smlouva ano/ne"]=yesNo(out["Smlouva ano/ne"],"ne");
+    if(val(out["Stop Stav"])) out["Stop Stav"]=yesNo(out["Stop Stav"],"ne");
     if(!val(out["Perioda kontrol"])) out["Perioda kontrol"]="12";
     if(!val(out["Zdroj_dat"])) out["Zdroj_dat"]="Firebase";
     if(docId){
@@ -6633,7 +6956,10 @@ setTimeout(()=>{
     const normalizeRows = window.normalizeSiteRows || window.normalize;
     const applyRowEdit = window.applySiteEditToRow || window.applyEditToRow || (row => row);
     if(typeof normalizeRows !== "function") throw new Error("normalizeSiteRows není dostupné");
-    const raw=Object.assign({}, d.raw || {});
+    let raw=Object.assign({}, d.raw || {});
+    if(typeof window.applyLatestProtocolDateToRaw==="function"){
+      raw=window.applyLatestProtocolDateToRaw(raw,d || {});
+    }
     raw["Firebase_doc_id"]=docId;
     if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
     const r=normalizeRows([raw])[0];
