@@ -3950,6 +3950,7 @@ function detailTable(r){
 window.openDetail=function(i){
   syncRowIndexes();
   const r=rows[Number(i)]; if(!r)return; selectedSite=r;
+  startDetailAsyncLoads(r);
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="none";
     clearNewSiteMode();
@@ -4010,25 +4011,45 @@ window.openDetail=function(i){
   const addDataRowBtn=document.getElementById("addDataRowBtn");
   if(addDataRowBtn) addDataRowBtn.onclick=addNewDataRowToTable;
   const pf=document.getElementById("protocolForm"); if(pf){ pf.style.display="none"; } const tb=document.getElementById("toggleProtocolBtn"); if(tb) tb.textContent="Vyplnit protokol";;
-  document.getElementById("editName").value=r.adresa||"";
-  document.getElementById("editContact").value=r.kontakt||"";
-  document.getElementById("editSource").value=r.zdroj||"";
-  document.getElementById("editOrdered").checked = r.ordered === true;
-  document.getElementById("editGpsAddress").value=r.gpsAddress||first(r.raw,["Adresa_GPS","Adresa / umístění","Umístění"])||"";
-  document.getElementById("editGpsLat").value=Number.isFinite(r.lat)?String(r.lat):"";
-  document.getElementById("editGpsLon").value=Number.isFinite(r.lon)?String(r.lon):"";
-  document.getElementById("editLastCheck").value=isoDateFromAny(r.posledni)||"";
-  recalcEditNextCheck();
-  document.getElementById("editNotes").value=r.poznamky||"";
-  document.getElementById("technician").value=currentUser?.displayName||currentUser?.email||"";
-  document.getElementById("checkDate").value=new Date().toISOString().slice(0,10);
-  resetSitePhotoInput();
-  loadSitePhotos(r);
-  loadHistory(r.id);
-  ensureDetailAsyncLoads(r);
+  try{
+    setInputValue("editName",r.adresa||"");
+    setInputValue("editContact",r.kontakt||"");
+    setInputValue("editSource",r.zdroj||"");
+    setInputChecked("editOrdered",r.ordered === true);
+    setInputValue("editGpsAddress",r.gpsAddress||first(r.raw,["Adresa_GPS","Adresa / umístění","Umístění"])||"");
+    setInputValue("editGpsLat",Number.isFinite(r.lat)?String(r.lat):"");
+    setInputValue("editGpsLon",Number.isFinite(r.lon)?String(r.lon):"");
+    setInputValue("editLastCheck",isoDateFromAny(r.posledni)||"");
+    recalcEditNextCheck();
+    setInputValue("editNotes",r.poznamky||"");
+    setInputValue("technician",currentUser?.displayName||currentUser?.email||"");
+    setInputValue("checkDate",new Date().toISOString().slice(0,10));
+  }catch(e){
+    console.warn("Doplňková pole detailu se nepodařilo vyplnit",e);
+  }
 }
 let detailHistoryItems=[];
 let detailHistoryIndex=0;
+
+function setInputValue(id,value){
+  const el=document.getElementById(id);
+  if(el) el.value=value;
+}
+function setInputChecked(id,value){
+  const el=document.getElementById(id);
+  if(el) el.checked=!!value;
+}
+
+function startDetailAsyncLoads(site){
+  setTimeout(()=>{
+    const sameSite=site && selectedSite && detailKey(site)===detailKey(selectedSite);
+    if(!sameSite) return;
+    try{ resetSitePhotoInput(); }catch(e){}
+    try{ loadSitePhotos(site); }catch(e){ console.warn("Načtení fotografií detailu selhalo",e); }
+    try{ loadHistory(site.id); }catch(e){ console.warn("Načtení historie detailu selhalo",e); }
+    try{ ensureDetailAsyncLoads(site); }catch(e){}
+  },0);
+}
 
 function ensureDetailAsyncLoads(site){
   setTimeout(()=>{
