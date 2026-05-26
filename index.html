@@ -1531,6 +1531,11 @@ Cena FZ: ..."></textarea>
     return p;
   }
 
+  function isAllowedLoginEmail(email){
+    const e=String(email || "").toLowerCase().trim();
+    return e.endsWith("@astip.cz") || e==="iva.glozova@astip.cz";
+  }
+
   window.loginPopup = async function(){
     const auth=initAuth();
     if(!auth) return;
@@ -1610,7 +1615,7 @@ Cena FZ: ..."></textarea>
 
       const email=String(user.email || "").toLowerCase();
 
-      if(!email.endsWith("@astip.cz")){
+      if(!isAllowedLoginEmail(email)){
         status("Přihlášení je povoleno jen pro @astip.cz.");
         alert("Přihlášení je povoleno jen pro @astip.cz. Přihlášený účet: " + email);
         await auth.signOut();
@@ -1685,7 +1690,7 @@ if(firebaseReady){
     if(userBox) userBox.textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
     if(user){
       const email=String(user.email || "").toLowerCase();
-      if(!email.endsWith("@astip.cz")){
+      if(!isAllowedLoginEmail(email)){
         const st=document.getElementById("startupStatus");
         if(st) st.textContent="Přihlášení je povoleno jen pro @astip.cz.";
         authMod.signOut(auth).catch(()=>{});
@@ -1718,8 +1723,10 @@ if(firebaseReady){
         }
         const topLogoutBtn=document.getElementById("topLogoutBtn");
         if(topLogoutBtn) topLogoutBtn.style.display="none";
-        showLogin();
-      },1500);
+        const appEl=document.getElementById("mainApp");
+        const appVisible=appEl && appEl.style.display==="grid";
+        if(!appVisible) showLogin();
+      },5000);
     }
   });
 }
@@ -1765,9 +1772,16 @@ const APP_ADMIN_EMAILS = [
   "jan.soldan@astip.cz",
   "jansoldan@astip.cz"
 ];
+const APP_ALLOWED_EMAILS = [
+  "iva.glozova@astip.cz"
+];
 window.appRegionOptions = () => APP_REGION_OPTIONS.slice();
 function currentUserEmail(){
   return safe((currentUser && currentUser.email) || (window.currentUser && window.currentUser.email)).toLowerCase();
+}
+function isAllowedLoginEmail(email){
+  const e=safe(email).toLowerCase();
+  return e.endsWith("@astip.cz") || APP_ALLOWED_EMAILS.includes(e);
 }
 function isAppAdmin(){
   const email=currentUserEmail();
@@ -3604,7 +3618,7 @@ async function toggleOrderedFromDetail(){
     if(st) st.textContent=ordered ? "Kontrola označena jako objednaná." : "Objednání kontroly zrušeno.";
     showSaveConfirmation(ordered ? "Kontrola objednána." : "Objednání zrušeno.");
     render();
-    window.openDetailById(selectedKey);
+    updateOrderedButton();
   }catch(e){
     if(st) st.textContent="Chyba uložení objednání: "+e.message;
   }
@@ -3648,7 +3662,7 @@ async function toggleStopFromDetail(){
     if(st) st.textContent=stopped ? "Zdroj je označený jako Stop Stav." : "Stop Stav byl zrušen.";
     showSaveConfirmation(stopped ? "Stop Stav uložen." : "Stop Stav zrušen.");
     render();
-    window.openDetailById(selectedKey);
+    updateStopButton();
   }catch(e){
     if(st) st.textContent="Chyba uložení Stop Stavu: "+e.message;
   }
@@ -4052,20 +4066,58 @@ function historyObjectSummary(obj){
     .join(", ");
 }
 
+function siteLocalCacheKey(kind,site=selectedSite){
+  const key=selectedSiteDocId(site) || detailKey(site) || site?.id || "unknown";
+  return `astipMap:${kind}:${key}`;
+}
+function readSiteLocalArray(kind,site=selectedSite){
+  try{
+    const raw=localStorage.getItem(siteLocalCacheKey(kind,site));
+    const arr=raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){
+    return [];
+  }
+}
+function appendSiteLocalArray(kind,item,site=selectedSite,limit=80){
+  try{
+    const arr=readSiteLocalArray(kind,site);
+    const id=safe(item && item._id);
+    const next=(id ? arr.filter(x=>safe(x && x._id)!==id) : arr).concat([{...item}]).slice(-limit);
+    localStorage.setItem(siteLocalCacheKey(kind,site),JSON.stringify(next));
+  }catch(e){
+    console.warn("Lokální cache se nepodařila uložit",kind,e);
+  }
+}
+
 async function appendEmbeddedSiteItem(field,item,site=selectedSite){
   const docId=selectedSiteDocId(site);
   if(!docId || !firebaseReady || !db) return false;
   const dataItem={...item};
   try{
-    const {doc,setDoc,arrayUnion,serverTimestamp}=fb.fsMod;
+    const {doc,setDoc,getDoc,serverTimestamp}=fb.fsMod;
+    const ref=doc(db,"sitesUnified",docId);
+    let current=[];
+    try{
+      const snap=await getDoc(ref);
+      const data=snap.exists() ? (snap.data() || {}) : {};
+      current=Array.isArray(data[field]) ? data[field].slice() : [];
+    }catch(e){
+      current=Array.isArray(site?.firebaseData?.[field]) ? site.firebaseData[field].slice() : [];
+    }
+    const itemId=safe(dataItem._id);
+    if(itemId){
+      current=current.filter(existing=>safe(existing && existing._id)!==itemId);
+    }
+    current.push(dataItem);
+    if(current.length>80) current=current.slice(-80);
     await setDoc(doc(db,"sitesUnified",docId),{
-      [field]:arrayUnion(dataItem),
+      [field]:current,
       updatedAt:serverTimestamp()
     },{merge:true});
     if(site){
       site.firebaseData=site.firebaseData || {};
-      site.firebaseData[field]=Array.isArray(site.firebaseData[field]) ? site.firebaseData[field] : [];
-      site.firebaseData[field].push(dataItem);
+      site.firebaseData[field]=current;
     }
     return true;
   }catch(e){
@@ -4312,10 +4364,19 @@ async function loadHistory(siteId){
     embeddedProtocols.forEach((item,idx)=>{
       addHistoryItem({...item,_type:"Protokol",_collection:"embeddedProtocols",_id:item._id || `embedded_protocol_${idx}`});
     });
+    readSiteLocalArray("protocolHistory",selectedSite).forEach((item,idx)=>{
+      addHistoryItem({...item,_type:"Protokol",_collection:"localProtocols",_id:item._id || `local_protocol_${idx}`});
+    });
     const embeddedRecords=Array.isArray(selectedSite?.firebaseData?.serviceHistory) ? selectedSite.firebaseData.serviceHistory : [];
     embeddedRecords.forEach((item,idx)=>{
       addHistoryItem({...item,_type:"Servisní záznam",_collection:"embeddedServiceRecords",_id:item._id || `embedded_service_${idx}`});
     });
+    if(items.length){
+      items.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
+      detailHistoryItems=items.slice();
+      detailHistoryIndex=0;
+      renderHistory();
+    }
     const protocolRefs=Array.isArray(selectedSite?.firebaseData?.protocolRefs) ? selectedSite.firebaseData.protocolRefs : [];
     for(const refItem of protocolRefs){
       const id=safe(refItem && refItem._id);
@@ -4380,16 +4441,6 @@ async function loadHistory(siteId){
               console.warn("Historie textový dotaz selhal",colName,field,e);
             }
           }
-        }
-        try{
-          const snap=await getDocs(collection(db,colName));
-          snap.forEach(docSnap=>{
-            if(items.some(item=>item._collection===colName && item._id===docSnap.id)) return;
-            const d=docSnap.data();
-            if(recordMatchesSite(d,selectedSite)) items.push({...d,_type:typeLabel,_collection:colName,_id:docSnap.id});
-          });
-        }catch(e){
-          console.warn("Fallback načtení historie nejde použít",colName,e);
         }
       }catch(e){
         console.warn("Historie kolekce nejde načíst",colName,e);
@@ -5073,6 +5124,9 @@ async function loadSitePhotos(site=selectedSite){
     embeddedPhotos.forEach((item,idx)=>{
       addPhoto({...item,_id:item._id || `embedded_photo_${idx}`});
     });
+    readSiteLocalArray("sitePhotos",site).forEach((item,idx)=>{
+      addPhoto({...item,_id:item._id || `local_photo_${idx}`});
+    });
     const photoRefs=Array.isArray(site?.firebaseData?.sitePhotoRefs) ? site.firebaseData.sitePhotoRefs : [];
     for(const refItem of photoRefs){
       const id=safe(refItem && refItem._id);
@@ -5144,41 +5198,18 @@ async function uploadSitePhotos(){
 
     for(let i=0;i<files.length;i++){
       const file=files[i];
-      st.textContent=`Nahrávám fotografii ${i+1}/${files.length}...`;
-      let uploadFile=file;
-      let contentType=file.type || "application/octet-stream";
-      let extension=(file.name.split(".").pop() || "").toLowerCase() || "jpg";
-      try{
-        uploadFile=await imageFileToJpegBlob(file,900,.64);
-        contentType="image/jpeg";
-        extension="jpg";
-      }catch(e){
-        console.warn("Fotka se uloží bez zmenšení",e);
+      st.textContent=`Zmenšuji a ukládám fotografii ${i+1}/${files.length}...`;
+      const photoRef=doc(collection(db,"sitePhotos"));
+      let photoBlob=await imageFileToJpegBlob(file,360,.4);
+      let url=await blobToDataUrl(photoBlob);
+      if(url.length>850000){
+        photoBlob=await imageFileToJpegBlob(file,260,.34);
+        url=await blobToDataUrl(photoBlob);
+      }
+      if(url.length>850000){
+        throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
       }
 
-      const photoRef=doc(collection(db,"sitePhotos"));
-      const storagePath=`sitePhotos/${storageSafeSegment(siteKey)}/${photoRef.id}_${storageSafeSegment(file.name || "foto")}.${extension}`;
-      let url="";
-      let savedStoragePath=storagePath;
-      let storageMode="storage";
-      try{
-        const storage=getCompatStorage();
-        const snap=await storage.ref().child(storagePath).put(uploadFile,{contentType});
-        url=await snap.ref.getDownloadURL();
-      }catch(storageError){
-        console.warn("Firebase Storage upload selhal, ukládám fotku do Firestore",storageError);
-        st.textContent=`Storage nepovolil fotografii ${i+1}, ukládám zmenšenou kopii...`;
-        storageMode="firestoreDataUrl";
-        savedStoragePath="";
-        let fallbackBlob=uploadFile;
-        try{
-          fallbackBlob=await imageFileToJpegBlob(file,420,.42);
-        }catch(e){}
-        url=await blobToDataUrl(fallbackBlob);
-        if(url.length>950000){
-          throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
-        }
-      }
       const photoPayload={
         _id:photoRef.id,
         siteId,
@@ -5187,37 +5218,19 @@ async function uploadSitePhotos(){
         firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
         siteName:selectedSite.adresa || "",
         url,
-        storagePath:savedStoragePath,
-        storageMode,
+        storagePath:"",
+        storageMode:"siteEmbedded",
         fileName:file.name || "",
         uploadedBy:signedUser.email || "",
         createdAt:new Date().toISOString()
       };
-      const photoRefPayload={
-        _id:photoRef.id,
-        siteId,
-        siteKey,
-        siteKeys:keys,
-        firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
-        url:storageMode==="storage" || url.length<180000 ? url : "",
-        storagePath:savedStoragePath,
-        storageMode,
-        fileName:file.name || "",
-        createdAt:photoPayload.createdAt
-      };
-      let photoDocOk=false;
+      const embeddedOk=await appendEmbeddedSiteItem("sitePhotosEmbedded",photoPayload,selectedSite);
+      appendSiteLocalArray("sitePhotos",photoPayload,selectedSite,120);
+      if(!embeddedOk) throw new Error("Fotografii se nepodařilo uložit k bodu.");
       try{
         await setDoc(photoRef,{...photoPayload,createdAt:serverTimestamp()});
-        photoDocOk=true;
       }catch(e){
-        console.warn("Samostatná fotka se neuložila, používám zálohu v bodu",e);
-      }
-      const refOk=await appendEmbeddedSiteItem("sitePhotoRefs",photoRefPayload,selectedSite);
-      if(!photoDocOk){
-        const canEmbedFullPhoto=storageMode==="storage" || url.length<180000;
-        const embeddedOk=canEmbedFullPhoto ? await appendEmbeddedSiteItem("sitePhotosEmbedded",photoPayload,selectedSite) : false;
-        const refHasDisplayUrl=refOk && safe(photoRefPayload.url);
-        if(!embeddedOk && !refHasDisplayUrl) throw new Error("Fotografii se nepodařilo uložit ani k bodu.");
+        console.warn("Samostatná kopie fotky se neuložila, hlavní kopie je uložená u bodu",e);
       }
     }
 
@@ -5533,6 +5546,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     payload.createdAt=new Date().toISOString();
     payload.createdBy=currentUser.email;
     const embeddedOk=await appendEmbeddedSiteItem("protocolHistory",payload,selectedSite);
+    appendSiteLocalArray("protocolHistory",payload,selectedSite,120);
     await appendEmbeddedSiteItem("protocolRefs",{
       _id:ref.id,
       siteId:payload.siteId,
