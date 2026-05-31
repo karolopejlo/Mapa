@@ -806,15 +806,37 @@ button,input,select,textarea{
 .site-photo-main img{
   display:block;
   width:100%;
+  aspect-ratio:auto;
   max-height:360px;
   object-fit:contain;
   background:#0f172a;
 }
-.site-photo-nav{
+.site-photo-nav,
+.site-photo-actions{
   display:grid;
   grid-template-columns:1fr auto 1fr;
   gap:8px;
   align-items:center;
+}
+.site-photo-actions{
+  grid-template-columns:1fr 1fr;
+}
+.site-photo-actions a{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:38px;
+  border-radius:10px;
+  border:1px solid #e2e8f0;
+  background:#f1f5f9;
+  color:#0f172a;
+  font-weight:800;
+  text-decoration:none;
+}
+.site-photo-meta{
+  color:#64748b;
+  font-size:12px;
+  overflow-wrap:anywhere;
 }
 .site-photo-nav span{
   font-size:13px;
@@ -854,7 +876,8 @@ button,input,select,textarea{
 }
 @media(max-width:600px){
   .data-edit-actions,
-  .site-photo-upload{
+  .site-photo-upload,
+  .site-photo-actions{
     grid-template-columns:1fr;
   }
   .protocol-summary{
@@ -1645,7 +1668,7 @@ window.__firebaseConfig = firebaseConfig;
 
 const CSV_FILE="data.csv";
 const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
-let app, auth, db, fb={}, currentUser=null;
+let app, auth, db, storage, fb={}, currentUser=null;
 let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, editCache={};
 let firebaseUnifiedPrimary = firebaseReady;
 window.firebaseReady = firebaseReady;
@@ -1667,13 +1690,16 @@ if(firebaseReady){
   const appMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
   const authMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
   const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
-  fb={appMod,authMod,fsMod};
+  const storageMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-storage.js");
+  fb={appMod,authMod,fsMod,storageMod};
   app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
   try{ await authMod.setPersistence(auth, authMod.browserLocalPersistence); }catch(e){ console.warn("Firebase persistence nejde nastavit",e); }
   db=fsMod.getFirestore(app);
+  storage=storageMod.getStorage(app);
   window.fb=fb;
   window.db=db;
+  window.fbStorage=storage;
   try{
     if(window.firebase && firebase.initializeApp && (!firebase.apps || !firebase.apps.length)){
       firebase.initializeApp(firebaseConfig);
@@ -4183,6 +4209,48 @@ async function loadSiteChildItems(kind,site=selectedSite){
   }
 }
 
+async function deleteSiteChildItem(kind,id,site=selectedSite){
+  const docId=selectedSiteDocId(site);
+  const cleanId=safe(id);
+  if(!docId || !cleanId || !firebaseReady || !db || !fb.fsMod) return false;
+  try{
+    const {doc,deleteDoc}=fb.fsMod;
+    await deleteDoc(doc(db,"sitesUnified",docId,kind,cleanId));
+    return true;
+  }catch(e){
+    console.warn("Smazání položky pod bodem selhalo",kind,e);
+    return false;
+  }
+}
+
+async function removeEmbeddedSiteItem(field,id,site=selectedSite){
+  const docId=selectedSiteDocId(site);
+  const cleanId=safe(id);
+  if(!docId || !cleanId || !firebaseReady || !db || !fb.fsMod) return false;
+  try{
+    const {doc,setDoc,getDoc,serverTimestamp}=fb.fsMod;
+    const ref=doc(db,"sitesUnified",docId);
+    let current=[];
+    try{
+      const snap=await getDoc(ref);
+      const data=snap.exists() ? (snap.data() || {}) : {};
+      current=Array.isArray(data[field]) ? data[field].slice() : [];
+    }catch(e){
+      current=Array.isArray(site?.firebaseData?.[field]) ? site.firebaseData[field].slice() : [];
+    }
+    const next=current.filter(item=>safe(item && item._id)!==cleanId);
+    await setDoc(ref,{[field]:next,updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()},{merge:true});
+    if(site){
+      site.firebaseData=site.firebaseData || {};
+      site.firebaseData[field]=next;
+    }
+    return true;
+  }catch(e){
+    console.warn("Smazání vložené položky selhalo",field,e);
+    return false;
+  }
+}
+
 async function appendEmbeddedSiteItem(field,item,site=selectedSite){
   const docId=selectedSiteDocId(site);
   if(!docId || !firebaseReady || !db) return false;
@@ -5132,6 +5200,83 @@ function blobToDataUrl(blob){
   });
 }
 
+function fileBaseName(name){
+  return safe(name || "fotografie").replace(/\.[^.]+$/,"") || "fotografie";
+}
+
+function photoFileName(item,idx=0){
+  const base=fileBaseName(item?.fileName || item?.originalFileName || `fotografie-${idx+1}`)
+    .replace(/[^\p{L}\p{N}_-]+/gu,"_")
+    .replace(/^_+|_+$/g,"")
+    .slice(0,70) || `fotografie-${idx+1}`;
+  return `${base}.jpg`;
+}
+
+function photoDisplayUrl(item){
+  return safe(item && (item.url || item.fullUrl || item.downloadUrl));
+}
+
+function photoThumbUrl(item){
+  return safe(item && (item.thumbUrl || item.previewUrl || item.thumbnailUrl)) || photoDisplayUrl(item);
+}
+
+function bytesLabel(bytes){
+  const n=Number(bytes || 0);
+  if(!Number.isFinite(n) || n<=0) return "";
+  if(n<1024) return `${Math.round(n)} B`;
+  if(n<1024*1024) return `${Math.round(n/1024)} kB`;
+  return `${(n/1024/1024).toFixed(1).replace(".",",")} MB`;
+}
+
+function canDeleteSitePhoto(item){
+  const uploadedBy=safe(item && item.uploadedBy).toLowerCase();
+  const email=currentUserEmail();
+  return isAppAdmin() || (!!uploadedBy && uploadedBy===email);
+}
+
+async function optimizedPhotoBlob(file,steps){
+  let last=null;
+  for(const step of steps){
+    last=await imageFileToJpegBlob(file,step.maxSide,step.quality);
+    if(!step.maxBytes || last.size<=step.maxBytes) return last;
+  }
+  return last;
+}
+
+async function uploadPhotoBlobsToStorage(photoId,file,displayBlob,thumbBlob,site=selectedSite){
+  if(!storage || !fb.storageMod) throw new Error("Firebase Storage není připravené.");
+  const docId=selectedSiteDocId(site) || detailKey(site) || site?.id || "bez-bodu";
+  const base=`sitePhotos/${storageSafeSegment(docId)}/${storageSafeSegment(photoId)}`;
+  const displayPath=`${base}/photo.jpg`;
+  const thumbPath=`${base}/thumb.jpg`;
+  const {ref,uploadBytes,getDownloadURL}=fb.storageMod;
+  const displayRef=ref(storage,displayPath);
+  const thumbRef=ref(storage,thumbPath);
+  const metadata={
+    contentType:"image/jpeg",
+    customMetadata:{
+      siteDocId:safe(selectedSiteDocId(site)),
+      originalName:safe(file?.name),
+      uploadedBy:currentUserEmail()
+    }
+  };
+  await uploadBytes(displayRef,displayBlob,metadata);
+  await uploadBytes(thumbRef,thumbBlob,{...metadata,customMetadata:{...metadata.customMetadata,kind:"thumb"}});
+  const [url,thumbUrl]=await Promise.all([getDownloadURL(displayRef),getDownloadURL(thumbRef)]);
+  return {url,thumbUrl,storagePath:displayPath,thumbStoragePath:thumbPath};
+}
+
+async function deleteStorageObject(path){
+  const cleanPath=safe(path);
+  if(!cleanPath || !storage || !fb.storageMod) return;
+  try{
+    const {ref,deleteObject}=fb.storageMod;
+    await deleteObject(ref(storage,cleanPath));
+  }catch(e){
+    console.warn("Fotku ze Storage se nepodařilo smazat",cleanPath,e);
+  }
+}
+
 let sitePhotoPreviewUrls=[];
 let sitePhotoItems=[];
 let sitePhotoIndex=0;
@@ -5173,18 +5318,28 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   }
   sitePhotoIndex=Math.max(0,Math.min(sitePhotoIndex,sitePhotoItems.length-1));
   const item=sitePhotoItems[sitePhotoIndex];
+  const mainUrl=photoDisplayUrl(item);
+  const thumbCount=sitePhotoItems.length;
+  const meta=[item.storageMode==="storage" ? "uloženo ve Storage" : "vložená zmenšená fotka", bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
+  const downloadName=photoFileName(item,sitePhotoIndex);
+  const deleteAllowed=canDeleteSitePhoto(item);
   list.innerHTML=`
     <div class="site-photo-viewer">
-      <a class="site-photo-main" href="${esc(item.url)}" target="_blank">
-        <img src="${esc(item.url)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
+      <a class="site-photo-main" href="${esc(mainUrl)}" target="_blank">
+        <img src="${esc(mainUrl)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
       </a>
+      <div class="site-photo-actions">
+        <a href="${esc(mainUrl)}" target="_blank" download="${esc(downloadName)}">Stáhnout fotku</a>
+        <button class="danger" type="button" id="deleteSitePhotoBtn" ${deleteAllowed ? "" : "disabled"}>Smazat fotku</button>
+      </div>
+      ${meta ? `<div class="site-photo-meta">${esc(meta)}</div>` : ""}
       <div class="site-photo-nav">
-        <button class="secondary" type="button" id="sitePhotoPrevBtn" ${sitePhotoItems.length<=1 ? "disabled" : ""}>Předchozí</button>
-        <span>${sitePhotoIndex+1} / ${sitePhotoItems.length}</span>
-        <button class="secondary" type="button" id="sitePhotoNextBtn" ${sitePhotoItems.length<=1 ? "disabled" : ""}>Další</button>
+        <button class="secondary" type="button" id="sitePhotoPrevBtn" ${thumbCount<=1 ? "disabled" : ""}>Předchozí</button>
+        <span>${sitePhotoIndex+1} / ${thumbCount}</span>
+        <button class="secondary" type="button" id="sitePhotoNextBtn" ${thumbCount<=1 ? "disabled" : ""}>Další</button>
       </div>
       <div class="site-photo-thumbs">
-        ${sitePhotoItems.map((photo,idx)=>`<button class="site-photo-thumb ${idx===sitePhotoIndex ? "active" : ""}" type="button" data-photo-idx="${idx}"><img src="${esc(photo.url)}" alt="Náhled ${idx+1}"></button>`).join("")}
+        ${sitePhotoItems.map((photo,idx)=>`<button class="site-photo-thumb ${idx===sitePhotoIndex ? "active" : ""}" type="button" data-photo-idx="${idx}"><img src="${esc(photoThumbUrl(photo))}" alt="Náhled ${idx+1}"></button>`).join("")}
       </div>
     </div>`;
   const prev=document.getElementById("sitePhotoPrevBtn");
@@ -5197,6 +5352,8 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
       renderSitePhotos(sitePhotoItems,true);
     });
   });
+  const del=document.getElementById("deleteSitePhotoBtn");
+  if(del) del.onclick=deleteCurrentSitePhoto;
 }
 
 async function loadSitePhotos(site=selectedSite){
@@ -5215,12 +5372,10 @@ async function loadSitePhotos(site=selectedSite){
     return;
   }
   try{
-    await refreshSiteDataFromFirebase(site);
-    const {collection,query,where,getDocs,doc,getDoc}=fb.fsMod;
-    const keys=sitePhotoKeys(site);
+    const {doc,getDoc}=fb.fsMod;
     const items=[];
     const addPhoto=item=>{
-      if(!item || !safe(item.url)) return;
+      if(!item || !photoDisplayUrl(item)) return;
       const id=String(item._id || "");
       if(id && items.some(photo=>String(photo._id || "")===id)) return;
       items.push(item);
@@ -5246,43 +5401,10 @@ async function loadSitePhotos(site=selectedSite){
       const id=safe(refItem && refItem._id);
       if(!id || items.some(photo=>String(photo._id || "")===id)) continue;
       try{
-        const snap=await getDoc(doc(db,"sitePhotos",id));
+        const snap=await getDoc(doc(db,"sitesUnified",selectedSiteDocId(site),"photos",id));
         if(snap.exists()) addPhoto({...snap.data(),_id:snap.id});
-        else addPhoto({...refItem,_id:id});
       }catch(e){
         console.warn("Přímé načtení fotografie selhalo",id,e);
-        addPhoto({...refItem,_id:id});
-      }
-    }
-    for(const key of keys){
-      for(const field of ["siteId","siteKey"]){
-        try{
-          const q=query(collection(db,"sitePhotos"),where(field,"==",key));
-          const snap=await getDocs(q);
-          snap.forEach(docSnap=>{
-            addPhoto({...docSnap.data(),_id:docSnap.id});
-          });
-        }catch(e){
-          console.warn("Fotografie dotaz selhal",field,e);
-        }
-      }
-      try{
-        const q=query(collection(db,"sitePhotos"),where("firebaseDocId","==",key));
-        const snap=await getDocs(q);
-        snap.forEach(docSnap=>{
-          addPhoto({...docSnap.data(),_id:docSnap.id});
-        });
-      }catch(e){
-        console.warn("Fotografie podle firebaseDocId nejde načíst",e);
-      }
-      try{
-        const q=query(collection(db,"sitePhotos"),where("siteKeys","array-contains",key));
-        const snap=await getDocs(q);
-        snap.forEach(docSnap=>{
-          addPhoto({...docSnap.data(),_id:docSnap.id});
-        });
-      }catch(e){
-        console.warn("Fotografie podle siteKeys nejde načíst",e);
       }
     }
     items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
@@ -5290,6 +5412,42 @@ async function loadSitePhotos(site=selectedSite){
     st.textContent=items.length ? `Načteno fotografií: ${items.length}.` : "";
   }catch(e){
     st.textContent="Chyba načtení fotografií: "+e.message;
+  }
+}
+
+async function deleteCurrentSitePhoto(){
+  const st=document.getElementById("sitePhotosStatus");
+  const item=sitePhotoItems[sitePhotoIndex];
+  if(!item || !safe(item._id)){
+    if(st) st.textContent="Není vybraná fotografie ke smazání.";
+    return;
+  }
+  if(!canDeleteSitePhoto(item)){
+    if(st) st.textContent="Tuhle fotografii může smazat správce nebo ten, kdo ji nahrál.";
+    return;
+  }
+  if(!confirm("Opravdu smazat tuto fotografii?")) return;
+  try{
+    if(st) st.textContent="Mažu fotografii...";
+    const id=safe(item._id);
+    await deleteSiteChildItem("photos",id,selectedSite);
+    await removeEmbeddedSiteItem("sitePhotosEmbedded",id,selectedSite);
+    await removeEmbeddedSiteItem("sitePhotoRefs",id,selectedSite);
+    removeSiteLocalItem("sitePhotos",id,selectedSite);
+    try{
+      const {doc,deleteDoc}=fb.fsMod;
+      await deleteDoc(doc(db,"sitePhotos",id));
+    }catch(e){
+      console.warn("Samostatná starší kopie fotografie se nepodařila smazat",e);
+    }
+    await Promise.all([deleteStorageObject(item.storagePath),deleteStorageObject(item.thumbStoragePath)]);
+    sitePhotoItems=sitePhotoItems.filter(photo=>safe(photo && photo._id)!==id);
+    if(sitePhotoIndex>=sitePhotoItems.length) sitePhotoIndex=Math.max(0,sitePhotoItems.length-1);
+    renderSitePhotos(sitePhotoItems,true);
+    if(st) st.textContent="Fotografie smazána.";
+    showSaveConfirmation("Fotografie smazána.");
+  }catch(e){
+    if(st) st.textContent="Chyba mazání fotografie: "+e.message;
   }
 }
 
@@ -5312,20 +5470,46 @@ async function uploadSitePhotos(){
 
     for(let i=0;i<files.length;i++){
       const file=files[i];
-      st.textContent=`Zmenšuji a ukládám fotografii ${i+1}/${files.length}...`;
+      st.textContent=`Připravuji fotografii ${i+1}/${files.length}...`;
       const photoRef=doc(collection(db,"sitePhotos"));
-      let photoBlob=await imageFileToJpegBlob(file,640,.55);
-      let url=await blobToDataUrl(photoBlob);
-      if(url.length>850000){
-        photoBlob=await imageFileToJpegBlob(file,480,.48);
-        url=await blobToDataUrl(photoBlob);
+      const displayBlob=await optimizedPhotoBlob(file,[
+        {maxSide:1800,quality:.78,maxBytes:1900000},
+        {maxSide:1500,quality:.74,maxBytes:1500000},
+        {maxSide:1280,quality:.7,maxBytes:1200000}
+      ]);
+      const thumbBlob=await optimizedPhotoBlob(file,[
+        {maxSide:360,quality:.58,maxBytes:90000},
+        {maxSide:260,quality:.5,maxBytes:60000}
+      ]);
+
+      let storageResult=null;
+      try{
+        st.textContent=`Nahrávám fotografii ${i+1}/${files.length}...`;
+        storageResult=await uploadPhotoBlobsToStorage(photoRef.id,file,displayBlob,thumbBlob,selectedSite);
+      }catch(storageErr){
+        console.warn("Storage upload selhal, používám nouzovou vloženou fotku",storageErr);
       }
-      if(url.length>850000){
-        photoBlob=await imageFileToJpegBlob(file,360,.42);
-        url=await blobToDataUrl(photoBlob);
-      }
-      if(url.length>850000){
-        throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
+
+      let url=storageResult?.url || "";
+      let thumbUrl=storageResult?.thumbUrl || "";
+      let storageMode="storage";
+      if(!url){
+        st.textContent=`Ukládám zmenšenou fotografii ${i+1}/${files.length}...`;
+        storageMode="embeddedFallback";
+        let fallbackBlob=await optimizedPhotoBlob(file,[
+          {maxSide:960,quality:.66,maxBytes:650000},
+          {maxSide:760,quality:.6,maxBytes:520000},
+          {maxSide:620,quality:.56,maxBytes:420000}
+        ]);
+        url=await blobToDataUrl(fallbackBlob);
+        if(url.length>850000){
+          fallbackBlob=await imageFileToJpegBlob(file,520,.52);
+          url=await blobToDataUrl(fallbackBlob);
+        }
+        thumbUrl=await blobToDataUrl(thumbBlob);
+        if(url.length>850000){
+          throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
+        }
       }
 
       const photoPayload={
@@ -5336,13 +5520,17 @@ async function uploadSitePhotos(){
         firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
         siteName:selectedSite.adresa || "",
         url,
-        storagePath:"",
-        storageMode:"siteEmbedded",
+        thumbUrl,
+        storagePath:storageResult?.storagePath || "",
+        thumbStoragePath:storageResult?.thumbStoragePath || "",
+        storageMode,
+        size:displayBlob.size,
+        thumbSize:thumbBlob.size,
         fileName:file.name || "",
         uploadedBy:signedUser.email || "",
         createdAt:new Date().toISOString()
       };
-      appendSiteLocalArray("sitePhotos",photoPayload,selectedSite,30);
+      appendSiteLocalArray("sitePhotos",photoPayload,selectedSite,60);
       renderSitePhotos([photoPayload,...sitePhotoItems.filter(photo=>safe(photo._id)!==photoPayload._id)]);
       const childOk=await saveSiteChildItem("photos",photoRef.id,photoPayload,selectedSite);
       const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("sitePhotosEmbedded",photoPayload,selectedSite);
@@ -5352,6 +5540,8 @@ async function uploadSitePhotos(){
         siteKey,
         siteKeys:keys,
         firebaseDocId:photoPayload.firebaseDocId,
+        url:photoPayload.storageMode==="storage" ? photoPayload.url : "",
+        thumbUrl:photoPayload.storageMode==="storage" ? photoPayload.thumbUrl : "",
         createdAt:photoPayload.createdAt
       },selectedSite);
       if(!embeddedOk) throw new Error("Fotografii se nepodařilo uložit k bodu.");
