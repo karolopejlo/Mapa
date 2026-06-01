@@ -1540,12 +1540,18 @@ Cena FZ: ..."></textarea>
       firebase.initializeApp(firebaseConfig);
     }
     const auth=firebase.auth();
-    try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{}); }catch(e){}
+    try{
+      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .catch(()=>auth.setPersistence(firebase.auth.Auth.Persistence.SESSION))
+        .catch(()=>{});
+    }catch(e){}
     return auth;
   }
 
   function googleProvider(){
     const p=new firebase.auth.GoogleAuthProvider();
+    p.addScope("email");
+    p.addScope("profile");
     p.setCustomParameters({
       prompt:"select_account",
       hd:"astip.cz"
@@ -1561,7 +1567,17 @@ Cena FZ: ..."></textarea>
   window.loginPopup = async function(){
     const auth=initAuth();
     if(!auth) return;
-    try{ await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
+    try{
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    }catch(e){
+      try{ await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }catch(err){}
+    }
+    try{
+      const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
+      if(activeEmail && !isAllowedLoginEmail(activeEmail)){
+        await auth.signOut();
+      }
+    }catch(e){}
 
     const isMobileOrTablet =
       /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
@@ -1698,7 +1714,12 @@ if(firebaseReady){
   fb={appMod,authMod,fsMod};
   app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
-  try{ await authMod.setPersistence(auth, authMod.browserLocalPersistence); }catch(e){ console.warn("Firebase persistence nejde nastavit",e); }
+  try{
+    await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+  }catch(e){
+    try{ await authMod.setPersistence(auth, authMod.browserSessionPersistence); }
+    catch(err){ console.warn("Firebase persistence nejde nastavit",err); }
+  }
   db=fsMod.getFirestore(app);
   window.fb=fb;
   window.db=db;
@@ -1728,6 +1749,12 @@ if(firebaseReady){
       const topLogoutBtn=document.getElementById("topLogoutBtn");
       if(topLogoutBtn) topLogoutBtn.style.display="block";
       showApp();
+      setTimeout(()=>{
+        try{
+          if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function") window.loadFirebaseSitesUnified();
+          if(firebaseUnifiedPrimary && typeof scheduleFirebaseRowsAutoReload==="function") scheduleFirebaseRowsAutoReload(9000);
+        }catch(e){}
+      },350);
       if(selectedSite){
         setTimeout(()=>{
           try{ loadHistory(selectedSite.id); }catch(e){}
@@ -1737,11 +1764,7 @@ if(firebaseReady){
     }
     else {
       setTimeout(()=>{
-        let compatUser=window.__authReadyUser || null;
-        try{
-          const fbUser=window.firebase && firebase.auth ? firebase.auth().currentUser : null;
-          if(fbUser) compatUser=fbUser;
-        }catch(e){}
+        let compatUser=syncCurrentUserFromCompat() || window.__authReadyUser || null;
         if(compatUser){
           currentUser=compatUser;
           window.currentUser=compatUser;
@@ -1804,8 +1827,26 @@ const APP_ALLOWED_EMAILS = [
   "iva.glozova@astip.cz"
 ];
 window.appRegionOptions = () => APP_REGION_OPTIONS.slice();
+function compatAuthCurrentUser(){
+  try{
+    if(window.firebase && firebase.auth){
+      return firebase.auth().currentUser || null;
+    }
+  }catch(e){}
+  return null;
+}
+function syncCurrentUserFromCompat(){
+  const u=compatAuthCurrentUser();
+  if(u){
+    currentUser=u;
+    window.currentUser=u;
+    window.__authReadyUser=u;
+  }
+  return u;
+}
 function currentUserEmail(){
-  return safe((currentUser && currentUser.email) || (window.currentUser && window.currentUser.email)).toLowerCase();
+  const u=currentUser || window.currentUser || window.__authReadyUser || syncCurrentUserFromCompat();
+  return safe(u && u.email).toLowerCase();
 }
 function isAllowedLoginEmail(email){
   const e=safe(email).toLowerCase();
@@ -1817,7 +1858,8 @@ function isAppAdmin(){
 }
 function waitForFirebaseUser(timeoutMs=8000){
   if(!firebaseReady || !auth) return Promise.resolve(currentUser || window.currentUser || null);
-  if(currentUser || window.currentUser || window.__authReadyUser) return Promise.resolve(currentUser || window.currentUser || window.__authReadyUser);
+  const existing=currentUser || window.currentUser || window.__authReadyUser || syncCurrentUserFromCompat();
+  if(existing) return Promise.resolve(existing);
   return new Promise(resolve=>{
     let done=false;
     let unsub=null;
@@ -1825,19 +1867,19 @@ function waitForFirebaseUser(timeoutMs=8000){
       if(done) return;
       done=true;
       if(unsub) try{unsub();}catch(e){}
-      currentUser=user || currentUser || window.currentUser || window.__authReadyUser || null;
+      currentUser=user || syncCurrentUserFromCompat() || currentUser || window.currentUser || window.__authReadyUser || null;
       window.currentUser=currentUser;
       resolve(currentUser);
     };
-    const timer=setTimeout(()=>finish(currentUser || window.currentUser || null),timeoutMs);
+    const timer=setTimeout(()=>finish(syncCurrentUserFromCompat() || currentUser || window.currentUser || null),timeoutMs);
     try{
       unsub=fb.authMod.onAuthStateChanged(auth,user=>{
         clearTimeout(timer);
-        finish(user);
+        finish(user || syncCurrentUserFromCompat());
       });
     }catch(e){
       clearTimeout(timer);
-      finish(currentUser || window.currentUser || null);
+      finish(syncCurrentUserFromCompat() || currentUser || window.currentUser || null);
     }
   });
 }
@@ -2945,6 +2987,7 @@ window.openDetailById=function(id){
 function render(){
   syncRowIndexes();
   window.rows=rows;
+  if(rows.length) resetFirebaseRowsAutoReload();
   layer.clearLayers();
   const vis=filtered(), gps=vis.filter(inCzSk);
   gps.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.92})
@@ -2964,6 +3007,54 @@ function render(){
     box.innerHTML="";
   }
 }
+const FIREBASE_EMPTY_RELOAD_KEY="astipFirebaseEmptyReloadCount";
+let firebaseRowsAutoReloadTimer=null;
+function hasLoadedRows(){
+  return Array.isArray(rows) && rows.length>0;
+}
+function resetFirebaseRowsAutoReload(){
+  try{sessionStorage.removeItem(FIREBASE_EMPTY_RELOAD_KEY);}catch(e){}
+}
+function firebaseAutoReloadCount(){
+  try{return Number(sessionStorage.getItem(FIREBASE_EMPTY_RELOAD_KEY) || "0") || 0;}catch(e){return 0;}
+}
+function setFirebaseAutoReloadCount(count){
+  try{sessionStorage.setItem(FIREBASE_EMPTY_RELOAD_KEY,String(count));}catch(e){}
+}
+async function scheduleFirebaseRowsAutoReload(delay=9000){
+  clearTimeout(firebaseRowsAutoReloadTimer);
+  firebaseRowsAutoReloadTimer=setTimeout(async()=>{
+    if(!firebaseReady || !firebaseUnifiedPrimary) return;
+    if(hasLoadedRows()){
+      resetFirebaseRowsAutoReload();
+      return;
+    }
+    const signedUser=await waitForFirebaseUser(2500);
+    if(!signedUser) return;
+    if(typeof window.loadFirebaseSitesUnified==="function"){
+      try{await window.loadFirebaseSitesUnified();}catch(e){console.warn("Opakované načtení Firebase selhalo",e);}
+    }
+    if(hasLoadedRows()){
+      resetFirebaseRowsAutoReload();
+      return;
+    }
+    const nextCount=firebaseAutoReloadCount()+1;
+    if(nextCount<=8){
+      setFirebaseAutoReloadCount(nextCount);
+      const p=document.getElementById("progress");
+      if(p) p.textContent=`Body se nenačetly, obnovuji stránku (${nextCount}/8)...`;
+      setTimeout(()=>location.reload(),600);
+    }else{
+      const gps=document.getElementById("gpsBox");
+      if(gps){
+        gps.style.display="block";
+        gps.className="notice err";
+        gps.textContent="Body se ani po opakovaném obnovení nenačetly. Zkontroluj přihlášení přes účet @astip.cz nebo oprávnění Firebase.";
+      }
+    }
+  },delay);
+}
+window.scheduleFirebaseRowsAutoReload=scheduleFirebaseRowsAutoReload;
 function filters(){
   const st=document.getElementById("statusFilter"), kr=document.getElementById("regionFilter");
   const currentStatus=st.value;
@@ -5189,7 +5280,7 @@ async function uploadPhotoToCloudinary(photoId,file,site=selectedSite){
   const form=new FormData();
   form.append("file",file,photoFileName({fileName:file?.name},0));
   form.append("upload_preset",CLOUDINARY_PHOTOS.uploadPreset);
-  form.append("return_delete_token","true");
+  if(CLOUDINARY_PHOTOS.folder) form.append("folder",CLOUDINARY_PHOTOS.folder);
 
   const response=await fetch(endpoint,{method:"POST",body:form});
   const data=await response.json().catch(()=>({}));
@@ -5207,7 +5298,7 @@ async function uploadPhotoToCloudinary(photoId,file,site=selectedSite){
     cloudinaryPublicId:data.public_id || "",
     cloudinaryAssetId:data.asset_id || "",
     cloudinaryVersion:data.version || "",
-    cloudinaryDeleteToken:data.delete_token || ""
+    cloudinaryDeleteToken:""
   };
 }
 
@@ -5364,8 +5455,8 @@ async function deleteCurrentSitePhoto(){
     sitePhotoItems=sitePhotoItems.filter(photo=>safe(photo && photo._id)!==id);
     if(sitePhotoIndex>=sitePhotoItems.length) sitePhotoIndex=Math.max(0,sitePhotoItems.length-1);
     renderSitePhotos(sitePhotoItems,true);
-    if(st) st.textContent="Fotografie smazána.";
-    showSaveConfirmation("Fotografie smazána.");
+    if(st) st.textContent="Fotografie smazána z bodu.";
+    showSaveConfirmation("Fotografie smazána z bodu.");
   }catch(e){
     if(st) st.textContent="Chyba mazání fotografie: "+e.message;
   }
@@ -5814,6 +5905,7 @@ function scheduleFirebaseUnifiedPrimaryLoad(delay=0){
   setTimeout(async()=>{
     const loaded=await refreshFirebaseUnifiedPrimary();
     if(!loaded) setTimeout(refreshFirebaseUnifiedPrimary,1200);
+    if(firebaseUnifiedPrimary && typeof scheduleFirebaseRowsAutoReload==="function") scheduleFirebaseRowsAutoReload(12000);
   },delay);
 }
 let csvLoadPromise=null;
@@ -6889,10 +6981,14 @@ setTimeout(()=>{
   }
   function waitCompatUser(timeoutMs=8000){
     const compat=ensureCompatFirebase();
-    if(!compat || !compat.auth) return Promise.resolve(null);
+    if(!compat || !compat.auth) return Promise.resolve(window.__authReadyUser || window.currentUser || null);
     const auth=compat.auth();
-    try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{}); }catch(e){}
-    if(auth.currentUser) return Promise.resolve(auth.currentUser);
+    try{
+      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+        .catch(()=>auth.setPersistence(firebase.auth.Auth.Persistence.SESSION))
+        .catch(()=>{});
+    }catch(e){}
+    if(auth.currentUser || window.__authReadyUser || window.currentUser) return Promise.resolve(auth.currentUser || window.__authReadyUser || window.currentUser);
     return new Promise(resolve=>{
       let done=false;
       let unsub=null;
@@ -6906,7 +7002,7 @@ setTimeout(()=>{
         }
         resolve(u || null);
       };
-      const timer=setTimeout(()=>finish(auth.currentUser || null),timeoutMs);
+      const timer=setTimeout(()=>finish(auth.currentUser || window.__authReadyUser || window.currentUser || null),timeoutMs);
       try{
         unsub=auth.onAuthStateChanged(u=>{
           if(!u) return;
@@ -6915,7 +7011,7 @@ setTimeout(()=>{
         });
       }catch(e){
         clearTimeout(timer);
-        finish(auth.currentUser || null);
+        finish(auth.currentUser || window.__authReadyUser || window.currentUser || null);
       }
     });
   }
@@ -7254,6 +7350,11 @@ setTimeout(()=>{
       const loadedRows=window.setFirebaseSiteRows(firebaseRows, openDocId);
       window.__firebaseUnifiedRowsLoaded=true;
       window.__firebaseUnifiedRowsCount=loadedRows.length;
+      if(loadedRows.length){
+        try{sessionStorage.removeItem("astipFirebaseEmptyReloadCount");}catch(e){}
+      }else if(typeof window.scheduleFirebaseRowsAutoReload==="function"){
+        window.scheduleFirebaseRowsAutoReload(7000);
+      }
       sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.`);
       return loadedRows;
     }catch(e){
