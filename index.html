@@ -1515,10 +1515,20 @@ Cena FZ: ..."></textarea>
     measurementId: "G-EL8BSFYFDN"
   };
   window.__firebaseConfig = firebaseConfig;
+  const HOSTED_APP_URL = "https://karolopejlo.github.io/Mapa/";
+
+  function isLocalFileApp(){
+    return window.location.protocol === "file:";
+  }
 
   function status(msg){
     const el=document.getElementById("startupStatus");
     if(el) el.textContent=msg;
+  }
+
+  function openHostedApp(){
+    status("Lokální soubor neumí Firebase přihlášení. Otevírám webovou verzi...");
+    window.location.href = HOSTED_APP_URL;
   }
 
   function showAppHard(){
@@ -1565,6 +1575,10 @@ Cena FZ: ..."></textarea>
   }
 
   window.loginPopup = async function(){
+    if(isLocalFileApp()){
+      openHostedApp();
+      return;
+    }
     const auth=initAuth();
     if(!auth) return;
     try{
@@ -1613,7 +1627,7 @@ Cena FZ: ..."></textarea>
   }
 
   function bindLoginButtons(){
-    const handler=window.startGoogleLogin || window.loginPopup;
+    const handler=isLocalFileApp() ? openHostedApp : (window.startGoogleLogin || window.loginPopup);
     const startup=document.getElementById("startupLoginBtn");
     const login=document.getElementById("loginBtn");
     const logout=document.getElementById("logoutBtn");
@@ -1631,6 +1645,11 @@ Cena FZ: ..."></textarea>
   window.addEventListener("load", bindLoginButtons);
 
   window.addEventListener("load", async function(){
+    if(isLocalFileApp()){
+      status("Přihlášení přes otevřený soubor nejde. Přesměrovávám na webovou verzi...");
+      setTimeout(openHostedApp,1200);
+      return;
+    }
     const auth=initAuth();
     if(!auth) return;
 
