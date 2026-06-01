@@ -1668,12 +1668,18 @@ window.__firebaseConfig = firebaseConfig;
 
 const CSV_FILE="data.csv";
 const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
+const CLOUDINARY_PHOTOS = {
+  cloudName:"dnxjc6ixi",
+  uploadPreset:"astip_mapy",
+  folder:"astip-servis"
+};
 let app, auth, db, storage, fb={}, currentUser=null;
 let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, editCache={};
 let firebaseUnifiedPrimary = firebaseReady;
 window.firebaseReady = firebaseReady;
 window.firebaseUnifiedPrimary = firebaseUnifiedPrimary;
 window.__firebaseUnifiedPrimary = firebaseUnifiedPrimary;
+window.cloudinaryPhotoConfig = CLOUDINARY_PHOTOS;
 window.rows = rows;
 const ORIGINAL_PINK_PLACES = ["bedřichov 290, hotel", "benešov, máchova 400, nemocnice rudolfa a stefanie", "borek u rokycan, policie", "bratislava, františka kubu 2,3,5,6 -rinok rača", "bratislava, trnavská cesta 8a, 6b, 19123 - nová cvernovka", "bratislava, volvo, lamač-bory", "brno, hrázní 1", "brno, jakubská 126,11,  kostel sv jakuba", "brno, kabátníkova 2, bd", "brno, kotlářská 3, bd", "brno, metodějova 3120/6", "brno, oblá 79", "brno, rotalova 80,82,84, bd", "brno, sokolova 1e", "brno, spolková 8a", "brno, svážná 1", "brno, česká 11, škola charbulova", "bruntál, zahradní 48, strojmetal - pozor info ve složce", "choceň, běstovice, de heus", "chotěboř, severní 1911, bd", "dek trade", "dobřichovice, anežky české 1119", "frýdek místek, revoluční 1282, dps", "frýdek-místek, 17.listopadu 147", "havlíčkův brod, nuselská 3240, zš", "hradec králové, jana koziny 1237, biskupské gymnázium", "humpolec, okružní 1296, cobap", "jablonec nad nisou, v. nezvala 87/14, dps", "karviná, lázeňská, darkov", "klatovy, podhůrecká 815/3, dps", "kralupy nad vltavou, palackého nám. 1, mú", "kroměříž, erbenovo nábř. 4262", "kyjov, strážovská, centrumpro seniory", "kyjovice, domov na zámku", "luhačovice, zatloukalova 1144", "milovice, armádní 882,883", "milovice, dětské centrum, dětská 361", "mnichovice, bezručova 346, zš", "neslovice, lesní 368, bd", "nupaky, komerční 528, auto opat", "nymburk, soudní, penzion panorama", "olomouc, eduarda hamburgera 9, 11", "olomouc, loudova 7 + 11, 15", "olomouc, tř. j. pelikána 5,7,9,11,13", "opatovice nad labem, siko koupelny", "opava, císařského pluku 3078/1", "opava, nákladní 2", "opava, olomoucká 88, psychiatrická léčebna", "opava, rolnická 24", "osoblaha, klášterní 34 - dps", "ostrava, 28. října, red house", "pacov, malovcova 1080", "pec pod sněžkou, velká úpa 360, bd", "pelhřimov, habrová 2523 + 2524, bd", "pelhřimov, habrová 2525, 2526, bd", "plesná, spojovací 80, kodus, okres cheb", "plzeň, nemocniční 6 a stehlíkova 5,7,9", "plzeň, průmyslová 2a, škoda electric", "plzeň, rybářská 26, bd", "poprad, slovenského odboja, karpatská rezidence", "poříčí nad sázavou, parc. č. 190-71, hala h1 + h2", "praha 10, bd u hranic", "praha 10, ramonova 3466, bd hagibor", "praha, budínova 2, protialkoholní záchytka, bulovka", "praha, choceradská 2, bd", "praha, dobratická 525, zš tupolevova", "praha, dopraváků 749/3, stiebel eltron", "praha, hloubětín 837-2, bd, kbelská 1152", "praha, holečkova 13, hotel", "praha, horolezecká 1a", "praha, hradešínská 52, bd", "praha, ke kříži 1653-8 -vivus 4. etapa", "praha, ke kříži 1672, vivus -5. etapa", "praha, konviktská 14, cloister inn", "praha, koubkova 12", "praha, libocká 643, domov sv. rodiny", "praha, lucemburská 9, ubytovna", "praha, maltézské náměstí 8, bd s ubytovnou", "praha, na bělidle 23", "praha, na chvalské tvrzi", "praha, na poříčí, mb 48 - opletal", "praha, na vackově -os vackov", "praha, nad kazankou 19", "praha, novovysočanská 8, dps", "praha, opletalova 40, hotel gold bank", "praha, oty bubeníčka 1654-4, vivus 4. etapa", "praha, parmská 390, dps", "praha, plzeňská 56, hotel", "praha, polyfunkční objekt dlouhá", "praha, sazovická 508", "praha, spálená 12, městská poliklinika", "praha, starokošířská 13, bd", "praha, v podhájí 20, bd braník residences", "praha, vivus uhřiněves ke kříži -1636, oty bubeníčka -1637, 1638, 1639", "praha, vladivostocká 1530/12, slavia hotel", "praha, řešovská 852-10, bohnice -rezidence jasmín", "prostějov, průmyslová 20", "slatinice, ld balnea", "slavkov u brna, slovanská 758, destila", "slušovice, dostihová 725, kodus", "sobotka, libošovice 39, charita", "sokolovská uhelná, vintířov, vřesová, suas zpracování odpadů", "střelice, tetčická 31169", "teplice, nám. svobody 3316, oc teplice", "trnava, včelárska 2", "uherský brod, vlčnovská 2512, sklad ptáček", "vamberk, smetanovo nábřeží 334, vaspo", "vejprty, nerudova1221_14, dzr krakonoš", "velké meziříčí, u světlé 9, dps", "vrchlabí - herlíkovice, horská 547, apartmány mlýn herlíkovice", "vrchlabí, horská 179", "český těšín, střelniční 257/3, gerontocentrum", "čimelice, siko koupelny"];
 
@@ -5213,7 +5219,11 @@ function photoFileName(item,idx=0){
 }
 
 function photoDisplayUrl(item){
-  return safe(item && (item.url || item.fullUrl || item.downloadUrl));
+  return safe(item && (item.displayUrl || item.url || item.fullUrl || item.downloadUrl));
+}
+
+function photoFullUrl(item){
+  return safe(item && (item.fullUrl || item.originalUrl || item.downloadUrl || item.url || item.displayUrl));
 }
 
 function photoThumbUrl(item){
@@ -5241,6 +5251,43 @@ async function optimizedPhotoBlob(file,steps){
     if(!step.maxBytes || last.size<=step.maxBytes) return last;
   }
   return last;
+}
+
+function cloudinaryTransformUrl(url,transformation){
+  const s=safe(url);
+  const t=safe(transformation);
+  if(!s || !t || !s.includes("/image/upload/")) return s;
+  return s.replace("/image/upload/",`/image/upload/${t}/`);
+}
+
+async function uploadPhotoBlobToCloudinary(photoId,file,displayBlob,site=selectedSite){
+  if(!CLOUDINARY_PHOTOS.cloudName || !CLOUDINARY_PHOTOS.uploadPreset){
+    throw new Error("Cloudinary není nastavené.");
+  }
+  const endpoint=`https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_PHOTOS.cloudName)}/image/upload`;
+  const form=new FormData();
+  form.append("file",displayBlob,photoFileName({fileName:file?.name},0));
+  form.append("upload_preset",CLOUDINARY_PHOTOS.uploadPreset);
+  form.append("return_delete_token","true");
+
+  const response=await fetch(endpoint,{method:"POST",body:form});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok || !data.secure_url){
+    const msg=data?.error?.message || `Cloudinary upload selhal (${response.status}).`;
+    throw new Error(msg);
+  }
+  const fullUrl=data.secure_url;
+  return {
+    url:cloudinaryTransformUrl(fullUrl,"f_auto,q_auto,w_1600,c_limit"),
+    displayUrl:cloudinaryTransformUrl(fullUrl,"f_auto,q_auto,w_1600,c_limit"),
+    thumbUrl:cloudinaryTransformUrl(fullUrl,"f_auto,q_auto,w_360,c_limit"),
+    fullUrl,
+    storagePath:"",
+    cloudinaryPublicId:data.public_id || "",
+    cloudinaryAssetId:data.asset_id || "",
+    cloudinaryVersion:data.version || "",
+    cloudinaryDeleteToken:data.delete_token || ""
+  };
 }
 
 async function uploadPhotoBlobsToStorage(photoId,file,displayBlob,thumbBlob,site=selectedSite){
@@ -5277,9 +5324,25 @@ async function deleteStorageObject(path){
   }
 }
 
+async function deleteCloudinaryUpload(item){
+  const token=safe((item && item.cloudinaryDeleteToken) || sitePhotoDeleteTokens.get(safe(item && item._id)));
+  if(!token || !CLOUDINARY_PHOTOS.cloudName) return;
+  try{
+    const form=new FormData();
+    form.append("token",token);
+    await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_PHOTOS.cloudName)}/delete_by_token`,{
+      method:"POST",
+      body:form
+    });
+  }catch(e){
+    console.warn("Cloudinary fotku se nepodařilo smazat přes delete token",e);
+  }
+}
+
 let sitePhotoPreviewUrls=[];
 let sitePhotoItems=[];
 let sitePhotoIndex=0;
+let sitePhotoDeleteTokens=new Map();
 
 function resetSitePhotoInput(){
   const input=document.getElementById("sitePhotosInput");
@@ -5319,17 +5382,19 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   sitePhotoIndex=Math.max(0,Math.min(sitePhotoIndex,sitePhotoItems.length-1));
   const item=sitePhotoItems[sitePhotoIndex];
   const mainUrl=photoDisplayUrl(item);
+  const fullUrl=photoFullUrl(item);
   const thumbCount=sitePhotoItems.length;
-  const meta=[item.storageMode==="storage" ? "uloženo ve Storage" : "vložená zmenšená fotka", bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
+  const modeLabel=item.storageMode==="cloudinary" ? "Cloudinary" : (item.storageMode==="storage" ? "Firebase Storage" : "vložená zmenšená fotka");
+  const meta=[modeLabel, bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
   const downloadName=photoFileName(item,sitePhotoIndex);
   const deleteAllowed=canDeleteSitePhoto(item);
   list.innerHTML=`
     <div class="site-photo-viewer">
-      <a class="site-photo-main" href="${esc(mainUrl)}" target="_blank">
+      <a class="site-photo-main" href="${esc(fullUrl || mainUrl)}" target="_blank">
         <img src="${esc(mainUrl)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
       </a>
       <div class="site-photo-actions">
-        <a href="${esc(mainUrl)}" target="_blank" download="${esc(downloadName)}">Stáhnout fotku</a>
+        <a href="${esc(fullUrl || mainUrl)}" target="_blank" download="${esc(downloadName)}">Stáhnout fotku</a>
         <button class="danger" type="button" id="deleteSitePhotoBtn" ${deleteAllowed ? "" : "disabled"}>Smazat fotku</button>
       </div>
       ${meta ? `<div class="site-photo-meta">${esc(meta)}</div>` : ""}
@@ -5440,7 +5505,11 @@ async function deleteCurrentSitePhoto(){
     }catch(e){
       console.warn("Samostatná starší kopie fotografie se nepodařila smazat",e);
     }
-    await Promise.all([deleteStorageObject(item.storagePath),deleteStorageObject(item.thumbStoragePath)]);
+    await deleteCloudinaryUpload(item);
+    sitePhotoDeleteTokens.delete(id);
+    if(item.storageMode==="storage"){
+      await Promise.all([deleteStorageObject(item.storagePath),deleteStorageObject(item.thumbStoragePath)]);
+    }
     sitePhotoItems=sitePhotoItems.filter(photo=>safe(photo && photo._id)!==id);
     if(sitePhotoIndex>=sitePhotoItems.length) sitePhotoIndex=Math.max(0,sitePhotoItems.length-1);
     renderSitePhotos(sitePhotoItems,true);
@@ -5467,6 +5536,7 @@ async function uploadSitePhotos(){
     const keys=sitePhotoKeys(selectedSite);
     const siteKey=keys[0] || selectedSite.id || "bod";
     const siteId=selectedSite.id || siteKey;
+    const uploadedModes=[];
 
     for(let i=0;i<files.length;i++){
       const file=files[i];
@@ -5482,17 +5552,36 @@ async function uploadSitePhotos(){
         {maxSide:260,quality:.5,maxBytes:60000}
       ]);
 
+      let cloudinaryResult=null;
       let storageResult=null;
       try{
-        st.textContent=`Nahrávám fotografii ${i+1}/${files.length}...`;
-        storageResult=await uploadPhotoBlobsToStorage(photoRef.id,file,displayBlob,thumbBlob,selectedSite);
-      }catch(storageErr){
-        console.warn("Storage upload selhal, používám nouzovou vloženou fotku",storageErr);
+        st.textContent=`Nahrávám fotografii ${i+1}/${files.length} na Cloudinary...`;
+        cloudinaryResult=await uploadPhotoBlobToCloudinary(photoRef.id,file,displayBlob,selectedSite);
+      }catch(cloudinaryErr){
+        console.warn("Cloudinary upload selhal, zkouším Firebase Storage",cloudinaryErr);
+      }
+      if(!cloudinaryResult){
+        try{
+          st.textContent=`Nahrávám fotografii ${i+1}/${files.length} do záložního úložiště...`;
+          storageResult=await uploadPhotoBlobsToStorage(photoRef.id,file,displayBlob,thumbBlob,selectedSite);
+        }catch(storageErr){
+          console.warn("Storage upload selhal, používám nouzovou vloženou fotku",storageErr);
+        }
       }
 
-      let url=storageResult?.url || "";
-      let thumbUrl=storageResult?.thumbUrl || "";
-      let storageMode="storage";
+      let url=cloudinaryResult?.url || storageResult?.url || "";
+      let displayUrl=cloudinaryResult?.displayUrl || url;
+      let fullUrl=cloudinaryResult?.fullUrl || storageResult?.url || url;
+      let thumbUrl=cloudinaryResult?.thumbUrl || storageResult?.thumbUrl || "";
+      let storageMode=cloudinaryResult ? "cloudinary" : "storage";
+      let storagePath=storageResult?.storagePath || "";
+      let thumbStoragePath=storageResult?.thumbStoragePath || "";
+      let cloudinaryPublicId=cloudinaryResult?.cloudinaryPublicId || "";
+      let cloudinaryAssetId=cloudinaryResult?.cloudinaryAssetId || "";
+      let cloudinaryVersion=cloudinaryResult?.cloudinaryVersion || "";
+      if(cloudinaryResult?.cloudinaryDeleteToken){
+        sitePhotoDeleteTokens.set(photoRef.id,cloudinaryResult.cloudinaryDeleteToken);
+      }
       if(!url){
         st.textContent=`Ukládám zmenšenou fotografii ${i+1}/${files.length}...`;
         storageMode="embeddedFallback";
@@ -5507,6 +5596,8 @@ async function uploadSitePhotos(){
           url=await blobToDataUrl(fallbackBlob);
         }
         thumbUrl=await blobToDataUrl(thumbBlob);
+        displayUrl=url;
+        fullUrl=url;
         if(url.length>850000){
           throw new Error("Fotografie je i po zmenšení příliš velká. Zkus menší fotku.");
         }
@@ -5520,10 +5611,15 @@ async function uploadSitePhotos(){
         firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
         siteName:selectedSite.adresa || "",
         url,
+        displayUrl,
+        fullUrl,
         thumbUrl,
-        storagePath:storageResult?.storagePath || "",
-        thumbStoragePath:storageResult?.thumbStoragePath || "",
+        storagePath,
+        thumbStoragePath,
         storageMode,
+        cloudinaryPublicId,
+        cloudinaryAssetId,
+        cloudinaryVersion,
         size:displayBlob.size,
         thumbSize:thumbBlob.size,
         fileName:file.name || "",
@@ -5540,14 +5636,22 @@ async function uploadSitePhotos(){
         siteKey,
         siteKeys:keys,
         firebaseDocId:photoPayload.firebaseDocId,
-        url:photoPayload.storageMode==="storage" ? photoPayload.url : "",
-        thumbUrl:photoPayload.storageMode==="storage" ? photoPayload.thumbUrl : "",
+        url:photoPayload.storageMode==="cloudinary" || photoPayload.storageMode==="storage" ? photoPayload.url : "",
+        displayUrl:photoPayload.storageMode==="cloudinary" || photoPayload.storageMode==="storage" ? photoPayload.displayUrl : "",
+        fullUrl:photoPayload.storageMode==="cloudinary" || photoPayload.storageMode==="storage" ? photoPayload.fullUrl : "",
+        thumbUrl:photoPayload.storageMode==="cloudinary" || photoPayload.storageMode==="storage" ? photoPayload.thumbUrl : "",
+        storageMode:photoPayload.storageMode,
+        cloudinaryPublicId:photoPayload.cloudinaryPublicId || "",
         createdAt:photoPayload.createdAt
       },selectedSite);
       if(!embeddedOk) throw new Error("Fotografii se nepodařilo uložit k bodu.");
+      uploadedModes.push(storageMode);
     }
 
-    st.textContent=`Uloženo fotografií: ${files.length}.`;
+    const modeText=uploadedModes.every(m=>m==="cloudinary")
+      ? "Cloudinary"
+      : (uploadedModes.some(m=>m==="cloudinary") ? "Cloudinary + záloha" : "záložní úložiště");
+    st.textContent=`Uloženo fotografií: ${files.length} (${modeText}).`;
     showSaveConfirmation("Fotografie uloženy.");
     resetSitePhotoInput();
     setTimeout(()=>{ try{ loadSitePhotos(selectedSite); }catch(e){} },500);
