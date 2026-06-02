@@ -1705,6 +1705,7 @@ const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
 const CLOUDINARY_PHOTOS = {
   cloudName:"dnxjc6ixi",
   uploadPreset:"astip_mapy",
+  fallbackUploadPresets:["ml_default"],
   folder:"astip-servis"
 };
 let app, auth, db, fb={}, currentUser=null;
@@ -5291,14 +5292,29 @@ function cloudinaryTransformUrl(url,transformation){
   return s.replace("/image/upload/",`/image/upload/${t}/`);
 }
 
-async function uploadPhotoToCloudinary(photoId,file,site=selectedSite){
-  if(!CLOUDINARY_PHOTOS.cloudName || !CLOUDINARY_PHOTOS.uploadPreset){
+function cloudinaryUploadPresets(){
+  return [CLOUDINARY_PHOTOS.uploadPreset,...(CLOUDINARY_PHOTOS.fallbackUploadPresets || [])]
+    .map(p=>safe(p))
+    .filter((p,idx,arr)=>p && arr.indexOf(p)===idx);
+}
+
+function cloudinaryUploadErrorMessage(errors){
+  const messages=(errors || []).map(e=>safe(e && e.message)).filter(Boolean);
+  const joined=messages.join(" | ");
+  if(/whitelist|unsigned|upload preset/i.test(joined)){
+    return "Cloudinary upload preset není povolený pro unsigned upload z prohlížeče. V Cloudinary nastav preset astip_mapy jako Unsigned, nebo vytvoř unsigned preset ml_default.";
+  }
+  return messages[0] || "Cloudinary upload selhal.";
+}
+
+async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
+  if(!CLOUDINARY_PHOTOS.cloudName || !preset){
     throw new Error("Cloudinary není nastavené.");
   }
   const endpoint=`https://api.cloudinary.com/v1_1/${encodeURIComponent(CLOUDINARY_PHOTOS.cloudName)}/image/upload`;
   const form=new FormData();
   form.append("file",file,photoFileName({fileName:file?.name},0));
-  form.append("upload_preset",CLOUDINARY_PHOTOS.uploadPreset);
+  form.append("upload_preset",preset);
   if(CLOUDINARY_PHOTOS.folder) form.append("folder",CLOUDINARY_PHOTOS.folder);
 
   const response=await fetch(endpoint,{method:"POST",body:form});
@@ -5317,8 +5333,23 @@ async function uploadPhotoToCloudinary(photoId,file,site=selectedSite){
     cloudinaryPublicId:data.public_id || "",
     cloudinaryAssetId:data.asset_id || "",
     cloudinaryVersion:data.version || "",
+    cloudinaryUploadPreset:preset,
     cloudinaryDeleteToken:""
   };
+}
+
+async function uploadPhotoToCloudinary(photoId,file,site=selectedSite){
+  const presets=cloudinaryUploadPresets();
+  if(!presets.length) throw new Error("Cloudinary není nastavené.");
+  const errors=[];
+  for(const preset of presets){
+    try{
+      return await uploadPhotoToCloudinaryPreset(photoId,file,preset);
+    }catch(e){
+      errors.push(e);
+    }
+  }
+  throw new Error(cloudinaryUploadErrorMessage(errors));
 }
 
 async function deleteCloudinaryUpload(item){
@@ -5523,6 +5554,7 @@ async function uploadSitePhotos(){
         cloudinaryPublicId:cloudinaryResult.cloudinaryPublicId,
         cloudinaryAssetId:cloudinaryResult.cloudinaryAssetId,
         cloudinaryVersion:cloudinaryResult.cloudinaryVersion,
+        cloudinaryUploadPreset:cloudinaryResult.cloudinaryUploadPreset,
         size:file.size,
         fileName:file.name || "",
         uploadedBy:signedUser.email || "",
