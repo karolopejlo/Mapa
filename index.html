@@ -1505,16 +1505,6 @@ Cena FZ: ..."></textarea>
 
 <script>
 (function(){
-  const firebaseConfig = {
-    apiKey: "AIzaSyDPXDtM0NH0H2p_gT5KsRPyxhCotBTcq88",
-    authDomain: "astip---servis.firebaseapp.com",
-    projectId: "astip---servis",
-    storageBucket: "astip---servis.firebasestorage.app",
-    messagingSenderId: "304123957651",
-    appId: "1:304123957651:web:3d837eb57957d18b17d866",
-    measurementId: "G-EL8BSFYFDN"
-  };
-  window.__firebaseConfig = firebaseConfig;
   const HOSTED_APP_URL = "https://karolopejlo.github.io/Mapa/";
 
   function isLocalFileApp(){
@@ -1531,99 +1521,19 @@ Cena FZ: ..."></textarea>
     window.location.href = HOSTED_APP_URL;
   }
 
-  function showAppHard(){
-    const startup=document.getElementById("startupScreen");
-    const app=document.getElementById("mainApp");
-    const topLogout=document.getElementById("topLogoutBtn");
-    if(startup) startup.style.display="none";
-    if(app) app.style.display="grid";
-    if(topLogout) topLogout.style.display="block";
-    setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); if(window.fit) window.fit(); }catch(e){}},500);
-  }
-
-  function initAuth(){
-    if(!window.firebase){
-      status("Firebase knihovna se nenačetla.");
-      return null;
-    }
-    if(!firebase.apps.length){
-      firebase.initializeApp(firebaseConfig);
-    }
-    const auth=firebase.auth();
-    try{
-      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
-        .catch(()=>auth.setPersistence(firebase.auth.Auth.Persistence.SESSION))
-        .catch(()=>{});
-    }catch(e){}
-    return auth;
-  }
-
-  function googleProvider(){
-    const p=new firebase.auth.GoogleAuthProvider();
-    p.addScope("email");
-    p.addScope("profile");
-    p.setCustomParameters({
-      prompt:"select_account",
-      hd:"astip.cz"
-    });
-    return p;
-  }
-
-  function isAllowedLoginEmail(email){
-    const e=String(email || "").toLowerCase().trim();
-    return e.endsWith("@astip.cz") || e==="iva.glozova@astip.cz";
-  }
-
-  window.loginPopup = async function(){
+  window.loginPopup = function(){
     if(isLocalFileApp()){
       openHostedApp();
       return;
     }
-    const auth=initAuth();
-    if(!auth) return;
-    try{
-      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-    }catch(e){
-      try{ await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }catch(err){}
-    }
-    try{
-      const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
-      if(activeEmail && !isAllowedLoginEmail(activeEmail)){
-        await auth.signOut();
-      }
-    }catch(e){}
-
-    const isMobileOrTablet =
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      window.innerWidth <= 1024 ||
-      (navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
-
-    try{
-      if(isMobileOrTablet){
-        status("Přesměrovávám na Google přihlášení...");
-        await auth.signInWithRedirect(googleProvider());
-        return;
-      }
-
-      status("Otevírám Google přihlášení...");
-      await auth.signInWithPopup(googleProvider());
-    }catch(e){
-      try{
-        status("Přesměrovávám na Google přihlášení...");
-        await auth.signInWithRedirect(googleProvider());
-      }catch(err){
-        status("Přihlášení selhalo: " + (err.code || "") + " " + (err.message || err));
-      }
-    }
+    window.__loginRequested = true;
+    status("Připravuji přihlášení...");
+    if(typeof window.__startFirebaseRedirectLogin === "function") window.__startFirebaseRedirectLogin();
   };
 
   function signOutAndReload(){
-    const auth=initAuth();
-    if(!auth) return;
-    window.__authReadyUser=null;
-    auth.signOut().then(()=>location.reload()).catch(err=>{
-      status("Odhlášení selhalo: " + (err.code || "") + " " + (err.message || err));
-    });
+    if(typeof window.__signOutFirebase === "function") window.__signOutFirebase();
+    else location.reload();
   }
 
   function bindLoginButtons(){
@@ -1644,43 +1554,12 @@ Cena FZ: ..."></textarea>
   window.addEventListener("DOMContentLoaded", bindLoginButtons);
   window.addEventListener("load", bindLoginButtons);
 
-  window.addEventListener("load", async function(){
+  window.addEventListener("load", function(){
     if(isLocalFileApp()){
       status("Přihlášení přes otevřený soubor nejde. Přesměrovávám na webovou verzi...");
       setTimeout(openHostedApp,1200);
       return;
     }
-    const auth=initAuth();
-    if(!auth) return;
-
-    try{
-      await auth.getRedirectResult();
-    }catch(e){
-      status("Chyba přihlášení: " + (e.code || "") + " " + e.message);
-    }
-
-    auth.onAuthStateChanged(async function(user){
-      if(!user){
-        window.currentUser=null;
-        window.__authReadyUser=null;
-        status("");
-        return;
-      }
-
-      window.currentUser=user;
-      window.__authReadyUser=user;
-
-      const email=String(user.email || "").toLowerCase();
-
-      if(!isAllowedLoginEmail(email)){
-        status("Přihlášení je povoleno jen pro @astip.cz.");
-        alert("Přihlášení je povoleno jen pro @astip.cz. Přihlášený účet: " + email);
-        await auth.signOut();
-        return;
-      }
-
-      showAppHard();
-    });
     bindLoginButtons();
   });
 })();
@@ -1752,53 +1631,164 @@ if(firebaseReady){
   }
   const firebaseBox=document.getElementById("firebaseBox");
   if(firebaseBox) firebaseBox.style.display="none";
-  authMod.onAuthStateChanged(auth,user=>{
+
+  function setStartupStatus(message){
+    const st=document.getElementById("startupStatus");
+    if(st) st.textContent=message || "";
+  }
+  function setProgressStatus(message){
+    const p=document.getElementById("progress");
+    if(p) p.textContent=message || "";
+    const gps=document.getElementById("gpsBox");
+    if(gps && message){
+      gps.style.display="block";
+      gps.className="notice";
+      gps.textContent=message;
+    }else if(gps && !message && gps.className==="notice"){
+      gps.style.display="none";
+      gps.textContent="";
+    }
+  }
+  function googleRedirectProvider(){
+    const provider=new authMod.GoogleAuthProvider();
+    provider.addScope("email");
+    provider.addScope("profile");
+    provider.setCustomParameters({prompt:"select_account",hd:"astip.cz"});
+    return provider;
+  }
+  function setSignedUser(user){
     currentUser=user;
     window.currentUser=user;
+    window.__authReadyUser=user;
     const userBox=document.getElementById("userBox");
     if(userBox) userBox.textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
-    if(user){
-      const email=String(user.email || "").toLowerCase();
-      if(!isAllowedLoginEmail(email)){
-        const st=document.getElementById("startupStatus");
-        if(st) st.textContent="Přihlášení je povoleno jen pro @astip.cz.";
-        authMod.signOut(auth).catch(()=>{});
-        showLogin();
-        return;
-      }
-      const topLogoutBtn=document.getElementById("topLogoutBtn");
-      if(topLogoutBtn) topLogoutBtn.style.display="block";
-      showApp();
-      setTimeout(()=>{
-        try{
-          if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function") window.loadFirebaseSitesUnified();
-          if(firebaseUnifiedPrimary && typeof scheduleFirebaseRowsAutoReload==="function") scheduleFirebaseRowsAutoReload(9000);
-        }catch(e){}
-      },350);
-      if(selectedSite){
-        setTimeout(()=>{
-          try{ loadHistory(selectedSite.id); }catch(e){}
-          try{ loadSitePhotos(selectedSite); }catch(e){}
-        },250);
-      }
+  }
+  function clearSignedUser(){
+    currentUser=null;
+    window.currentUser=null;
+    window.__authReadyUser=null;
+    const userBox=document.getElementById("userBox");
+    if(userBox) userBox.textContent="Nepřihlášeno";
+  }
+  async function startFirebaseRedirectLogin(){
+    if(!firebaseReady || !auth) return;
+    try{
+      setStartupStatus("Přesměrovávám na Google přihlášení...");
+      const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
+      if(activeEmail && !isAllowedLoginEmail(activeEmail)) await authMod.signOut(auth);
+      await authMod.signInWithRedirect(auth,googleRedirectProvider());
+    }catch(e){
+      setStartupStatus("Přihlášení selhalo: " + (e.code || "") + " " + (e.message || e));
     }
-    else {
-      setTimeout(()=>{
-        let compatUser=syncCurrentUserFromCompat() || window.__authReadyUser || null;
-        if(compatUser){
-          currentUser=compatUser;
-          window.currentUser=compatUser;
-          if(userBox) userBox.textContent=`Přihlášen: ${compatUser.email || ""}`;
-          showApp();
-          return;
+  }
+  async function signOutFirebase(){
+    try{
+      clearSignedUser();
+      await authMod.signOut(auth);
+    }catch(e){
+      setStartupStatus("Odhlášení selhalo: " + (e.code || "") + " " + (e.message || e));
+    }finally{
+      location.reload();
+    }
+  }
+  function delay(ms){
+    return new Promise(resolve=>setTimeout(resolve,ms));
+  }
+  async function waitForFirebaseRowsLoader(timeoutMs=15000){
+    const started=Date.now();
+    while(typeof window.loadFirebaseSitesUnified!=="function" && Date.now()-started<timeoutMs){
+      await delay(250);
+    }
+    return typeof window.loadFirebaseSitesUnified==="function";
+  }
+  let postLoginLoadToken=0;
+  async function loadFirebaseRowsAfterAuth(reason="auth"){
+    if(!firebaseUnifiedPrimary) return true;
+    const token=++postLoginLoadToken;
+    const loaderReady=await waitForFirebaseRowsLoader();
+    if(token!==postLoginLoadToken) return false;
+    if(!loaderReady){
+      setProgressStatus("Firebase načítání bodů ještě není připravené, obnovuji stránku...");
+      setTimeout(()=>location.reload(),800);
+      return false;
+    }
+    for(let attempt=1; attempt<=7; attempt++){
+      if(Array.isArray(rows) && rows.length){
+        resetFirebaseRowsAutoReload();
+        setProgressStatus("");
+        return true;
+      }
+      setProgressStatus(`Načítám body z Firebase (${attempt}/7)...`);
+      try{
+        const loaded=await window.loadFirebaseSitesUnified();
+        if(token!==postLoginLoadToken) return false;
+        if((Array.isArray(loaded) && loaded.length) || (Array.isArray(rows) && rows.length)){
+          resetFirebaseRowsAutoReload();
+          setProgressStatus("");
+          try{fit();}catch(e){}
+          return true;
         }
-        const topLogoutBtn=document.getElementById("topLogoutBtn");
-        if(topLogoutBtn) topLogoutBtn.style.display="none";
-        const appEl=document.getElementById("mainApp");
-        const appVisible=appEl && appEl.style.display==="grid";
-        if(!appVisible) showLogin();
-      },5000);
+      }catch(e){
+        console.warn("Načtení Firebase bodů po přihlášení selhalo",e);
+      }
+      await delay(700 + attempt*300);
     }
+    const reloads=firebaseAutoReloadCount()+1;
+    if(reloads<=8){
+      setFirebaseAutoReloadCount(reloads);
+      setProgressStatus(`Body se nenačetly, obnovuji stránku (${reloads}/8)...`);
+      setTimeout(()=>location.reload(),800);
+    }else{
+      setProgressStatus("Body se nepodařilo načíst ani po opakovaném obnovení. Zkontroluj oprávnění Firebase pro přihlášený účet.");
+    }
+    return false;
+  }
+  async function handleAuthorizedUser(user){
+    setSignedUser(user);
+    const email=String(user.email || "").toLowerCase();
+    if(!isAllowedLoginEmail(email)){
+      setStartupStatus("Přihlášení je povoleno jen pro @astip.cz.");
+      await authMod.signOut(auth).catch(()=>{});
+      clearSignedUser();
+      showLogin();
+      return;
+    }
+    const topLogoutBtn=document.getElementById("topLogoutBtn");
+    if(topLogoutBtn) topLogoutBtn.style.display="block";
+    showApp();
+    setProgressStatus("Přihlášení potvrzeno. Načítám body...");
+    await loadFirebaseRowsAfterAuth("login");
+    if(selectedSite){
+      setTimeout(()=>{
+        try{ loadHistory(selectedSite.id); }catch(e){}
+        try{ loadSitePhotos(selectedSite); }catch(e){}
+      },250);
+    }
+  }
+  function handleSignedOut(){
+    clearSignedUser();
+    const topLogoutBtn=document.getElementById("topLogoutBtn");
+    if(topLogoutBtn) topLogoutBtn.style.display="none";
+    showLogin();
+    setStartupStatus("");
+  }
+
+  window.__startFirebaseRedirectLogin=startFirebaseRedirectLogin;
+  window.__signOutFirebase=signOutFirebase;
+  window.startGoogleLogin=startFirebaseRedirectLogin;
+  window.loginPopup=startFirebaseRedirectLogin;
+  if(typeof window.bindLoginButtons==="function") window.bindLoginButtons();
+
+  try{
+    setStartupStatus("Kontroluji přihlášení...");
+    await authMod.getRedirectResult(auth);
+  }catch(e){
+    setStartupStatus("Chyba návratu z přihlášení: " + (e.code || "") + " " + (e.message || e));
+  }
+
+  authMod.onAuthStateChanged(auth,user=>{
+    if(user) handleAuthorizedUser(user);
+    else handleSignedOut();
   });
 }
 
