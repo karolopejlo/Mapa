@@ -1614,9 +1614,9 @@ if(firebaseReady){
   app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
   try{
-    await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+    await authMod.setPersistence(auth, authMod.browserSessionPersistence);
   }catch(e){
-    try{ await authMod.setPersistence(auth, authMod.browserSessionPersistence); }
+    try{ await authMod.setPersistence(auth, authMod.browserLocalPersistence); }
     catch(err){ console.warn("Firebase persistence nejde nastavit",err); }
   }
   db=fsMod.getFirestore(app);
@@ -1632,9 +1632,51 @@ if(firebaseReady){
   const firebaseBox=document.getElementById("firebaseBox");
   if(firebaseBox) firebaseBox.style.display="none";
 
+  const AUTH_REDIRECT_PENDING_KEY="astipFirebaseRedirectPending";
+  let lastAuthMessage="";
+  function authPending(){
+    try{return safe(sessionStorage.getItem(AUTH_REDIRECT_PENDING_KEY));}catch(e){return "";}
+  }
+  function setAuthPending(){
+    try{sessionStorage.setItem(AUTH_REDIRECT_PENDING_KEY,String(Date.now()));}catch(e){}
+  }
+  function clearAuthPending(){
+    try{sessionStorage.removeItem(AUTH_REDIRECT_PENDING_KEY);}catch(e){}
+  }
   function setStartupStatus(message){
+    lastAuthMessage=message || "";
     const st=document.getElementById("startupStatus");
     if(st) st.textContent=message || "";
+  }
+  function authErrorText(e){
+    const code=safe(e && e.code);
+    const message=safe(e && e.message);
+    if(code==="auth/unauthorized-domain"){
+      return "Doména karolopejlo.github.io není povolená ve Firebase Authentication > Settings > Authorized domains.";
+    }
+    if(code==="auth/operation-not-supported-in-this-environment"){
+      return "Firebase přihlášení v tomto prostředí nefunguje. Otevři web přes https://karolopejlo.github.io/Mapa/.";
+    }
+    if(code==="auth/network-request-failed"){
+      return "Firebase přihlášení nemá spojení. Zkontroluj internet nebo blokování v prohlížeči.";
+    }
+    if(code==="auth/account-exists-with-different-credential"){
+      return "Tento e-mail je ve Firebase vedený pod jiným způsobem přihlášení.";
+    }
+    return [code,message].filter(Boolean).join(" ") || "Přihlášení se nepodařilo dokončit.";
+  }
+  function redirectResolver(){
+    return authMod.browserPopupRedirectResolver || undefined;
+  }
+  async function signInWithGoogleRedirect(provider){
+    const resolver=redirectResolver();
+    if(resolver) return authMod.signInWithRedirect(auth,provider,resolver);
+    return authMod.signInWithRedirect(auth,provider);
+  }
+  async function getGoogleRedirectResult(){
+    const resolver=redirectResolver();
+    if(resolver) return authMod.getRedirectResult(auth,resolver);
+    return authMod.getRedirectResult(auth);
   }
   function setProgressStatus(message){
     const p=document.getElementById("progress");
@@ -1674,11 +1716,13 @@ if(firebaseReady){
     if(!firebaseReady || !auth) return;
     try{
       setStartupStatus("Přesměrovávám na Google přihlášení...");
+      setAuthPending();
       const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
       if(activeEmail && !isAllowedLoginEmail(activeEmail)) await authMod.signOut(auth);
-      await authMod.signInWithRedirect(auth,googleRedirectProvider());
+      await signInWithGoogleRedirect(googleRedirectProvider());
     }catch(e){
-      setStartupStatus("Přihlášení selhalo: " + (e.code || "") + " " + (e.message || e));
+      clearAuthPending();
+      setStartupStatus("Přihlášení selhalo: " + authErrorText(e));
     }
   }
   async function signOutFirebase(){
@@ -1744,10 +1788,11 @@ if(firebaseReady){
     return false;
   }
   async function handleAuthorizedUser(user){
+    clearAuthPending();
     setSignedUser(user);
     const email=String(user.email || "").toLowerCase();
     if(!isAllowedLoginEmail(email)){
-      setStartupStatus("Přihlášení je povoleno jen pro @astip.cz.");
+      setStartupStatus("Přihlášení je povoleno jen pro @astip.cz. Přihlášený účet: " + (email || "bez e-mailu"));
       await authMod.signOut(auth).catch(()=>{});
       clearSignedUser();
       showLogin();
@@ -1770,7 +1815,14 @@ if(firebaseReady){
     const topLogoutBtn=document.getElementById("topLogoutBtn");
     if(topLogoutBtn) topLogoutBtn.style.display="none";
     showLogin();
-    setStartupStatus("");
+    if(authPending()){
+      setStartupStatus("Google přihlášení se vrátilo bez přihlášeného uživatele. Zkus tlačítko znovu a vyber účet @astip.cz; pokud se to opakuje, smaž v Chrome data pro tento web.");
+      clearAuthPending();
+    }else if(lastAuthMessage && lastAuthMessage!=="Kontroluji přihlášení..."){
+      setStartupStatus(lastAuthMessage);
+    }else{
+      setStartupStatus("");
+    }
   }
 
   window.__startFirebaseRedirectLogin=startFirebaseRedirectLogin;
@@ -1781,9 +1833,11 @@ if(firebaseReady){
 
   try{
     setStartupStatus("Kontroluji přihlášení...");
-    await authMod.getRedirectResult(auth);
+    const redirectResult=await getGoogleRedirectResult();
+    if(redirectResult && redirectResult.user) setSignedUser(redirectResult.user);
   }catch(e){
-    setStartupStatus("Chyba návratu z přihlášení: " + (e.code || "") + " " + (e.message || e));
+    clearAuthPending();
+    setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
   }
 
   authMod.onAuthStateChanged(auth,user=>{
