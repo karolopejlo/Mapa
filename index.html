@@ -1584,7 +1584,7 @@ const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
 const CLOUDINARY_PHOTOS = {
   cloudName:"dnxjc6ixi",
   uploadPreset:"astip_mapy",
-  fallbackUploadPresets:["ml_default"],
+  fallbackUploadPresets:[],
   folder:"astip-servis"
 };
 let app, auth, db, fb={}, currentUser=null;
@@ -1614,9 +1614,13 @@ if(firebaseReady){
   app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
   try{
-    await authMod.setPersistence(auth, authMod.browserSessionPersistence);
+    if(authMod.useDeviceLanguage) authMod.useDeviceLanguage(auth);
+    else if(auth.useDeviceLanguage) auth.useDeviceLanguage();
+  }catch(e){}
+  try{
+    await authMod.setPersistence(auth, authMod.browserLocalPersistence);
   }catch(e){
-    try{ await authMod.setPersistence(auth, authMod.browserLocalPersistence); }
+    try{ await authMod.setPersistence(auth, authMod.browserSessionPersistence); }
     catch(err){ console.warn("Firebase persistence nejde nastavit",err); }
   }
   db=fsMod.getFirestore(app);
@@ -1657,6 +1661,15 @@ if(firebaseReady){
     if(code==="auth/operation-not-supported-in-this-environment"){
       return "Firebase přihlášení v tomto prostředí nefunguje. Otevři web přes https://karolopejlo.github.io/Mapa/.";
     }
+    if(code==="auth/popup-blocked"){
+      return "Prohlížeč zablokoval přihlašovací okno. Povol popup okno pro tento web nebo zkus tlačítko znovu.";
+    }
+    if(code==="auth/popup-closed-by-user"){
+      return "Přihlašovací okno bylo zavřené před dokončením. Zkus tlačítko znovu a vyber účet @astip.cz.";
+    }
+    if(code==="auth/cancelled-popup-request"){
+      return "Přihlášení bylo přerušeno dalším pokusem. Zkus tlačítko znovu.";
+    }
     if(code==="auth/network-request-failed"){
       return "Firebase přihlášení nemá spojení. Zkontroluj internet nebo blokování v prohlížeči.";
     }
@@ -1672,6 +1685,11 @@ if(firebaseReady){
     const resolver=redirectResolver();
     if(resolver) return authMod.signInWithRedirect(auth,provider,resolver);
     return authMod.signInWithRedirect(auth,provider);
+  }
+  async function signInWithGooglePopup(provider){
+    const resolver=redirectResolver();
+    if(resolver) return authMod.signInWithPopup(auth,provider,resolver);
+    return authMod.signInWithPopup(auth,provider);
   }
   async function getGoogleRedirectResult(){
     const resolver=redirectResolver();
@@ -1714,15 +1732,38 @@ if(firebaseReady){
   }
   async function startFirebaseRedirectLogin(){
     if(!firebaseReady || !auth) return;
+    const provider=googleRedirectProvider();
     try{
-      setStartupStatus("Přesměrovávám na Google přihlášení...");
-      setAuthPending();
-      const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
-      if(activeEmail && !isAllowedLoginEmail(activeEmail)) await authMod.signOut(auth);
-      await signInWithGoogleRedirect(googleRedirectProvider());
-    }catch(e){
       clearAuthPending();
-      setStartupStatus("Přihlášení selhalo: " + authErrorText(e));
+      setStartupStatus("Otevírám Google přihlášení...");
+      const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
+      if(activeEmail && !isAllowedLoginEmail(activeEmail)){
+        setStartupStatus("Otevírám Google přihlášení, vyber účet @astip.cz...");
+      }
+      const popupResult=await signInWithGooglePopup(provider);
+      if(popupResult && popupResult.user){
+        await handleAuthorizedUser(popupResult.user);
+      }
+    }catch(e){
+      const code=safe(e && e.code);
+      const canTryRedirect=[
+        "auth/popup-blocked",
+        "auth/cancelled-popup-request",
+        "auth/operation-not-supported-in-this-environment"
+      ].includes(code);
+      if(!canTryRedirect){
+        clearAuthPending();
+        setStartupStatus("Přihlášení selhalo: " + authErrorText(e));
+        return;
+      }
+      try{
+        setStartupStatus("Popup přihlášení prohlížeč nepovolil, zkouším přesměrování...");
+        setAuthPending();
+        await signInWithGoogleRedirect(provider);
+      }catch(redirectError){
+        clearAuthPending();
+        setStartupStatus("Přihlášení selhalo: " + authErrorText(redirectError));
+      }
     }
   }
   async function signOutFirebase(){
@@ -5346,9 +5387,56 @@ function cloudinaryUploadErrorMessage(errors){
   const messages=(errors || []).map(e=>safe(e && e.message)).filter(Boolean);
   const joined=messages.join(" | ");
   if(/whitelist|unsigned|upload preset/i.test(joined)){
-    return "Cloudinary upload preset není povolený pro unsigned upload z prohlížeče. V Cloudinary nastav preset astip_mapy jako Unsigned, nebo vytvoř unsigned preset ml_default.";
+    return "Cloudinary preset astip_mapy není povolený pro unsigned upload z prohlížeče. V Cloudinary nastav preset astip_mapy jako Unsigned.";
   }
   return messages[0] || "Cloudinary upload selhal.";
+}
+
+function loadImageFileForResize(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror=()=>{
+      URL.revokeObjectURL(url);
+      reject(new Error("Fotografii se nepodařilo načíst pro zmenšení."));
+    };
+    img.src=url;
+  });
+}
+
+async function prepareCloudinaryUploadFile(file){
+  if(!file || !/^image\//i.test(file.type || "")) return file;
+  if(/gif/i.test(file.type || "")) return file;
+  try{
+    const img=await loadImageFileForResize(file);
+    const maxEdge=2200;
+    const quality=.86;
+    const width=img.naturalWidth || img.width;
+    const height=img.naturalHeight || img.height;
+    if(!width || !height) return file;
+    const scale=Math.min(1,maxEdge/Math.max(width,height));
+    if(scale>=1 && file.size<900*1024 && /jpe?g|webp/i.test(file.type || "")) return file;
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.max(1,Math.round(width*scale));
+    canvas.height=Math.max(1,Math.round(height*scale));
+    const ctx=canvas.getContext("2d");
+    if(!ctx) return file;
+    ctx.fillStyle="#fff";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",quality));
+    if(!blob) return file;
+    if(blob.size>=file.size && scale>=1) return file;
+    const fileName=photoFileName({fileName:file.name || "fotografie"},0);
+    return new File([blob],fileName,{type:"image/jpeg",lastModified:Date.now()});
+  }catch(e){
+    console.warn("Fotku se nepodařilo před uploadem zmenšit, nahrávám původní soubor",e);
+    return file;
+  }
 }
 
 async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
@@ -5577,8 +5665,10 @@ async function uploadSitePhotos(){
       const photoId=(window.crypto && window.crypto.randomUUID)
         ? window.crypto.randomUUID()
         : `photo_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      st.textContent=`Zmenšuji fotografii ${i+1}/${files.length}...`;
+      const uploadFile=await prepareCloudinaryUploadFile(file);
       st.textContent=`Nahrávám fotografii ${i+1}/${files.length} na Cloudinary...`;
-      const cloudinaryResult=await uploadPhotoToCloudinary(photoId,file,selectedSite);
+      const cloudinaryResult=await uploadPhotoToCloudinary(photoId,uploadFile,selectedSite);
       if(cloudinaryResult?.cloudinaryDeleteToken){
         sitePhotoDeleteTokens.set(photoId,cloudinaryResult.cloudinaryDeleteToken);
       }
@@ -5599,7 +5689,8 @@ async function uploadSitePhotos(){
         cloudinaryAssetId:cloudinaryResult.cloudinaryAssetId,
         cloudinaryVersion:cloudinaryResult.cloudinaryVersion,
         cloudinaryUploadPreset:cloudinaryResult.cloudinaryUploadPreset,
-        size:file.size,
+        size:uploadFile.size || file.size,
+        originalSize:file.size,
         fileName:file.name || "",
         uploadedBy:signedUser.email || "",
         createdAt:new Date().toISOString()
