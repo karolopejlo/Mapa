@@ -1607,8 +1607,23 @@ window.__firebaseUnifiedPrimary = firebaseUnifiedPrimary;
 window.cloudinaryPhotoConfig = CLOUDINARY_PHOTOS;
 window.rows = rows;
 const AUTH_KNOWN_SIGNED_IN_KEY="astipFirebaseKnownSignedIn";
+const AUTH_EXPLICIT_SIGN_OUT_KEY="astipFirebaseExplicitSignOut";
+const authBootStartedAt=Date.now();
+function knownSignedIn(){
+  try{return localStorage.getItem(AUTH_KNOWN_SIGNED_IN_KEY)==="1";}catch(e){return false;}
+}
+function explicitSignOutPending(){
+  try{return sessionStorage.getItem(AUTH_EXPLICIT_SIGN_OUT_KEY)==="1";}catch(e){return false;}
+}
+function markExplicitSignOut(){
+  try{sessionStorage.setItem(AUTH_EXPLICIT_SIGN_OUT_KEY,"1");}catch(e){}
+}
+function clearExplicitSignOut(){
+  try{sessionStorage.removeItem(AUTH_EXPLICIT_SIGN_OUT_KEY);}catch(e){}
+}
 function rememberKnownSignedIn(){
   try{localStorage.setItem(AUTH_KNOWN_SIGNED_IN_KEY,"1");}catch(e){}
+  clearExplicitSignOut();
   try{document.documentElement.classList.add("auth-resume");}catch(e){}
 }
 function forgetKnownSignedIn(){
@@ -1626,6 +1641,7 @@ function setStartupAuthChecking(checking){
 window.rememberKnownSignedIn=rememberKnownSignedIn;
 window.forgetKnownSignedIn=forgetKnownSignedIn;
 window.setStartupAuthChecking=setStartupAuthChecking;
+window.knownSignedIn=knownSignedIn;
 const ORIGINAL_PINK_PLACES = ["bedřichov 290, hotel", "benešov, máchova 400, nemocnice rudolfa a stefanie", "borek u rokycan, policie", "bratislava, františka kubu 2,3,5,6 -rinok rača", "bratislava, trnavská cesta 8a, 6b, 19123 - nová cvernovka", "bratislava, volvo, lamač-bory", "brno, hrázní 1", "brno, jakubská 126,11,  kostel sv jakuba", "brno, kabátníkova 2, bd", "brno, kotlářská 3, bd", "brno, metodějova 3120/6", "brno, oblá 79", "brno, rotalova 80,82,84, bd", "brno, sokolova 1e", "brno, spolková 8a", "brno, svážná 1", "brno, česká 11, škola charbulova", "bruntál, zahradní 48, strojmetal - pozor info ve složce", "choceň, běstovice, de heus", "chotěboř, severní 1911, bd", "dek trade", "dobřichovice, anežky české 1119", "frýdek místek, revoluční 1282, dps", "frýdek-místek, 17.listopadu 147", "havlíčkův brod, nuselská 3240, zš", "hradec králové, jana koziny 1237, biskupské gymnázium", "humpolec, okružní 1296, cobap", "jablonec nad nisou, v. nezvala 87/14, dps", "karviná, lázeňská, darkov", "klatovy, podhůrecká 815/3, dps", "kralupy nad vltavou, palackého nám. 1, mú", "kroměříž, erbenovo nábř. 4262", "kyjov, strážovská, centrumpro seniory", "kyjovice, domov na zámku", "luhačovice, zatloukalova 1144", "milovice, armádní 882,883", "milovice, dětské centrum, dětská 361", "mnichovice, bezručova 346, zš", "neslovice, lesní 368, bd", "nupaky, komerční 528, auto opat", "nymburk, soudní, penzion panorama", "olomouc, eduarda hamburgera 9, 11", "olomouc, loudova 7 + 11, 15", "olomouc, tř. j. pelikána 5,7,9,11,13", "opatovice nad labem, siko koupelny", "opava, císařského pluku 3078/1", "opava, nákladní 2", "opava, olomoucká 88, psychiatrická léčebna", "opava, rolnická 24", "osoblaha, klášterní 34 - dps", "ostrava, 28. října, red house", "pacov, malovcova 1080", "pec pod sněžkou, velká úpa 360, bd", "pelhřimov, habrová 2523 + 2524, bd", "pelhřimov, habrová 2525, 2526, bd", "plesná, spojovací 80, kodus, okres cheb", "plzeň, nemocniční 6 a stehlíkova 5,7,9", "plzeň, průmyslová 2a, škoda electric", "plzeň, rybářská 26, bd", "poprad, slovenského odboja, karpatská rezidence", "poříčí nad sázavou, parc. č. 190-71, hala h1 + h2", "praha 10, bd u hranic", "praha 10, ramonova 3466, bd hagibor", "praha, budínova 2, protialkoholní záchytka, bulovka", "praha, choceradská 2, bd", "praha, dobratická 525, zš tupolevova", "praha, dopraváků 749/3, stiebel eltron", "praha, hloubětín 837-2, bd, kbelská 1152", "praha, holečkova 13, hotel", "praha, horolezecká 1a", "praha, hradešínská 52, bd", "praha, ke kříži 1653-8 -vivus 4. etapa", "praha, ke kříži 1672, vivus -5. etapa", "praha, konviktská 14, cloister inn", "praha, koubkova 12", "praha, libocká 643, domov sv. rodiny", "praha, lucemburská 9, ubytovna", "praha, maltézské náměstí 8, bd s ubytovnou", "praha, na bělidle 23", "praha, na chvalské tvrzi", "praha, na poříčí, mb 48 - opletal", "praha, na vackově -os vackov", "praha, nad kazankou 19", "praha, novovysočanská 8, dps", "praha, opletalova 40, hotel gold bank", "praha, oty bubeníčka 1654-4, vivus 4. etapa", "praha, parmská 390, dps", "praha, plzeňská 56, hotel", "praha, polyfunkční objekt dlouhá", "praha, sazovická 508", "praha, spálená 12, městská poliklinika", "praha, starokošířská 13, bd", "praha, v podhájí 20, bd braník residences", "praha, vivus uhřiněves ke kříži -1636, oty bubeníčka -1637, 1638, 1639", "praha, vladivostocká 1530/12, slavia hotel", "praha, řešovská 852-10, bohnice -rezidence jasmín", "prostějov, průmyslová 20", "slatinice, ld balnea", "slavkov u brna, slovanská 758, destila", "slušovice, dostihová 725, kodus", "sobotka, libošovice 39, charita", "sokolovská uhelná, vintířov, vřesová, suas zpracování odpadů", "střelice, tetčická 31169", "teplice, nám. svobody 3316, oc teplice", "trnava, včelárska 2", "uherský brod, vlčnovská 2512, sklad ptáček", "vamberk, smetanovo nábřeží 334, vaspo", "vejprty, nerudova1221_14, dzr krakonoš", "velké meziříčí, u světlé 9, dps", "vrchlabí - herlíkovice, horská 547, apartmány mlýn herlíkovice", "vrchlabí, horská 179", "český těšín, střelniční 257/3, gerontocentrum", "čimelice, siko koupelny"];
 
 window.addEventListener("load",()=>{
@@ -1649,10 +1665,24 @@ if(firebaseReady){
     else if(auth.useDeviceLanguage) auth.useDeviceLanguage();
   }catch(e){}
   try{
-    await authMod.setPersistence(auth, authMod.browserLocalPersistence);
+    const persistenceChoices=[
+      authMod.indexedDBLocalPersistence,
+      authMod.browserLocalPersistence,
+      authMod.browserSessionPersistence
+    ].filter(Boolean);
+    let persistenceSet=false;
+    for(const persistence of persistenceChoices){
+      try{
+        await authMod.setPersistence(auth,persistence);
+        persistenceSet=true;
+        break;
+      }catch(e){
+        console.warn("Firebase persistence varianta selhala",e);
+      }
+    }
+    if(!persistenceSet) console.warn("Firebase persistence nejde nastavit");
   }catch(e){
-    try{ await authMod.setPersistence(auth, authMod.browserSessionPersistence); }
-    catch(err){ console.warn("Firebase persistence nejde nastavit",err); }
+    console.warn("Firebase persistence nejde nastavit",e);
   }
   db=fsMod.getFirestore(app);
   window.fb=fb;
@@ -1799,6 +1829,7 @@ if(firebaseReady){
   }
   async function signOutFirebase(){
     try{
+      markExplicitSignOut();
       forgetKnownSignedIn();
       clearSignedUser();
       await authMod.signOut(auth);
@@ -1862,10 +1893,13 @@ if(firebaseReady){
   }
   async function handleAuthorizedUser(user){
     clearAuthPending();
+    clearExplicitSignOut();
     setSignedUser(user);
     const email=String(user.email || "").toLowerCase();
     if(!isAllowedLoginEmail(email)){
       setStartupStatus("Přihlášení je povoleno jen pro @astip.cz. Přihlášený účet: " + (email || "bez e-mailu"));
+      markExplicitSignOut();
+      forgetKnownSignedIn();
       await authMod.signOut(auth).catch(()=>{});
       clearSignedUser();
       showLogin();
@@ -1886,6 +1920,31 @@ if(firebaseReady){
     }
   }
   function handleSignedOut(){
+    const restoringKnownSession=knownSignedIn() && !explicitSignOutPending() && Date.now()-authBootStartedAt<22000;
+    if(restoringKnownSession){
+      setStartupAuthChecking(true);
+      try{document.documentElement.classList.add("auth-resume");}catch(e){}
+      setProgressStatus("Obnovuji přihlášení...");
+      setTimeout(()=>{
+        const restored=auth.currentUser || window.__authReadyUser || window.currentUser || syncCurrentUserFromCompat();
+        if(restored){
+          handleAuthorizedUser(restored);
+          return;
+        }
+        if(Date.now()-authBootStartedAt<22000){
+          handleSignedOut();
+          return;
+        }
+        if(Date.now()-authBootStartedAt>=22000){
+          forgetKnownSignedIn();
+          setStartupAuthChecking(false);
+          clearSignedUser();
+          showLogin();
+          setStartupStatus("Přihlášení se nepodařilo obnovit. Zkus se přihlásit znovu účtem @astip.cz.");
+        }
+      },1400);
+      return;
+    }
     forgetKnownSignedIn();
     setStartupAuthChecking(false);
     clearSignedUser();
@@ -1912,6 +1971,8 @@ if(firebaseReady){
     setStartupStatus("Kontroluji přihlášení...");
     const redirectResult=await getGoogleRedirectResult();
     if(redirectResult && redirectResult.user) setSignedUser(redirectResult.user);
+    if(auth.authStateReady) await auth.authStateReady();
+    if(auth.currentUser) setSignedUser(auth.currentUser);
   }catch(e){
     clearAuthPending();
     setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
@@ -3602,15 +3663,15 @@ const USER_SITE_DATA_FIELDS = [
   {label:"Název", key:"Název", keys:["Název"]},
   {label:"Adresa / umístění", key:"Adresa / umístění", keys:["Adresa / umístění","Původní adresa / umístění"]},
   {label:"Adresa_GPS", key:"Adresa_GPS", keys:["Adresa_GPS"], readonly:true},
-  {label:"Kraj", key:"Kraj", keys:["Kraj"], type:"region"},
+  {label:"Kraj", key:"Kraj", keys:["Kraj","Region","Kraj / oblast"], type:"region"},
   {label:"Popis zdroje", key:"Popis_zdroje", keys:["Popis_zdroje","Jaký zdroj"]},
   {label:"Výrobní číslo", key:"Zdroj", keys:["Výrobní číslo","Výrobní_číslo","Seriové číslo","Sériové číslo","Serial","SN","Zdroj"]},
   {label:"Kontakt", key:"Kontakt", keys:["Kontakt","Kontakt_mapy","Hlavní kontakt"]},
   {label:"Umístění zdroje", key:"Umístění zdroje", keys:["Umístění zdroje","Umístění"]},
   {label:"Poznámky", key:"Poznámky", keys:["Poznámky","Poznámky_mapy"], type:"textarea"},
-  {label:"Perioda kontrol", key:"Perioda kontrol", keys:["Perioda kontrol","Perioda","Četnost"], type:"period"},
-  {label:"Hlídáme sami termín", key:"Hlídáme sami termín", keys:["Hlídáme sami termín","Hlídáme kontroly sami","Hlidame kontroly sami"], type:"yesno"},
-  {label:"Smlouva", key:"Smlouva ano/ne", keys:["Smlouva ano/ne","Smlouva"], type:"yesno"},
+  {label:"Perioda kontrol", key:"Perioda kontrol", keys:["Perioda kontrol","Perioda zkoušky","Perioda zkoušek","Perioda kontroly","Perioda kontrol (6/12)","Perioda","Četnost","Cetnost","Kontrola","Interval"], type:"period"},
+  {label:"Hlídáme sami termín", key:"Hlídáme sami termín", keys:["Hlídáme sami termín","Hlídáme termín sami","Hlídat termín sami","Hlidat termin sami","Hlídáme kontroly sami","Hlidame kontroly sami","Jezdit hlídáme termín sami","Bez objednávky"], type:"yesno"},
+  {label:"Smlouva", key:"Smlouva ano/ne", keys:["Smlouva ano/ne","Smlouva (ano/ne)","Smlouva ano ne","Smlouva ano","Smlouva"], type:"yesno"},
   {label:"Cena FZ", key:"Cena FZ", keys:["Cena FZ","Cena FZ v Kč"]},
   {label:"Faktura na", key:"Faktura na", keys:["Faktura na"]},
   {label:"Důležité poznámky", key:"Důležitá poznámka", keys:["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky"], type:"textarea", important:true}
@@ -3618,17 +3679,33 @@ const USER_SITE_DATA_FIELDS = [
 window.userSiteDataFields = USER_SITE_DATA_FIELDS.map(f=>({label:f.label,key:f.key,type:f.type||"text"}));
 
 function firstSiteField(raw, keys){
+  const source=raw || {};
   for(const k of keys || []){
-    const v=safe(get(raw,k));
+    const v=safe(get(source,k));
     if(v) return v;
+  }
+  const wanted=(keys || []).map(k=>dataNormFixed(k)).filter(Boolean);
+  if(!wanted.length) return "";
+  for(const k of Object.keys(source)){
+    if(wanted.includes(dataNormFixed(k))){
+      const v=safe(source[k]);
+      if(v) return v;
+    }
   }
   return "";
 }
 
+function rawForSiteFieldLookup(r){
+  return {
+    ...((r && r.raw) || {}),
+    ...((r && r.edit && r.edit.rawEdits) || {})
+  };
+}
+
 function yesNoFixed(v, fallback="ne"){
   const n=dataNormFixed(v);
-  if(n==="ano" || n==="yes" || n==="true" || n==="1") return "ano";
-  if(n==="ne" || n==="no" || n==="false" || n==="0") return "ne";
+  if(n==="ano" || n==="yes" || n==="true" || n==="1" || n==="aktivni") return "ano";
+  if(n==="ne" || n==="no" || n==="false" || n==="0" || n==="") return "ne";
   return fallback;
 }
 
@@ -3647,7 +3724,7 @@ function regionOptionsFixed(current){
 }
 
 function userSiteFieldValue(r, spec){
-  const raw=r.raw || {};
+  const raw=rawForSiteFieldLookup(r);
   if(spec.type==="period") return detectControlPeriod(raw);
   if(spec.key==="Hlídáme sami termín") return yesNoFixed(getWatchFixed(raw), "ne");
   if(spec.important) return getImportantNoteFixed(raw);
@@ -3669,7 +3746,10 @@ function userSiteInput(spec, value){
   const dataKey=esc(spec.key);
   const text=esc(value);
   if(spec.type==="region") return `<select data-key="${dataKey}">${regionOptionsFixed(value)}</select>`;
-  if(spec.type==="period") return `<select data-key="${dataKey}"><option value="6" ${value==="6" ? "selected" : ""}>6 měsíců</option><option value="12" ${value==="12" ? "selected" : ""}>12 měsíců</option></select>`;
+  if(spec.type==="period"){
+    const periodValue=String(value || "").includes("6") ? "6" : "12";
+    return `<select data-key="${dataKey}"><option value="6" ${periodValue==="6" ? "selected" : ""}>6 měsíců</option><option value="12" ${periodValue==="12" ? "selected" : ""}>12 měsíců</option></select>`;
+  }
   if(spec.type==="yesno") return `<select data-key="${dataKey}"><option value="ne" ${yesNoFixed(value)==="ne" ? "selected" : ""}>ne</option><option value="ano" ${yesNoFixed(value)==="ano" ? "selected" : ""}>ano</option></select>`;
   if(spec.type==="textarea") return `<textarea data-key="${dataKey}">${text}</textarea>`;
   if(spec.readonly) return `<input data-key="${dataKey}" value="${text}" readonly title="Dopočítá se z adresy">`;
@@ -4137,19 +4217,22 @@ function valNormFixed(v){
 }
 
 function getWatchFixed(raw){
-  const keys=["Hlídáme kontroly sami","Hlídáme sami termín","Hlidame kontroly sami"];
-  for(const k of keys){
-    if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
-  }
+  const value=firstSiteField(raw,[
+    "Hlídáme kontroly sami",
+    "Hlídáme sami termín",
+    "Hlídáme termín sami",
+    "Hlídat termín sami",
+    "Hlidame kontroly sami",
+    "Hlidat termin sami",
+    "Jezdit hlídáme termín sami",
+    "Bez objednávky"
+  ]);
+  if(value) return value;
   return "ne";
 }
 
 function getImportantNoteFixed(raw){
-  const keys=["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky","dulezita poznamka"];
-  for(const k of keys){
-    if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
-  }
-  return "";
+  return firstSiteField(raw,["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky","dulezita poznamka"]);
 }
 
 function orderedFixedKeys(raw){
@@ -4181,13 +4264,22 @@ function orderedFixedKeys(raw){
 
 
 function detectControlPeriod(raw){
-  const keys = ["Perioda","Perioda kontrol","Cetnost","Četnost","Kontrola","Interval"];
-  for(const k of keys){
-    if(raw && raw[k]!==undefined){
-      const v=String(raw[k]).toLowerCase();
-      if(v.includes("12")) return "12";
-      if(v.includes("6")) return "6";
-    }
+  const value=firstSiteField(raw,[
+    "Perioda",
+    "Perioda kontrol",
+    "Perioda zkoušky",
+    "Perioda zkoušek",
+    "Perioda kontroly",
+    "Perioda kontrol (6/12)",
+    "Cetnost",
+    "Četnost",
+    "Kontrola",
+    "Interval"
+  ]);
+  if(value){
+    const v=valNormFixed(value);
+    if(v.includes("6")) return "6";
+    if(v.includes("12") || v.includes("rok") || v.includes("rocni")) return "12";
   }
 
   // fallback podle původních dat
@@ -4527,7 +4619,7 @@ async function appendEmbeddedSiteItem(field,item,site=selectedSite){
     if(current.length>80) current=current.slice(-80);
     await setDoc(doc(db,"sitesUnified",docId),{
       [field]:current,
-      updatedAt:serverTimestamp()
+      updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
     },{merge:true});
     if(site){
       site.firebaseData=site.firebaseData || {};
@@ -4954,7 +5046,6 @@ function showApp(){
   setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); }catch(e){}},250);
 }
 function showLogin(){
-  if(window.forgetKnownSignedIn) window.forgetKnownSignedIn();
   if(window.setStartupAuthChecking) window.setStartupAuthChecking(false);
   const startup=document.getElementById("startupScreen");
   const app=document.getElementById("mainApp");
@@ -5661,6 +5752,14 @@ async function loadSitePhotos(site=selectedSite){
       if(id && items.some(photo=>String(photo._id || "")===id)) return;
       items.push(item);
     };
+    await refreshSiteDataFromFirebase(site);
+    const embeddedPhotos=Array.isArray(site?.firebaseData?.photos) ? site.firebaseData.photos : [];
+    embeddedPhotos.forEach((item,idx)=>{
+      addPhoto({...item,_id:item._id || `embedded_photo_${idx}`});
+    });
+    readSiteLocalArray("photos",site).forEach((item,idx)=>{
+      addPhoto({...item,_id:item._id || `local_photo_${idx}`});
+    });
     const childPhotos=await loadSiteChildItems("photos",site);
     childPhotos.forEach((item,idx)=>{
       addPhoto({...item,_id:item._id || `site_photo_${idx}`});
@@ -5689,6 +5788,8 @@ async function deleteCurrentSitePhoto(){
     if(st) st.textContent="Mažu fotografii...";
     const id=safe(item._id);
     await deleteSiteChildItem("photos",id,selectedSite);
+    await removeEmbeddedSiteItem("photos",id,selectedSite);
+    removeSiteLocalItem("photos",id,selectedSite);
     await deleteCloudinaryUpload(item);
     sitePhotoDeleteTokens.delete(id);
     sitePhotoItems=sitePhotoItems.filter(photo=>safe(photo && photo._id)!==id);
@@ -5716,6 +5817,7 @@ async function uploadSitePhotos(){
     const keys=sitePhotoKeys(selectedSite);
     const siteKey=keys[0] || selectedSite.id || "bod";
     const siteId=selectedSite.id || siteKey;
+    let localOnlyCount=0;
 
     for(let i=0;i<files.length;i++){
       const file=files[i];
@@ -5753,12 +5855,22 @@ async function uploadSitePhotos(){
         createdAt:new Date().toISOString()
       };
       const childOk=await saveSiteChildItem("photos",photoId,photoPayload,selectedSite);
-      if(!childOk) throw new Error("Fotografie se nahrála, ale nepodařilo se uložit odkaz k bodu.");
+      const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("photos",photoPayload,selectedSite);
+      appendSiteLocalArray("photos",photoPayload,selectedSite,120);
+      if(!childOk && !embeddedOk){
+        localOnlyCount++;
+        st.textContent="Fotografie je na Cloudinary. Firebase nepovolil uložení odkazu k bodu, proto je odkaz uložen lokálně v tomto prohlížeči.";
+      }
       renderSitePhotos([photoPayload,...sitePhotoItems.filter(photo=>safe(photo._id)!==photoPayload._id)]);
     }
 
-    st.textContent=`Uloženo fotografií: ${files.length} (Cloudinary).`;
-    showSaveConfirmation("Fotografie uloženy.");
+    if(localOnlyCount){
+      st.textContent=`Fotografie nahrány na Cloudinary. ${localOnlyCount} odkazů Firebase nepovolil uložit k bodu, proto jsou uložené lokálně v tomto prohlížeči.`;
+      showSaveConfirmation("Fotografie nahrány.");
+    }else{
+      st.textContent=`Uloženo fotografií: ${files.length} (Cloudinary).`;
+      showSaveConfirmation("Fotografie uloženy.");
+    }
     resetSitePhotoInput();
     setTimeout(()=>{ try{ loadSitePhotos(selectedSite); }catch(e){} },500);
   }catch(e){
