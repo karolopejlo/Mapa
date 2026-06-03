@@ -2224,6 +2224,12 @@ window.applySiteEditToRow = applyEditToRow;
 
 async function loadEdits(){
   if(!firebaseReady || !db) return;
+  if(firebaseUnifiedPrimary){
+    editCache={};
+    const st=document.getElementById("editStatus");
+    if(st && /Úpravy se nepodařilo|Uložené úpravy/.test(st.textContent || "")) st.textContent="";
+    return;
+  }
   try{
     const {collection,getDocs}=fb.fsMod;
     const snap=await getDocs(collection(db,"siteEdits"));
@@ -2235,7 +2241,9 @@ async function loadEdits(){
     }
     document.getElementById("editStatus").textContent="Uložené úpravy načteny.";
   }catch(e){
-    document.getElementById("editStatus").textContent="Úpravy se nepodařilo načíst: "+e.message;
+    console.warn("Úpravy se nepodařilo načíst",e);
+    const st=document.getElementById("editStatus");
+    if(st) st.textContent="";
   }
 }
 
@@ -3519,6 +3527,17 @@ function isFirebaseUnifiedRow(r){
   return !!(r && r.firebaseDocId) || safe(raw["Zdroj_dat"]).toLowerCase().includes("firebase");
 }
 
+function shouldSkipLegacySiteEdits(site=selectedSite){
+  return !!(firebaseUnifiedPrimary && selectedSiteDocId(site) && isFirebaseUnifiedRow(site));
+}
+
+async function saveLegacySiteEditIfNeeded(selectedKey,edit,site=selectedSite){
+  if(shouldSkipLegacySiteEdits(site)) return false;
+  const {doc,setDoc}=fb.fsMod;
+  await setDoc(doc(db,"siteEdits",selectedKey),edit,{merge:true});
+  return true;
+}
+
 function orderedEditableKeys(r){
   const raw = (r && r.raw) || {};
   const out = orderedFixedKeys(raw);
@@ -3778,7 +3797,7 @@ async function saveAllDataEdits(){
       await setDoc(doc(db,"sitesUnified",firebaseDocId), firebaseUpdate, {merge:true});
     }
 
-    await setDoc(doc(db,"siteEdits",selectedKey), edit, {merge:true});
+    await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
 
     editCache[selectedKey] = {...(editCache[selectedKey]||editCache[selectedSite.id]||{}), ...edit};
     rows = rows.map(r=>detailKey(r)===selectedKey ? applyEditToRow(r) : r);
@@ -3835,7 +3854,7 @@ async function toggleOrderedFromDetail(){
       },{merge:true});
     }
 
-    await setDoc(doc(db,"siteEdits",selectedKey),edit,{merge:true});
+    await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
     editCache[selectedKey]={...(editCache[selectedKey]||editCache[selectedSite.id]||{}),...edit};
     rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
     selectedSite=rows.find(r=>detailKey(r)===selectedKey) || {...selectedSite, ordered};
@@ -3879,7 +3898,7 @@ async function toggleStopFromDetail(){
       },{merge:true});
     }
 
-    await setDoc(doc(db,"siteEdits",selectedKey),edit,{merge:true});
+    await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
     editCache[selectedKey]={...existingEdit,...edit};
     rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
     selectedSite=rows.find(r=>detailKey(r)===selectedKey) || {...selectedSite, stopped};
@@ -5118,8 +5137,7 @@ document.getElementById("saveEditBtn").onclick=async()=>{
   };
   try{
     const selectedKey=detailKey(selectedSite) || selectedSite.id;
-    const {doc,setDoc}=fb.fsMod;
-    await setDoc(doc(db,"siteEdits",selectedKey),edit,{merge:true});
+    await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
     editCache[selectedKey]={...(editCache[selectedKey]||editCache[selectedSite.id]||{}),...edit};
     rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
     selectedSite=rows.find(r=>detailKey(r)===selectedKey) || selectedSite;
