@@ -1608,6 +1608,7 @@ window.cloudinaryPhotoConfig = CLOUDINARY_PHOTOS;
 window.rows = rows;
 const AUTH_KNOWN_SIGNED_IN_KEY="astipFirebaseKnownSignedIn";
 const AUTH_EXPLICIT_SIGN_OUT_KEY="astipFirebaseExplicitSignOut";
+const AUTH_RESTORE_GRACE_MS=7000;
 const authBootStartedAt=Date.now();
 function knownSignedIn(){
   try{return localStorage.getItem(AUTH_KNOWN_SIGNED_IN_KEY)==="1";}catch(e){return false;}
@@ -1842,15 +1843,21 @@ if(firebaseReady){
   function delay(ms){
     return new Promise(resolve=>setTimeout(resolve,ms));
   }
-  async function waitForFirebaseRowsLoader(timeoutMs=15000){
+  async function waitForFirebaseRowsLoader(timeoutMs=5000){
     const started=Date.now();
     while(typeof window.loadFirebaseSitesUnified!=="function" && Date.now()-started<timeoutMs){
-      await delay(250);
+      await delay(100);
     }
     return typeof window.loadFirebaseSitesUnified==="function";
   }
   let postLoginLoadToken=0;
+  let postLoginLoadPromise=null;
   async function loadFirebaseRowsAfterAuth(reason="auth"){
+    if(postLoginLoadPromise) return postLoginLoadPromise;
+    postLoginLoadPromise=loadFirebaseRowsAfterAuthInner(reason).finally(()=>{postLoginLoadPromise=null;});
+    return postLoginLoadPromise;
+  }
+  async function loadFirebaseRowsAfterAuthInner(reason="auth"){
     if(!firebaseUnifiedPrimary) return true;
     const token=++postLoginLoadToken;
     const loaderReady=await waitForFirebaseRowsLoader();
@@ -1860,13 +1867,13 @@ if(firebaseReady){
       setTimeout(()=>location.reload(),800);
       return false;
     }
-    for(let attempt=1; attempt<=7; attempt++){
+    for(let attempt=1; attempt<=4; attempt++){
       if(Array.isArray(rows) && rows.length){
         resetFirebaseRowsAutoReload();
         setProgressStatus("");
         return true;
       }
-      setProgressStatus(`Načítám body z Firebase (${attempt}/7)...`);
+      setProgressStatus(`Načítám body z Firebase (${attempt}/4)...`);
       try{
         const loaded=await window.loadFirebaseSitesUnified();
         if(token!==postLoginLoadToken) return false;
@@ -1879,7 +1886,7 @@ if(firebaseReady){
       }catch(e){
         console.warn("Načtení Firebase bodů po přihlášení selhalo",e);
       }
-      await delay(700 + attempt*300);
+      await delay(350 + attempt*250);
     }
     const reloads=firebaseAutoReloadCount()+1;
     if(reloads<=8){
@@ -1920,7 +1927,7 @@ if(firebaseReady){
     }
   }
   function handleSignedOut(){
-    const restoringKnownSession=knownSignedIn() && !explicitSignOutPending() && Date.now()-authBootStartedAt<22000;
+    const restoringKnownSession=knownSignedIn() && !explicitSignOutPending() && Date.now()-authBootStartedAt<AUTH_RESTORE_GRACE_MS;
     if(restoringKnownSession){
       setStartupAuthChecking(true);
       try{document.documentElement.classList.add("auth-resume");}catch(e){}
@@ -1931,18 +1938,18 @@ if(firebaseReady){
           handleAuthorizedUser(restored);
           return;
         }
-        if(Date.now()-authBootStartedAt<22000){
+        if(Date.now()-authBootStartedAt<AUTH_RESTORE_GRACE_MS){
           handleSignedOut();
           return;
         }
-        if(Date.now()-authBootStartedAt>=22000){
+        if(Date.now()-authBootStartedAt>=AUTH_RESTORE_GRACE_MS){
           forgetKnownSignedIn();
           setStartupAuthChecking(false);
           clearSignedUser();
           showLogin();
           setStartupStatus("Přihlášení se nepodařilo obnovit. Zkus se přihlásit znovu účtem @astip.cz.");
         }
-      },1400);
+      },600);
       return;
     }
     forgetKnownSignedIn();
@@ -7183,8 +7190,10 @@ setTimeout(()=>{
   window.firebaseUnifiedEditableKeys = FB_USER_FIELDS.map(f=>f.key);
   const FB_COLLECTION = "sitesUnified";
   let previewMarker = null;
+  let firebaseSitesLoading = false;
 
   const val = v => String(v ?? "").trim();
+  const sleep = ms => new Promise(resolve=>setTimeout(resolve,ms));
   const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : NaN; };
   const esc = v => String(v ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 
@@ -7334,7 +7343,7 @@ setTimeout(()=>{
     if(!compat) return null;
     try{return compat.auth().currentUser || window.__authReadyUser || window.currentUser || null;}catch(e){return window.__authReadyUser || window.currentUser || null;}
   }
-  function waitCompatUser(timeoutMs=8000){
+  function waitCompatUser(timeoutMs=3500){
     const compat=ensureCompatFirebase();
     if(!compat || !compat.auth) return Promise.resolve(window.__authReadyUser || window.currentUser || null);
     const auth=compat.auth();
@@ -7689,7 +7698,14 @@ setTimeout(()=>{
     return {duplicate:false,id:ref.id,row};
   }
   async function loadFirebaseSites(openDocId=null, opts={}){
-    const database=db(); if(!database){sideStatus("Firebase není dostupný.",true);return;}
+    const lockLoad=!openDocId && !opts.retryAuth && !opts.retryPermission && !opts.force;
+    if(lockLoad && firebaseSitesLoading){
+      const started=Date.now();
+      while(firebaseSitesLoading && Date.now()-started<7000) await sleep(120);
+      return Array.isArray(window.rows) ? window.rows : [];
+    }
+    if(lockLoad) firebaseSitesLoading=true;
+    const database=db(); if(!database){sideStatus("Firebase není dostupný.",true); if(lockLoad) firebaseSitesLoading=false; return [];}
     try{
       const signedUser=await waitCompatUser();
       if(!signedUser){
@@ -7721,6 +7737,8 @@ setTimeout(()=>{
       }
       sideStatus("Chyba načtení z Firebase: "+message,true);
       return [];
+    }finally{
+      if(lockLoad) firebaseSitesLoading=false;
     }
   }
   async function refreshAfterSave(docId){
