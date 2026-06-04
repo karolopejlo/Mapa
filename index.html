@@ -791,6 +791,17 @@ button,input,select,textarea{
   gap:8px;
   align-items:end;
 }
+.site-photo-inputs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.site-photo-inputs input[type="file"]{
+  display:none;
+}
+.site-photo-inputs button{
+  min-height:38px;
+}
 .site-photo-upload input{
   width:100%;
   min-height:38px;
@@ -798,6 +809,11 @@ button,input,select,textarea{
   border:1px solid #cbd5e1;
   border-radius:10px;
   background:#fff;
+}
+@media(max-width:700px){
+  .site-photo-inputs{
+    grid-template-columns:1fr;
+  }
 }
 .site-photos-empty{
   color:#64748b;
@@ -1424,9 +1440,11 @@ button,input,select,textarea{
 <div class="card" id="sitePhotosCard">
   <h3>Fotografie bodu</h3>
   <div class="site-photo-upload">
-    <div>
-      <label>Fotografie z telefonu</label>
-      <input id="sitePhotosInput" type="file" accept="image/*" capture="environment" multiple>
+    <div class="site-photo-inputs">
+      <button class="secondary" type="button" id="selectGalleryPhotosBtn">Galerie</button>
+      <button class="secondary" type="button" id="selectCameraPhotosBtn">Fotoaparát</button>
+      <input id="sitePhotosInput" type="file" accept="image/*" multiple aria-label="Vybrat fotografie z galerie">
+      <input id="siteCameraInput" type="file" accept="image/*" capture="environment" multiple aria-label="Vyfotit nové fotografie">
     </div>
     <button class="primary" type="button" id="uploadSitePhotosBtn">Uložit fotografie</button>
   </div>
@@ -4529,7 +4547,8 @@ function appendSiteLocalArray(kind,item,site=selectedSite,limit=80){
   try{
     const arr=readSiteLocalArray(kind,site);
     const id=safe(item && item._id);
-    const next=(id ? arr.filter(x=>safe(x && x._id)!==id) : arr).concat([{...item}]).slice(-limit);
+    let next=(id ? arr.filter(x=>safe(x && x._id)!==id) : arr).concat([{...item}]);
+    if(Number.isFinite(limit) && limit>0) next=next.slice(-limit);
     localStorage.setItem(siteLocalCacheKey(kind,site),JSON.stringify(next));
   }catch(e){
     console.warn("Lokální cache se nepodařila uložit",kind,e);
@@ -4644,7 +4663,7 @@ async function appendEmbeddedSiteItem(field,item,site=selectedSite){
       current=current.filter(existing=>safe(existing && existing._id)!==itemId);
     }
     current.push(dataItem);
-    if(current.length>80) current=current.slice(-80);
+    if(field!=="photos" && current.length>80) current=current.slice(-80);
     await setDoc(doc(db,"sitesUnified",docId),{
       [field]:current,
       updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
@@ -5682,17 +5701,27 @@ let sitePhotoDeleteTokens=new Map();
 
 function resetSitePhotoInput(){
   const input=document.getElementById("sitePhotosInput");
+  const camera=document.getElementById("siteCameraInput");
   if(input) input.value="";
+  if(camera) camera.value="";
   renderSitePhotoPreview();
+}
+
+function selectedSitePhotoFiles(){
+  const gallery=document.getElementById("sitePhotosInput");
+  const camera=document.getElementById("siteCameraInput");
+  return [
+    ...Array.from(gallery?.files || []),
+    ...Array.from(camera?.files || [])
+  ];
 }
 
 function renderSitePhotoPreview(){
   const box=document.getElementById("sitePhotoPreview");
-  const input=document.getElementById("sitePhotosInput");
-  if(!box || !input) return;
+  if(!box) return;
   sitePhotoPreviewUrls.forEach(url=>URL.revokeObjectURL(url));
   sitePhotoPreviewUrls=[];
-  const files=Array.from(input.files || []);
+  const files=selectedSitePhotoFiles();
   box.innerHTML=files.map((file,idx)=>{
     const url=URL.createObjectURL(file);
     sitePhotoPreviewUrls.push(url);
@@ -5832,8 +5861,7 @@ async function deleteCurrentSitePhoto(){
 
 async function uploadSitePhotos(){
   const st=document.getElementById("sitePhotosStatus");
-  const input=document.getElementById("sitePhotosInput");
-  const files=Array.from(input?.files || []);
+  const files=selectedSitePhotoFiles();
   if(!st) return;
   if(!selectedSite){st.textContent="Není vybraný bod.";return;}
   if(!firebaseReady || !db){st.textContent="Firebase není nastavený.";return;}
@@ -5884,7 +5912,7 @@ async function uploadSitePhotos(){
       };
       const childOk=await saveSiteChildItem("photos",photoId,photoPayload,selectedSite);
       const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("photos",photoPayload,selectedSite);
-      appendSiteLocalArray("photos",photoPayload,selectedSite,120);
+      appendSiteLocalArray("photos",photoPayload,selectedSite,0);
       if(!childOk && !embeddedOk){
         localOnlyCount++;
         st.textContent="Fotografie je na Cloudinary. Firebase nepovolil uložení odkazu k bodu, proto je odkaz uložen lokálně v tomto prohlížeči.";
@@ -6268,6 +6296,12 @@ if(protoDeviceSelectEl){
 
 const sitePhotosInputEl=document.getElementById("sitePhotosInput");
 if(sitePhotosInputEl) sitePhotosInputEl.addEventListener("change",renderSitePhotoPreview);
+const siteCameraInputEl=document.getElementById("siteCameraInput");
+if(siteCameraInputEl) siteCameraInputEl.addEventListener("change",renderSitePhotoPreview);
+const selectGalleryPhotosBtn=document.getElementById("selectGalleryPhotosBtn");
+if(selectGalleryPhotosBtn) selectGalleryPhotosBtn.addEventListener("click",()=>document.getElementById("sitePhotosInput")?.click());
+const selectCameraPhotosBtn=document.getElementById("selectCameraPhotosBtn");
+if(selectCameraPhotosBtn) selectCameraPhotosBtn.addEventListener("click",()=>document.getElementById("siteCameraInput")?.click());
 const uploadSitePhotosBtn=document.getElementById("uploadSitePhotosBtn");
 if(uploadSitePhotosBtn) uploadSitePhotosBtn.addEventListener("click",uploadSitePhotos);
 
