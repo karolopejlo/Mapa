@@ -1685,7 +1685,17 @@ if(firebaseReady){
   }catch(e){
     console.warn("Firebase persistence nejde nastavit",e);
   }
-  db=fsMod.getFirestore(app);
+  try{
+    if(fsMod.initializeFirestore && fsMod.persistentLocalCache){
+      const cacheOptions={};
+      if(fsMod.persistentMultipleTabManager) cacheOptions.tabManager=fsMod.persistentMultipleTabManager();
+      db=fsMod.initializeFirestore(app,{localCache:fsMod.persistentLocalCache(cacheOptions)});
+    }else{
+      db=fsMod.getFirestore(app);
+    }
+  }catch(e){
+    db=fsMod.getFirestore(app);
+  }
   window.fb=fb;
   window.db=db;
   try{
@@ -1981,9 +1991,15 @@ if(firebaseReady){
 
   try{
     setStartupStatus("Kontroluji přihlášení...");
-    const redirectResult=await getGoogleRedirectResult();
+    const redirectResult=await Promise.race([
+      getGoogleRedirectResult(),
+      delay(1800).then(()=>null)
+    ]);
     if(redirectResult && redirectResult.user) setSignedUser(redirectResult.user);
-    if(auth.authStateReady) await auth.authStateReady();
+    if(auth.authStateReady) await Promise.race([
+      auth.authStateReady(),
+      delay(1200)
+    ]);
     if(auth.currentUser) setSignedUser(auth.currentUser);
   }catch(e){
     clearAuthPending();
@@ -7194,6 +7210,7 @@ setTimeout(()=>{
   const FB_HIDDEN_KEYS = ["GPS_lat", "GPS_lon"];
   window.firebaseUnifiedEditableKeys = FB_USER_FIELDS.map(f=>f.key);
   const FB_COLLECTION = "sitesUnified";
+  const FIREBASE_SITE_CACHE_KEY = "astipFirebaseSitesMapCacheV2";
   let previewMarker = null;
   let firebaseSitesLoading = false;
 
@@ -7361,6 +7378,15 @@ setTimeout(()=>{
       doc:id=>wrapDoc(id ? fs.doc(firestore,name,id) : fs.doc(fs.collection(firestore,name))),
       get:async()=>{
         const snap=await fs.getDocs(fs.collection(firestore,name));
+        return {
+          empty:snap.empty,
+          size:snap.size,
+          forEach:fn=>snap.forEach(docSnap=>fn({id:docSnap.id,data:()=>docSnap.data()}))
+        };
+      },
+      getCached:async()=>{
+        if(!fs.getDocsFromCache) return null;
+        const snap=await fs.getDocsFromCache(fs.collection(firestore,name));
         return {
           empty:snap.empty,
           size:snap.size,
@@ -7714,6 +7740,61 @@ setTimeout(()=>{
     r.firebaseData=d;
     return applyRowEdit(r);
   }
+  function rowsFromSnapshot(snap){
+    const firebaseRows=[];
+    if(!snap || typeof snap.forEach!=="function") return firebaseRows;
+    snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
+    return firebaseRows;
+  }
+  function saveMapRowsCache(firebaseRows){
+    try{
+      const items=(firebaseRows || []).map(row=>({
+        docId:row.firebaseDocId || row.raw?.["Firebase_doc_id"] || row.id || "",
+        raw:row.raw || {},
+        latestProtocolDate:row.firebaseData?.latestProtocolDate || ""
+      })).filter(item=>item.docId && item.raw && Object.keys(item.raw).length);
+      if(!items.length) return;
+      localStorage.setItem(FIREBASE_SITE_CACHE_KEY,JSON.stringify({
+        savedAt:Date.now(),
+        items
+      }));
+    }catch(e){
+      console.warn("Cache bodů se nepodařila uložit",e);
+    }
+  }
+  function readMapRowsCache(){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(FIREBASE_SITE_CACHE_KEY) || "null");
+      const items=Array.isArray(parsed?.items) ? parsed.items : [];
+      if(!items.length) return [];
+      return items.map(item=>rowFromDoc(item.docId,{raw:item.raw || {},latestProtocolDate:item.latestProtocolDate || ""})).filter(Boolean);
+    }catch(e){
+      return [];
+    }
+  }
+  function applyFirebaseRows(firebaseRows, openDocId=null, sourceLabel="", saveCache=true){
+    firebaseRows.forEach((r,i)=>r.i=i);
+    if(typeof window.setFirebaseSiteRows !== "function") throw new Error("setFirebaseSiteRows není dostupné");
+    const loadedRows=window.setFirebaseSiteRows(firebaseRows, openDocId);
+    window.__firebaseUnifiedRowsLoaded=true;
+    window.__firebaseUnifiedRowsCount=loadedRows.length;
+    window.__lastFirebaseLoadError="";
+    if(loadedRows.length){
+      try{sessionStorage.removeItem("astipFirebaseEmptyReloadCount");}catch(e){}
+      if(saveCache) saveMapRowsCache(firebaseRows);
+    }else if(typeof window.scheduleFirebaseRowsAutoReload==="function"){
+      window.scheduleFirebaseRowsAutoReload(7000);
+    }
+    sideStatus(sourceLabel || `<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.`);
+    return loadedRows;
+  }
+  function showMapRowsCache(openDocId=null){
+    if(openDocId) return [];
+    if(Array.isArray(rows) && rows.length) return [];
+    const cachedRows=readMapRowsCache();
+    if(!cachedRows.length) return [];
+    return applyFirebaseRows(cachedRows, openDocId, `<b>Načteno ${cachedRows.length} bodů z lokální cache.</b> Aktualizuji Firebase na pozadí...`, false);
+  }
   async function saveUnifiedSiteRaw(rawInput, opts={}){
     const database=db(), u=await waitCompatUser();
     if(!database) throw new Error("Firebase není dostupný nebo není inicializovaný.");
@@ -7766,22 +7847,27 @@ setTimeout(()=>{
         if(!opts.retryAuth) setTimeout(()=>loadFirebaseSites(openDocId,{retryAuth:true}),1200);
         return [];
       }
-      sideStatus("Načítám body z Firebase...");
-      const snap=await database.collection(FB_COLLECTION).get();
-      const firebaseRows=[]; snap.forEach(doc=>firebaseRows.push(rowFromDoc(doc.id, doc.data()||{})));
-      firebaseRows.forEach((r,i)=>r.i=i);
-      if(typeof window.setFirebaseSiteRows !== "function") throw new Error("setFirebaseSiteRows není dostupné");
-      const loadedRows=window.setFirebaseSiteRows(firebaseRows, openDocId);
-      window.__firebaseUnifiedRowsLoaded=true;
-      window.__firebaseUnifiedRowsCount=loadedRows.length;
-      window.__lastFirebaseLoadError="";
-      if(loadedRows.length){
-        try{sessionStorage.removeItem("astipFirebaseEmptyReloadCount");}catch(e){}
-      }else if(typeof window.scheduleFirebaseRowsAutoReload==="function"){
-        window.scheduleFirebaseRowsAutoReload(7000);
+      if(!opts.skipLocalCache){
+        const cachedRows=showMapRowsCache(openDocId);
+        if(cachedRows.length && !opts.force){
+          setTimeout(()=>loadFirebaseSites(openDocId,{force:true,skipLocalCache:true}),80);
+          return cachedRows;
+        }
       }
-      sideStatus(`<b>Firebase režim aktivní.</b> Načteno ${loadedRows.length} bodů z Firebase.`);
-      return loadedRows;
+      const collectionRef=database.collection(FB_COLLECTION);
+      if(!opts.skipFirestoreCache && !openDocId && database.mode==="modular" && typeof collectionRef.getCached==="function"){
+        try{
+          const cachedSnap=await collectionRef.getCached();
+          const cachedRows=rowsFromSnapshot(cachedSnap);
+          if(cachedRows.length){
+            applyFirebaseRows(cachedRows, openDocId, `<b>Načteno ${cachedRows.length} bodů z Firebase cache.</b> Aktualizuji server...`, false);
+          }
+        }catch(e){}
+      }
+      sideStatus("Načítám body z Firebase...");
+      const snap=await collectionRef.get();
+      const firebaseRows=rowsFromSnapshot(snap);
+      return applyFirebaseRows(firebaseRows, openDocId);
     }catch(e){
       const message=String(e && (e.message || e.code) || e);
       window.__lastFirebaseLoadError=message;
