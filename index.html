@@ -11,6 +11,34 @@ try{
   }
 }catch(e){}
 </script>
+<script>
+function installSzzLogoAssets(){
+  try{
+    const logo=document.querySelector(".startup-card .logo-img");
+    if(!logo || !logo.src) return;
+    document.querySelectorAll("[data-szz-logo-copy]").forEach(img=>{
+      if(!img.getAttribute("src")) img.src=logo.src;
+    });
+    let icon=document.querySelector('link[rel="icon"]');
+    if(!icon){
+      icon=document.createElement("link");
+      icon.rel="icon";
+      document.head.appendChild(icon);
+    }
+    icon.type="image/png";
+    icon.href=logo.src;
+    let apple=document.querySelector('link[rel="apple-touch-icon"]');
+    if(!apple){
+      apple=document.createElement("link");
+      apple.rel="apple-touch-icon";
+      document.head.appendChild(apple);
+    }
+    apple.href=logo.src;
+  }catch(e){}
+}
+document.addEventListener("DOMContentLoaded",installSzzLogoAssets);
+window.addEventListener("load",installSzzLogoAssets);
+</script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
 window.addEventListener("DOMContentLoaded",()=>{
@@ -140,6 +168,19 @@ box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center
 display:block;
 width:min(320px,80%);
 margin:0 auto 20px auto;
+object-fit:contain;
+}
+.sidebar-brand{
+display:flex;
+align-items:center;
+justify-content:center;
+margin:0 0 14px;
+}
+.sidebar-logo-img{
+display:block;
+width:min(220px,85%);
+height:auto;
+max-height:96px;
 object-fit:contain;
 }
 
@@ -1205,7 +1246,7 @@ button,input,select,textarea{
 </div>
 
 <div class="app" id="mainApp" style="display:none"><aside>
-<h1>Servis záložních zdrojů - mapa FZ</h1>
+<div class="sidebar-brand" aria-label="Logo SZZ"><img class="sidebar-logo-img" data-szz-logo-copy alt="Logo SZZ"></div>
 <button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
 
 <div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
@@ -3625,32 +3666,47 @@ async function reverseGeocodeGpsGeneric(lat,lon){
 }
 async function dataAddressToGps(){
   const st=document.getElementById("editStatus");
-  const addrEl=["Adresa / umístění","Umístění zdroje","Název"]
+  const coordPattern=/^\s*-?\d+(?:[.,]\d+)?\s*[,;]\s*-?\d+(?:[.,]\d+)?\s*$/;
+  const addressCandidates=["Adresa / umístění","Umístění zdroje","Název","Umístění","Původní adresa / umístění","Adresa_GPS"]
     .map(k=>document.querySelector(`#detailTable [data-key="${CSS.escape(k)}"]`))
-    .find(el=>el && el.value.trim());
-  if(!addrEl || !addrEl.value.trim()){if(st)st.textContent="Vyplň adresu.";return;}
+    .map(el=>el ? safe(el.value) : "")
+    .filter(Boolean);
+  const address=addressCandidates.find(v=>!coordPattern.test(v)) || addressCandidates[0] || "";
+  if(!address){if(st)st.textContent="Vyplň adresu.";return;}
   try{
     if(st)st.textContent="Dopočítávám GPS z adresy...";
-    const r=await geocodeAddressGeneric(addrEl.value.trim());
+    const r=await geocodeAddressGeneric(address);
     if(!r){
-      const region=inferRegionFromAddressText(addrEl.value.trim());
+      const region=inferRegionFromAddressText(address);
       const regionEl=document.querySelector('#detailTable [data-key="Kraj"]');
       if(regionEl && !safe(regionEl.value) && region) regionEl.value=region;
       if(st)st.textContent=region ? "Adresa nebyla nalezena pro GPS, kraj jsem doplnil podle textu adresy." : "Adresa nebyla nalezena.";
+      return;
+    }
+    const lat=Number(r.lat);
+    const lon=Number(r.lon);
+    if(!Number.isFinite(lat) || !Number.isFinite(lon)){
+      if(st)st.textContent="Adresa byla nalezena, ale GPS souřadnice nejsou platné.";
       return;
     }
     let latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');
     let lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');
     let gpsTextEl=document.querySelector('#detailTable [data-key="Adresa_GPS"]');
     let regionEl=document.querySelector('#detailTable [data-key="Kraj"]');
-    if(latEl)latEl.value=r.lat;
-    if(lonEl)lonEl.value=r.lon;
-    if(gpsTextEl)gpsTextEl.value=`${r.lat}, ${r.lon}`;
+    if(latEl)latEl.value=String(lat);
+    if(lonEl)lonEl.value=String(lon);
+    if(gpsTextEl)gpsTextEl.value=`${lat}, ${lon}`;
     if(regionEl && !safe(regionEl.value)){
-      const region=inferRegionFromAddressText(r.display || addrEl.value, r.address || {});
+      const region=inferRegionFromAddressText(r.display || address, r.address || {});
       if(region) regionEl.value=region;
     }
-    if(st)st.textContent="GPS souřadnice doplněny.";
+    if(selectedSite){
+      selectedSite={...selectedSite, lat, lon, gpsAddress:`${lat}, ${lon}`};
+      try{
+        if(window.map && window.map.setView) window.map.setView([lat,lon],15);
+      }catch(e){}
+    }
+    if(st)st.textContent="GPS souřadnice doplněny. Ulož data, aby se poloha bodu změnila natrvalo.";
   }catch(e){if(st)st.textContent="Chyba: "+e.message;}
 }
 async function dataGpsToAddress(){
@@ -3941,7 +3997,12 @@ async function saveAllDataEdits(){
       updatedAt: new Date().toISOString()
     };
 
-    const firebaseDocId=selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "";
+    const firebaseDocId=safe(selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "");
+    const matchesSelectedEditRow=(row)=>{
+      if(!row) return false;
+      const rowDocId=safe(row.firebaseDocId || (row.raw && row.raw["Firebase_doc_id"]) || "");
+      return detailKey(row)===selectedKey || row.id===selectedKey || (firebaseDocId && rowDocId===firebaseDocId);
+    };
     if(firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
       const mergedRaw={...(selectedSite.raw||{}), ...editedRaw, Firebase_doc_id:firebaseDocId};
       if(!mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+firebaseDocId;
@@ -3962,13 +4023,28 @@ async function saveAllDataEdits(){
     await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
 
     editCache[selectedKey] = {...(editCache[selectedKey]||editCache[selectedSite.id]||{}), ...edit};
-    rows = rows.map(r=>detailKey(r)===selectedKey ? applyEditToRow(r) : r);
-    selectedSite = rows.find(r=>detailKey(r)===selectedKey) || selectedSite;
+    if(firebaseDocId) editCache[firebaseDocId] = {...(editCache[firebaseDocId]||{}), ...edit};
+    rows = rows.map(r=>{
+      if(!matchesSelectedEditRow(r)) return r;
+      const raw={...(r.raw||{}), ...editedRaw};
+      if(firebaseDocId) raw["Firebase_doc_id"]=firebaseDocId;
+      return applyEditToRow({...r, raw, firebaseDocId:firebaseDocId || r.firebaseDocId});
+    });
+    selectedSite = rows.find(matchesSelectedEditRow) || applyEditToRow({...selectedSite, raw:{...(selectedSite.raw||{}), ...editedRaw}});
+    if(typeof window.saveFirebaseMapRowsCache==="function"){
+      try{
+        window.saveFirebaseMapRowsCache(rows.filter(r=>r && (r.firebaseDocId || (r.raw && r.raw["Firebase_doc_id"]))));
+      }catch(e){}
+    }
 
     if(st) st.textContent="Data uložena.";
     showSaveConfirmation("Data uložena.");
+    const reopenKey=(selectedSite && (detailKey(selectedSite) || selectedSite.firebaseDocId || selectedKey)) || selectedKey;
     render();
-    window.openDetailById(selectedKey);
+    if(selectedSite && Number.isFinite(selectedSite.lat) && Number.isFinite(selectedSite.lon)){
+      setTimeout(()=>{try{window.map.setView([selectedSite.lat,selectedSite.lon],15);}catch(e){}},120);
+    }
+    window.openDetailById(reopenKey);
   }catch(e){
     if(st) st.textContent="Chyba uložení dat: "+e.message;
   }
@@ -7796,6 +7872,7 @@ setTimeout(()=>{
       console.warn("Cache bodů se nepodařila uložit",e);
     }
   }
+  window.saveFirebaseMapRowsCache=saveMapRowsCache;
   function readMapRowsCache(){
     try{
       const parsed=JSON.parse(localStorage.getItem(FIREBASE_SITE_CACHE_KEY) || "null");
