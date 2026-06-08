@@ -2904,24 +2904,144 @@ function inferRegionFromAddressText(text, addressObj={}){
   return "";
 }
 
+function geocodeCountryVariants(text){
+  const n=regionTextNorm(text);
+  const hasSk=/(^|\s)(sk|sr)(\s|$)/.test(n) || /\b(slovensko|slovakia|slovenska republika)\b/.test(n);
+  const hasCz=/(^|\s)(cz|cr|ceska republika|cesko|czechia|czech republic)(\s|$)/.test(n);
+  return hasSk
+    ? ["Slovensko","Slovakia"]
+    : hasCz
+      ? ["Česko","Česká republika","Czechia"]
+      : ["Česko","Česká republika","Czechia","Slovensko","Slovakia"];
+}
+
 function geocodeCandidateQueries(address){
-  const clean=safe(address).replace(/\s+/g," ");
+  const clean=safe(address).replace(/\s+/g," ").trim();
   if(!clean) return [];
+  const countryVariants=geocodeCountryVariants(clean);
+  const noParen=clean.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim();
+  const noCountry=noParen
+    .replace(/\b(CZ|CR|ČR|SK|SR|Česko|Cesko|Česká republika|Ceska republika|Czechia|Slovensko|Slovakia)\b/gi," ")
+    .replace(/\s+/g," ")
+    .replace(/\s*,\s*$/,"")
+    .trim();
   const base=[
     clean,
-    clean.replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim(),
+    noParen,
+    noCountry,
     clean.replace(/\s+-.*$/,"").trim()
   ].filter(Boolean);
   const out=[];
+  const push=q=>{
+    const cleanQ=safe(q).replace(/\s+/g," ").replace(/\s*,\s*/g,", ").replace(/^,\s*|\s*,$/g,"").trim();
+    if(cleanQ && !out.includes(cleanQ)) out.push(cleanQ);
+  };
+  const commaVariants=q=>{
+    const parts=q.split(",").map(part=>safe(part)).filter(Boolean);
+    const variants=[];
+    if(parts.length>=2){
+      const first=parts[0];
+      const second=parts[1];
+      const rest=parts.slice(2);
+      variants.push([second,first,...rest].join(", "));
+      variants.push([second,first].join(", "));
+      variants.push(parts.slice(0,2).join(", "));
+    }
+    return variants;
+  };
+  const expanded=[];
   base.forEach(q=>{
-    out.push(q);
-    out.push(`${q}, Česko`);
-    out.push(`${q}, Česká republika`);
-    out.push(`${q}, Czechia`);
-    out.push(`${q}, Slovensko`);
-    out.push(`${q}, Slovakia`);
+    expanded.push(q);
+    commaVariants(q).forEach(v=>expanded.push(v));
   });
-  return out.filter((q,idx,arr)=>q && arr.indexOf(q)===idx);
+  expanded.forEach(q=>{
+    push(q);
+    countryVariants.forEach(country=>push(`${q}, ${country}`));
+  });
+  return out.filter((q,idx,arr)=>q && arr.indexOf(q)===idx).slice(0,42);
+}
+
+function geocodeCandidateStructured(address){
+  const clean=safe(address).replace(/\([^)]*\)/g," ").replace(/\s+/g," ").trim();
+  const parts=clean.split(",").map(part=>safe(part)).filter(Boolean);
+  if(parts.length<2) return [];
+  const countries=geocodeCountryVariants(clean).map(country=>country.includes("Sloven") || country==="Slovakia" ? "Slovensko" : "Česko")
+    .filter((country,idx,arr)=>arr.indexOf(country)===idx);
+  const variants=[];
+  const add=(street,city,country)=>{
+    street=safe(street); city=safe(city); country=safe(country);
+    if(street && city) variants.push({street,city,country});
+  };
+  countries.forEach(country=>{
+    add(parts[0],parts[1],country);
+    add(parts[1],parts[0],country);
+  });
+  return variants.filter((item,idx,arr)=>idx===arr.findIndex(other=>other.street===item.street && other.city===item.city && other.country===item.country));
+}
+
+async function geocodeNominatimParams(params){
+  try{
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`,{headers:{"Accept":"application/json"}});
+    if(!res.ok) throw new Error("Geokódování selhalo");
+    return geocodePickResult(await res.json());
+  }catch(e){
+    throw e;
+  }
+}
+
+async function geocodeAddressGeneric(address){
+  const queries=geocodeCandidateQueries(address);
+  if(!queries.length) return null;
+  let lastError=null;
+  const structured=geocodeCandidateStructured(address);
+  for(const item of structured){
+    const params=new URLSearchParams({
+      format:"jsonv2",
+      addressdetails:"1",
+      limit:"5",
+      "accept-language":"cs,sk,en",
+      street:item.street,
+      city:item.city
+    });
+    if(item.country) params.set("country",item.country);
+    try{
+      const picked=await geocodeNominatimParams(params);
+      if(picked) return picked;
+    }catch(e){
+      lastError=e;
+    }
+  }
+  for(const qText of queries){
+    for(const countrycodes of ["cz,sk",""]){
+      const params=new URLSearchParams({
+        format:"jsonv2",
+        addressdetails:"1",
+        limit:"5",
+        "accept-language":"cs,sk,en",
+        q:qText
+      });
+      if(countrycodes) params.set("countrycodes",countrycodes);
+      try{
+        const picked=await geocodeNominatimParams(params);
+        if(picked) return picked;
+      }catch(e){
+        lastError=e;
+      }
+    }
+  }
+  for(const qText of queries.slice(0,10)){
+    try{
+      const params=new URLSearchParams({q:qText,limit:"5"});
+      const res=await fetch(`https://photon.komoot.io/api/?${params.toString()}`,{headers:{"Accept":"application/json"}});
+      if(!res.ok){lastError=new Error("Geokódování selhalo");continue;}
+      const picked=geocodePickPhoton(await res.json());
+      if(picked) return picked;
+    }catch(e){
+      lastError=e;
+    }
+  }
+  if(lastError) console.warn("Geokódování adresy nenašlo výsledek",lastError);
+  return null;
 }
 
 function geocodePickResult(data){
@@ -2970,45 +3090,6 @@ function geocodePickPhoton(data){
       country_code:p.countrycode || ""
     }
   };
-}
-
-async function geocodeAddressGeneric(address){
-  const queries=geocodeCandidateQueries(address);
-  if(!queries.length) return null;
-  let lastError=null;
-  for(const qText of queries){
-    for(const countrycodes of ["cz,sk",""]){
-      const params=new URLSearchParams({
-        format:"jsonv2",
-        addressdetails:"1",
-        limit:"5",
-        "accept-language":"cs",
-        q:qText
-      });
-      if(countrycodes) params.set("countrycodes",countrycodes);
-      try{
-        const res=await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`,{headers:{"Accept":"application/json"}});
-        if(!res.ok){lastError=new Error("Geokódování selhalo");continue;}
-        const picked=geocodePickResult(await res.json());
-        if(picked) return picked;
-      }catch(e){
-        lastError=e;
-      }
-    }
-  }
-  for(const qText of queries.slice(0,6)){
-    try{
-      const params=new URLSearchParams({q:qText,limit:"5",lang:"cs"});
-      const res=await fetch(`https://photon.komoot.io/api/?${params.toString()}`,{headers:{"Accept":"application/json"}});
-      if(!res.ok){lastError=new Error("Geokódování selhalo");continue;}
-      const picked=geocodePickPhoton(await res.json());
-      if(picked) return picked;
-    }catch(e){
-      lastError=e;
-    }
-  }
-  if(lastError) console.warn("Geokódování adresy nenašlo výsledek",lastError);
-  return null;
 }
 
 function setRegionFieldValue(selector,region){
