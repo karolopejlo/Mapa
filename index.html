@@ -703,6 +703,31 @@ button,input,select,textarea{
   background:white;
   font-size:14px;
 }
+.gps-coordinate-edit{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(128px,160px);
+  gap:8px;
+  align-items:center;
+}
+.gps-lat-lon-edit{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-top:8px;
+}
+.gps-lat-lon-edit input{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+}
+.data-edit-table .gps-coordinate-edit button{
+  min-height:36px;
+  padding:7px 9px;
+}
+@media(max-width:600px){
+  .gps-coordinate-edit,
+  .gps-lat-lon-edit{
+    grid-template-columns:1fr;
+  }
+}
 .data-edit-actions{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
@@ -3044,6 +3069,58 @@ async function geocodeAddressGeneric(address){
   return null;
 }
 
+async function geocodeAddressFast(address){
+  const queries=geocodeCandidateQueries(address).slice(0,12);
+  if(!queries.length) return null;
+  let lastError=null;
+  for(const item of geocodeCandidateStructured(address).slice(0,4)){
+    const params=new URLSearchParams({
+      format:"jsonv2",
+      addressdetails:"1",
+      limit:"3",
+      "accept-language":"cs,sk,en",
+      street:item.street,
+      city:item.city
+    });
+    if(item.country) params.set("country",item.country);
+    try{
+      const picked=await geocodeNominatimParams(params);
+      if(picked) return picked;
+    }catch(e){
+      lastError=e;
+    }
+  }
+  for(const qText of queries){
+    const params=new URLSearchParams({
+      format:"jsonv2",
+      addressdetails:"1",
+      limit:"3",
+      "accept-language":"cs,sk,en",
+      countrycodes:"cz,sk",
+      q:qText
+    });
+    try{
+      const picked=await geocodeNominatimParams(params);
+      if(picked) return picked;
+    }catch(e){
+      lastError=e;
+    }
+  }
+  for(const qText of queries.slice(0,4)){
+    try{
+      const params=new URLSearchParams({q:qText,limit:"3"});
+      const res=await fetch(`https://photon.komoot.io/api/?${params.toString()}`,{headers:{"Accept":"application/json"}});
+      if(!res.ok){lastError=new Error("Geokódování selhalo");continue;}
+      const picked=geocodePickPhoton(await res.json());
+      if(picked) return picked;
+    }catch(e){
+      lastError=e;
+    }
+  }
+  if(lastError) console.warn("Rychlé geokódování adresy nenašlo výsledek",lastError);
+  return null;
+}
+
 function geocodePickResult(data){
   if(!Array.isArray(data) || !data.length) return null;
   const usable=data
@@ -3342,6 +3419,7 @@ function siteRecordTextKeys(site=selectedSite){
 }
 Object.assign(window,{
   geocodeAddressGeneric,
+  geocodeAddressFast,
   inferRegionFromAddressText,
   canonicalRegionValue,
   regionTextNorm,
@@ -3745,18 +3823,101 @@ async function reverseGeocodeGpsGeneric(lat,lon){
   const data=await res.json();
   return data.display_name || "";
 }
+
+function selectedSiteMatchForSave(row, selectedKey, firebaseDocId){
+  if(!row) return false;
+  const rowDocId=safe(row.firebaseDocId || (row.raw && row.raw["Firebase_doc_id"]) || "");
+  return detailKey(row)===selectedKey || row.id===selectedKey || (firebaseDocId && rowDocId===firebaseDocId);
+}
+
+async function saveSelectedSiteGpsPosition(lat,lon,found={},address=""){
+  if(!selectedSite) throw new Error("Není vybrané místo.");
+  const selectedKey=detailKey(selectedSite) || selectedSite.id;
+  const firebaseDocId=safe(selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "");
+  const latText=String(lat);
+  const lonText=String(lon);
+  const gpsText=`${latText}, ${lonText}`;
+  const regionEl=document.querySelector('#detailTable [data-key="Kraj"]');
+  let region=safe(regionEl && regionEl.value);
+  if(!region) region=inferRegionFromAddressText((found && found.display) || address, (found && found.address) || {});
+  if(regionEl && !safe(regionEl.value) && region) regionEl.value=region;
+
+  const editedRaw={
+    "GPS_lat":latText,
+    "GPS_lon":lonText,
+    "Adresa_GPS":gpsText
+  };
+  if(region) editedRaw["Kraj"]=region;
+  const edit={
+    rawEdits:editedRaw,
+    gpsAddress:gpsText,
+    gpsLat:latText,
+    gpsLon:lonText,
+    updatedBy:(currentUser && currentUser.email) || "",
+    updatedAt:new Date().toISOString()
+  };
+  const matches=(row)=>selectedSiteMatchForSave(row,selectedKey,firebaseDocId);
+
+  if(firebaseReady && currentUser && firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
+    const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    const mergedRaw={...(selectedSite.raw||{}), ...editedRaw, Firebase_doc_id:firebaseDocId};
+    if(!mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+firebaseDocId;
+    await setDoc(doc(db,"sitesUnified",firebaseDocId),{
+      raw:mergedRaw,
+      dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(mergedRaw) : [],
+      name:mergedRaw["Název"] || mergedRaw["Adresa / umístění"] || mergedRaw["Adresa_GPS"] || "",
+      lat,
+      lon,
+      updatedBy:currentUser.email,
+      updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+    },{merge:true});
+  }else if(firebaseReady && currentUser){
+    await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
+  }
+
+  editCache[selectedKey]={...(editCache[selectedKey]||editCache[selectedSite.id]||{}), ...edit};
+  if(firebaseDocId) editCache[firebaseDocId]={...(editCache[firebaseDocId]||{}), ...edit};
+  rows=rows.map(r=>{
+    if(!matches(r)) return r;
+    const raw={...(r.raw||{}), ...editedRaw};
+    if(firebaseDocId) raw["Firebase_doc_id"]=firebaseDocId;
+    return applyEditToRow({...r, raw, firebaseDocId:firebaseDocId || r.firebaseDocId});
+  });
+  selectedSite=rows.find(matches) || applyEditToRow({...selectedSite, raw:{...(selectedSite.raw||{}), ...editedRaw}, firebaseDocId:firebaseDocId || selectedSite.firebaseDocId});
+  window.rows=rows;
+  if(typeof window.saveFirebaseMapRowsCache==="function"){
+    try{
+      window.saveFirebaseMapRowsCache(rows.filter(r=>r && (r.firebaseDocId || (r.raw && r.raw["Firebase_doc_id"]))));
+    }catch(e){}
+  }
+  render();
+  try{
+    if(window.map && window.map.setView) window.map.setView([lat,lon],15);
+  }catch(e){}
+  if(typeof showSaveConfirmation==="function"){
+    showSaveConfirmation(firebaseReady && currentUser ? "GPS poloha uložena." : "GPS poloha dopočítána.");
+  }
+  return !!(firebaseReady && currentUser);
+}
+
 async function dataAddressToGps(){
   const st=document.getElementById("editStatus");
+  const btn=document.getElementById("detailGpsCalcInline") || document.getElementById("calcDataGpsBtn");
   const coordPattern=/^\s*-?\d+(?:[.,]\d+)?\s*[,;]\s*-?\d+(?:[.,]\d+)?\s*$/;
-  const addressCandidates=["Adresa / umístění","Umístění zdroje","Název","Umístění","Původní adresa / umístění","Adresa_GPS"]
+  const addressCandidates=["Adresa / umístění","Původní adresa / umístění","Umístění","Adresa_GPS","Název","Umístění zdroje"]
     .map(k=>document.querySelector(`#detailTable [data-key="${CSS.escape(k)}"]`))
     .map(el=>el ? safe(el.value) : "")
     .filter(Boolean);
   const address=addressCandidates.find(v=>!coordPattern.test(v)) || addressCandidates[0] || "";
   if(!address){if(st)st.textContent="Vyplň adresu.";return;}
   try{
+    if(btn) btn.disabled=true;
     if(st)st.textContent="Dopočítávám GPS z adresy...";
-    const r=await geocodeAddressGeneric(address);
+    let r=await geocodeAddressFast(address);
+    if(!r){
+      if(st)st.textContent="Rychlé hledání adresu nenašlo, zkouším podrobněji...";
+      r=await geocodeAddressGeneric(address);
+    }
     if(!r){
       const region=inferRegionFromAddressText(address);
       const regionEl=document.querySelector('#detailTable [data-key="Kraj"]');
@@ -3781,14 +3942,13 @@ async function dataAddressToGps(){
       const region=inferRegionFromAddressText(r.display || address, r.address || {});
       if(region) regionEl.value=region;
     }
-    if(selectedSite){
-      selectedSite={...selectedSite, lat, lon, gpsAddress:`${lat}, ${lon}`};
-      try{
-        if(window.map && window.map.setView) window.map.setView([lat,lon],15);
-      }catch(e){}
-    }
-    if(st)st.textContent="GPS souřadnice doplněny. Ulož data, aby se poloha bodu změnila natrvalo.";
-  }catch(e){if(st)st.textContent="Chyba: "+e.message;}
+    const saved=await saveSelectedSiteGpsPosition(lat,lon,r,address);
+    if(st)st.textContent=saved ? "GPS uloženo a bod přesunut na mapě." : "GPS doplněno, ale pro trvalé uložení se přihlaš.";
+  }catch(e){
+    if(st)st.textContent="Chyba: "+e.message;
+  }finally{
+    if(btn) btn.disabled=false;
+  }
 }
 async function dataGpsToAddress(){
   const st=document.getElementById("editStatus");
@@ -3925,7 +4085,7 @@ function userSiteFieldValue(r, spec){
   return v;
 }
 
-function userSiteInput(spec, value){
+function userSiteInput(spec, value, site=null){
   const dataKey=esc(spec.key);
   const text=esc(value);
   if(spec.type==="region") return `<select data-key="${dataKey}">${regionOptionsFixed(value)}</select>`;
@@ -3935,6 +4095,20 @@ function userSiteInput(spec, value){
   }
   if(spec.type==="yesno") return `<select data-key="${dataKey}"><option value="ne" ${yesNoFixed(value)==="ne" ? "selected" : ""}>ne</option><option value="ano" ${yesNoFixed(value)==="ano" ? "selected" : ""}>ano</option></select>`;
   if(spec.type==="textarea") return `<textarea data-key="${dataKey}">${text}</textarea>`;
+  if(spec.key==="Adresa_GPS"){
+    const raw=rawForSiteFieldLookup(site);
+    const gpsLat=Number.isFinite(site && site.lat) ? String(site.lat) : safe(raw["GPS_lat"]);
+    const gpsLon=Number.isFinite(site && site.lon) ? String(site.lon) : safe(raw["GPS_lon"]);
+    return `
+      <div class="gps-coordinate-edit">
+        <input data-key="${dataKey}" value="${text}" readonly title="GPS souřadnice">
+        <button class="secondary" type="button" id="detailGpsCalcInline">Dopočítat GPS</button>
+      </div>
+      <div class="gps-lat-lon-edit">
+        <input data-key="GPS_lat" value="${esc(gpsLat)}" placeholder="GPS lat">
+        <input data-key="GPS_lon" value="${esc(gpsLon)}" placeholder="GPS lon">
+      </div>`;
+  }
   if(spec.readonly) return `<input data-key="${dataKey}" value="${text}" readonly title="Dopočítá se z adresy">`;
   return `<input data-key="${dataKey}" value="${text}">`;
 }
@@ -3943,11 +4117,9 @@ function editableDataTable(r){
   const visibleRows=USER_SITE_DATA_FIELDS.map(spec=>{
     const value=userSiteFieldValue(r,spec);
     const cls=spec.important ? "notes-red-row" : "";
-    return `<tr class="${cls}"><td>${esc(spec.label)}</td><td>${userSiteInput(spec,value)}</td></tr>`;
+    return `<tr class="${cls}"><td>${esc(spec.key==="Adresa_GPS" ? "GPS souřadnice" : spec.label)}</td><td>${userSiteInput(spec,value,r)}</td></tr>`;
   }).join("");
-  const gpsLat=Number.isFinite(r.lat) ? String(r.lat) : "";
-  const gpsLon=Number.isFinite(r.lon) ? String(r.lon) : "";
-  return visibleRows + `<tr style="display:none"><td>GPS</td><td><input data-key="GPS_lat" value="${esc(gpsLat)}"><input data-key="GPS_lon" value="${esc(gpsLon)}"></td></tr>`;
+  return visibleRows;
 }
 
 function userSiteDisplayValue(spec, value){
@@ -4568,9 +4740,11 @@ window.openDetail=function(i){
       const table=document.getElementById("detailTable");
       table.classList.add("data-edit-table");
       table.innerHTML=editableDataTable(selectedSite);
+      const inlineGpsBtn=document.getElementById("detailGpsCalcInline");
+      if(inlineGpsBtn) inlineGpsBtn.onclick=dataAddressToGps;
       showControlDateInputs(selectedSite);
       editDataToggleBtn.style.display="none";
-      if(calcDataGpsBtn) calcDataGpsBtn.style.display="block";
+      if(calcDataGpsBtn) calcDataGpsBtn.style.display="none";
       if(saveDataBtn) saveDataBtn.style.display="block";
       if(cancelDataEditBtn) cancelDataEditBtn.style.display="block";
       const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
