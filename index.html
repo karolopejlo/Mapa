@@ -2222,8 +2222,34 @@ function addMonths(dateObj, months){
   if(d.getDate()!==day) d.setDate(0);
   return d;
 }
+const LAST_CHECK_KEYS=["Poslední_kontrola","Poslední proběhlá kontrola","Poslední kontrola","Upravená poslední kontrola"];
+const NEXT_CHECK_KEYS=["Příští_kontrola","Příští plánovaná kontrola","Příští kontrola","Upravená další kontrola"];
+function dateDistanceDays(a,b){
+  return Math.abs(a.getTime()-b.getTime())/86400000;
+}
+function inferControlPeriodMonthsFromDateValues(lastValue,nextValue){
+  const last=parseDateValue(lastValue);
+  const next=parseDateValue(nextValue);
+  if(!last || !next || isNaN(last.getTime()) || isNaN(next.getTime()) || next<=last) return null;
+  const sixDiff=dateDistanceDays(addMonths(last,6),next);
+  const twelveDiff=dateDistanceDays(addMonths(last,12),next);
+  if(sixDiff<=45 && sixDiff<=twelveDiff) return 6;
+  if(twelveDiff<=60) return 12;
+  const diffDays=(next.getTime()-last.getTime())/86400000;
+  if(diffDays>=135 && diffDays<=230) return 6;
+  if(diffDays>=300 && diffDays<=430) return 12;
+  return null;
+}
+function inferControlPeriodMonthsFromDates(raw={}, row={}){
+  const last=safe(row && row.posledni) || first(raw,LAST_CHECK_KEYS);
+  const next=safe(row && row.pristi) || first(raw,NEXT_CHECK_KEYS);
+  return inferControlPeriodMonthsFromDateValues(last,next);
+}
 function periodMonths(r){
-  const text=[r.raw?.["Zdrojový_soubor"], r.raw?.["Zdrojovy_soubor"], r.raw?.["Zdroj_dat"], r.raw?.["Perioda"], r.raw?.["period"], r.raw?.["Perioda kontrol"], r.raw?.["Perioda_kontrol"], r.raw?.["Četnost kontrol"], r.raw?.["Perioda zkoušky provozuschopnosti"]].join(" ").toLowerCase();
+  const raw=(r && r.raw) || {};
+  const dateMonths=inferControlPeriodMonthsFromDates(raw,r || {});
+  if(dateMonths) return dateMonths;
+  const text=[raw["Zdrojový_soubor"], raw["Zdrojovy_soubor"], raw["Zdroj_dat"], raw["Perioda"], raw["period"], raw["Perioda kontrol"], raw["Perioda_kontrol"], raw["Četnost kontrol"], raw["Perioda zkoušky provozuschopnosti"]].join(" ").toLowerCase();
   if(text.includes("12")) return 12;
   if(text.includes("6")) return 6;
   return 6;
@@ -2403,6 +2429,10 @@ function normalize(data){
     const adresa=first(raw,["Název","Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"]);
     const zdroj=first(raw,["Popis_zdroje","Zdroj","Jaký zdroj"]);
     const kontakt=first(raw,["Kontakt_mapy","Kontakt","Hlavní kontakt"]);
+    const rawLast=first(raw,LAST_CHECK_KEYS);
+    const rawNext=first(raw,NEXT_CHECK_KEYS);
+    const inferredPeriod=inferControlPeriodMonthsFromDateValues(rawLast,rawNext);
+    if(inferredPeriod) raw["Perioda kontrol"]=String(inferredPeriod);
     const rawRegion=first(raw,["Kraj","Region","Kraj / oblast"]);
     const region=canonicalRegionValue(rawRegion) || inferRegionFromAddressText([
       rawRegion,
@@ -3420,6 +3450,8 @@ function siteRecordTextKeys(site=selectedSite){
 Object.assign(window,{
   geocodeAddressGeneric,
   geocodeAddressFast,
+  inferControlPeriodMonthsFromDateValues,
+  inferControlPeriodMonthsFromDates,
   inferRegionFromAddressText,
   canonicalRegionValue,
   regionTextNorm,
@@ -4228,6 +4260,11 @@ async function saveAllDataEdits(){
   const nextCheck=safe(document.getElementById("detailNextCheckInput")?.value);
   if(lastCheck) editedRaw["Poslední_kontrola"]=lastCheck;
   if(nextCheck) editedRaw["Příští_kontrola"]=nextCheck;
+  const datePeriod=inferControlPeriodMonthsFromDateValues(
+    lastCheck || editedRaw["Poslední_kontrola"] || (selectedSite && selectedSite.posledni),
+    nextCheck || editedRaw["Příští_kontrola"] || (selectedSite && selectedSite.pristi)
+  );
+  if(datePeriod) editedRaw["Perioda kontrol"]=String(datePeriod);
 
   const watchSelf=yesNoFixed(editedRaw["Hlídáme sami termín"],"ne")==="ano";
 
@@ -4639,6 +4676,8 @@ function orderedFixedKeys(raw){
 
 
 function detectControlPeriod(raw){
+  const dateMonths=inferControlPeriodMonthsFromDates(raw || {});
+  if(dateMonths) return String(dateMonths);
   const value=firstSiteField(raw,[
     "Perioda",
     "Perioda kontrol",
@@ -4659,9 +4698,9 @@ function detectControlPeriod(raw){
 
   // fallback podle původních dat
   const joined = JSON.stringify(raw||{}).toLowerCase();
+  if(joined.includes("6 mes") || joined.includes("6 měs")) return "6";
   if(joined.includes("12 mes")) return "12";
   if(joined.includes("1 rok")) return "12";
-  if(joined.includes("6 mes")) return "6";
 
   return "12";
 }
@@ -5034,10 +5073,11 @@ function applyLatestProtocolDateToRaw(raw,data){
   const out={...(raw || {})};
   const latest=latestProtocolDateFromSiteData(data);
   if(!latest) return out;
+  const months=Number(detectControlPeriod(out)) || periodMonths({raw:out});
+  out["Perioda kontrol"]=String(months);
   out["Poslední_kontrola"]=latest;
   const last=parseDateValue(latest);
   if(last){
-    const months=Number(detectControlPeriod(out)) || periodMonths({raw:out});
     out["Příští_kontrola"]=dateInputValueFromAny(addMonths(last, months));
   }
   return out;
@@ -5534,6 +5574,12 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     updatedBy:currentUser.email,
     updatedAt:new Date().toISOString()
   };
+  const newSiteDatePeriod=inferControlPeriodMonthsFromDateValues(data.lastCheck,data.nextCheck);
+  if(newSiteDatePeriod){
+    data.period=String(newSiteDatePeriod);
+    data.controlPeriod=String(newSiteDatePeriod);
+    data.allRawData={...(data.allRawData || {}), "Perioda kontrol":String(newSiteDatePeriod)};
+  }
 
   try{
     let savedRef=null;
@@ -5553,6 +5599,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       raw["Poznámky_mapy"]=data.notes || raw["Poznámky_mapy"] || raw["Poznámky"] || "";
       raw["Příští_kontrola"]=data.nextCheck || raw["Příští_kontrola"] || "";
       raw["Poslední_kontrola"]=data.lastCheck || raw["Poslední_kontrola"] || "";
+      if(data.period) raw["Perioda kontrol"]=data.period;
       if(data.noOrder) raw["Hlídáme sami termín"]="ano";
       const result=await window.saveUnifiedSiteRaw(raw);
       if(result.duplicate){
@@ -7949,11 +7996,13 @@ setTimeout(()=>{
     if(raw["Adresa / umístění"] && !raw["Název"]) raw["Název"]=raw["Adresa / umístění"];
     raw["Hlídáme sami termín"]=yesNo(raw["Hlídáme sami termín"],"ne");
     raw["Smlouva ano/ne"]=yesNo(raw["Smlouva ano/ne"],"ne");
-    if(raw["Perioda kontrol"]!=="6") raw["Perioda kontrol"]="12";
     const last=val(document.getElementById("fbUnifiedLastCheck")?.value);
     const next=val(document.getElementById("fbUnifiedNextCheck")?.value);
     if(last) raw["Poslední_kontrola"]=last;
     if(next) raw["Příští_kontrola"]=next;
+    const datePeriod=typeof window.inferControlPeriodMonthsFromDateValues==="function" ? window.inferControlPeriodMonthsFromDateValues(last,next) : null;
+    if(datePeriod) raw["Perioda kontrol"]=String(datePeriod);
+    else if(raw["Perioda kontrol"]!=="6") raw["Perioda kontrol"]="12";
     if(!raw["Zdroj_dat"]) raw["Zdroj_dat"]="Firebase";
     return compactFirebaseRaw(raw);
   }
@@ -7963,7 +8012,9 @@ setTimeout(()=>{
     if(val(out["Hlídáme sami termín"])) out["Hlídáme sami termín"]=yesNo(out["Hlídáme sami termín"],"ne");
     if(val(out["Smlouva ano/ne"])) out["Smlouva ano/ne"]=yesNo(out["Smlouva ano/ne"],"ne");
     if(val(out["Stop Stav"])) out["Stop Stav"]=yesNo(out["Stop Stav"],"ne");
-    if(!val(out["Perioda kontrol"])) out["Perioda kontrol"]="12";
+    const datePeriod=typeof window.inferControlPeriodMonthsFromDates==="function" ? window.inferControlPeriodMonthsFromDates(out) : null;
+    if(datePeriod) out["Perioda kontrol"]=String(datePeriod);
+    else if(!val(out["Perioda kontrol"])) out["Perioda kontrol"]="12";
     if(!val(out["Zdroj_dat"])) out["Zdroj_dat"]="Firebase";
     if(docId){
       out["Firebase_doc_id"]=docId;
