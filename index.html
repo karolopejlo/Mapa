@@ -130,16 +130,18 @@ button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:whit
 .item{border:1px solid var(--border);border-radius:14px;padding:10px;background:white;cursor:pointer;margin-bottom:8px}
 .item:hover{background:#eff6ff}.item-title{font-weight:700;font-size:13px}.item-meta{font-size:12px;color:#64748b;line-height:1.35}
 .pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
-.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef3c7;color:#92400e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}
+.red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef3c7;color:#92400e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}.blue{background:#dbeafe;color:#1d4ed8}
 #statusFilter.status-red{background:#fee2e2;color:#991b1b;border-color:#fecaca;font-weight:800}
 #statusFilter.status-orange{background:#ffedd5;color:#9a3412;border-color:#fed7aa;font-weight:800}
 #statusFilter.status-yellow{background:#fef3c7;color:#92400e;border-color:#f59e0b;font-weight:800}
+#statusFilter.status-blue{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd;font-weight:800}
 #statusFilter.status-green{background:#dcfce7;color:#166534;border-color:#bbf7d0;font-weight:800}
 #statusFilter.status-gray{background:#f1f5f9;color:#334155;border-color:#cbd5e1;font-weight:800}
 #statusFilter.status-pink{background:#fdf2f8;color:#9d174d;border-color:#fbcfe8;font-weight:800}
 #statusFilter option.status-red{background:#fee2e2;color:#991b1b}
 #statusFilter option.status-orange{background:#ffedd5;color:#9a3412}
 #statusFilter option.status-yellow{background:#fef3c7;color:#92400e}
+#statusFilter option.status-blue{background:#dbeafe;color:#1d4ed8}
 #statusFilter option.status-green{background:#dcfce7;color:#166534}
 #statusFilter option.status-gray{background:#f1f5f9;color:#334155}
 #statusFilter option.status-pink{background:#fdf2f8;color:#9d174d}
@@ -705,7 +707,7 @@ button,input,select,textarea{
 }
 .gps-coordinate-edit{
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(128px,160px);
+  grid-template-columns:minmax(0,1fr) minmax(118px,150px) minmax(118px,150px);
   gap:8px;
   align-items:center;
 }
@@ -741,6 +743,11 @@ button,input,select,textarea{
   background:#fef3c7;
   color:#92400e;
   border-color:#f59e0b;
+}
+.repair-toggle-active{
+  background:#dbeafe;
+  color:#1d4ed8;
+  border-color:#93c5fd;
 }
 .stop-toggle-active{
   background:#e2e8f0;
@@ -1291,6 +1298,7 @@ button,input,select,textarea{
 <div><span class="dot" style="background:#dc2626"></span> Propadlé kontroly</div>
 <div><span class="dot" style="background:#f97316"></span> 1–30 dní k termínu</div>
 <div><span class="dot" style="background:#eab308"></span> Kontrola objednaná</div>
+<div><span class="dot" style="background:#2563eb"></span> Objednaná oprava</div>
 <div><span class="dot" style="background:#64748b"></span> Stop Stav</div>
 <div><span class="dot" style="background:#16a34a"></span> Vše ostatní</div>
 </div>
@@ -1490,6 +1498,7 @@ button,input,select,textarea{
 <div class="data-edit-actions">
   <button class="secondary" type="button" id="editDataToggleBtn">Upravit data</button>
   <button class="secondary" type="button" id="toggleOrderedBtn">Kontrola objednána</button>
+  <button class="secondary" type="button" id="toggleRepairBtn">Objednaná oprava</button>
   <button class="secondary" type="button" id="toggleStopBtn">Stop Stav</button>
   <button class="danger" type="button" id="deleteDataSiteBtn">Smazat bod</button>
   <button class="secondary" type="button" id="showSiteOnMapBtn">Ukázat bod na mapě</button>
@@ -1539,6 +1548,7 @@ button,input,select,textarea{
     <input id="editGpsAddress" placeholder="např. Nemocniční 492/4, Albrechtice, Česká republika">
     <button type="button" class="secondary" id="editFindGpsBtn">Dopočítat GPS</button>
   </div>
+  <button type="button" class="secondary" id="editPickGpsBtn" style="margin-top:8px">Vybrat místo na mapě</button>
   <div class="edit-grid">
     <div><label>Poslední kontrola</label><input type="date" id="editLastCheck"></div>
     <div><label>Další kontrola</label><input id="editNextCheck" readonly></div>
@@ -1561,6 +1571,7 @@ button,input,select,textarea{
 
   <label><div class="legacy-newsite-fields">Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
   <label>Adresa pro GPS / mapu</label><input id="newGpsAddress" placeholder="Ulice číslo, město, Česká republika">
+  <button type="button" class="secondary" id="newPickGpsBtn" style="margin:8px 0">Vybrat místo na mapě</button>
   <div class="edit-grid">
     <div><label>GPS lat</label><input id="newGpsLat" placeholder="49.123456"></div>
     <div><label>GPS lon</label><input id="newGpsLon" placeholder="16.123456"></div>
@@ -2128,6 +2139,20 @@ function stopFlagFromRaw(raw){
   const stav=first(raw||{},["Stav","Stav_kontroly","Stav pro mapu","Status"]);
   return simpleNorm(stav).includes("stop") || simpleNorm(stav).includes("mimo provoz");
 }
+function repairOrderFlagFromRaw(raw){
+  const keys=["Objednaná oprava","Objednana oprava","Oprava objednaná","Oprava objednana","Objednáno oprava","Objednano oprava","Repair ordered"];
+  for(const k of keys){
+    const v=get(raw||{},k);
+    if(safe(v)) return yesNoBool(v) || simpleNorm(v).includes("objednan");
+  }
+  const stav=first(raw||{},["Stav","Stav_kontroly","Stav kontroly","Stav pro mapu","Status"]);
+  const text=[
+    stav,
+    get(raw||{},"Poznámky"),
+    get(raw||{},"Poznámky_mapy")
+  ].map(simpleNorm).join(" | ");
+  return text.includes("objednana oprava") || text.includes("objednana servisni oprava") || text.includes("oprava objednana");
+}
 const APP_REGION_OPTIONS = [
   "Hlavní město Praha","Středočeský kraj","Jihočeský kraj","Plzeňský kraj","Karlovarský kraj",
   "Ústecký kraj","Liberecký kraj","Královéhradecký kraj","Pardubický kraj","Kraj Vysočina",
@@ -2274,6 +2299,7 @@ function displayNext(r){
 function color(r){
   const d=daysToComputedNext(r);
   if(r.stopped === true) return "#64748b";
+  if(r.repairOrdered === true) return "#2563eb";
   if(r.ordered === true) return "#eab308";
   if(Number.isFinite(d) && d < 0) return "#dc2626";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "#f97316";
@@ -2282,12 +2308,13 @@ function color(r){
 function statusText(r){
   const d=daysToComputedNext(r);
   if(r.stopped === true) return "Stop Stav";
+  if(r.repairOrdered === true) return "Objednaná oprava";
   if(r.ordered === true) return "Kontrola objednaná";
   if(Number.isFinite(d) && d < 0) return "Propadlá kontrola";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "1–30 dní k termínu";
   return "OK / ostatní";
 }
-function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":c==="#64748b"?"gray":"green"}
+function pill(r){const c=color(r);return c==="#dc2626"?"red":c==="#f97316"?"orange":c==="#eab308"?"yellow":c==="#2563eb"?"blue":c==="#64748b"?"gray":"green"}
 
 function normPinkText(s){
   return String(s || "")
@@ -2392,6 +2419,7 @@ function applyEditToRow(r){
   if(e.lastCheck) updatedRaw["Upravená poslední kontrola"] = e.lastCheck;
   if(e.nextCheck) updatedRaw["Upravená další kontrola"] = e.nextCheck;
   if(e.ordered !== undefined) updatedRaw["Kontrola objednaná"] = e.ordered ? "ANO" : "NE";
+  if(e.repairOrdered !== undefined) updatedRaw["Objednaná oprava"] = e.repairOrdered ? "ANO" : "NE";
   if(e.stopped !== undefined) updatedRaw["Stop Stav"] = e.stopped ? "ANO" : "NE";
   if(Number.isFinite(lat)) updatedRaw["Upravené GPS_lat"] = String(lat);
   if(Number.isFinite(lon)) updatedRaw["Upravené GPS_lon"] = String(lon);
@@ -2418,6 +2446,7 @@ function applyEditToRow(r){
     lon:Number.isFinite(lon) ? lon : r.lon,
     gpsAddress:e.gpsAddress || r.gpsAddress,
     ordered:e.ordered !== undefined ? e.ordered === true : r.ordered,
+    repairOrdered:e.repairOrdered !== undefined ? e.repairOrdered === true : repairOrderFlagFromRaw(updatedRaw),
     stopped:e.stopped !== undefined ? e.stopped === true : stopFlagFromRaw(updatedRaw),
     noOrder:rawWatch ? rawWatch==="ano" : (e.noOrder === true ? true : r.noOrder),
     edit:e
@@ -2450,7 +2479,8 @@ function normalize(data){
       dni:first(raw,["Dní do kontroly","Dní_do_kontroly"]),
       stav:first(raw,["Stav_kontroly","Stav pro mapu"]),
       barva:first(raw,["Barva bodu","Barva_bodu"]),
-      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan")),
+      ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || (first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan") && !simpleNorm(first(raw,["Stav pro mapu"])).includes("oprava"))),
+      repairOrdered:repairOrderFlagFromRaw(raw),
       stopped:stopFlagFromRaw(raw),
       noOrder:(first(raw,["Hlídáme termín sami","Hlídáme sami termín","Hlídáme kontroly sami","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
     };
@@ -2794,8 +2824,9 @@ function newSiteToRow(docId, d){
     "Poslední_kontrola": d.lastCheck || "",
     "Dní_do_kontroly": days,
     "Kontrola objednaná": d.ordered ? "ANO" : "NE",
+    "Objednaná oprava": d.repairOrdered ? "ANO" : "NE",
     "Hlídáme termín sami": d.noOrder ? "ANO" : "NE",
-    "Stav_kontroly": d.ordered ? "Kontrola objednaná" : (days === "" ? "OK / ostatní" : (days < 0 ? "Propadlá kontrola" : (days <= 30 ? "1–30 dní k termínu" : "OK / ostatní"))),
+    "Stav_kontroly": d.repairOrdered ? "Objednaná oprava" : (d.ordered ? "Kontrola objednaná" : (days === "" ? "OK / ostatní" : (days < 0 ? "Propadlá kontrola" : (days <= 30 ? "1–30 dní k termínu" : "OK / ostatní")))),
     "GPS_lat": d.gpsLat || "",
     "GPS_lon": d.gpsLon || "",
     "Zdroj_dat": "Firebase nové místo",
@@ -3576,6 +3607,10 @@ Object.assign(window,{
   selectedSiteDocId,
   siteRecordTextKeys,
   recordMatchesSite,
+  startDetailManualGpsPick,
+  startLegacyNewManualGpsPick,
+  startOnlyNewManualGpsPick,
+  startFbUnifiedManualGpsPick,
   refreshSiteDataFromFirebase,
   applyLatestProtocolDateToRaw,
   applyLatestProtocolToSite,
@@ -3665,7 +3700,7 @@ function filters(){
   const currentStatus=st.value;
   const currentRegion=kr.value;
   st.innerHTML='<option value="">Vše</option>'; kr.innerHTML='<option value="">Vše</option>';
-  ["Propadlá kontrola","Kontrola objednaná","1–30 dní k termínu","Stop Stav","OK / ostatní","Hlídáme termín sami"].forEach(v=>{
+  ["Propadlá kontrola","Kontrola objednaná","Objednaná oprava","1–30 dní k termínu","Stop Stav","OK / ostatní","Hlídáme termín sami"].forEach(v=>{
     const o=document.createElement("option");
     o.value=v;
     o.textContent=v;
@@ -3674,6 +3709,7 @@ function filters(){
     if(cls==="status-red"){o.style.backgroundColor="#fee2e2";o.style.color="#991b1b";}
     if(cls==="status-orange"){o.style.backgroundColor="#ffedd5";o.style.color="#9a3412";}
     if(cls==="status-yellow"){o.style.backgroundColor="#fef3c7";o.style.color="#92400e";}
+    if(cls==="status-blue"){o.style.backgroundColor="#dbeafe";o.style.color="#1d4ed8";}
     if(cls==="status-green"){o.style.backgroundColor="#dcfce7";o.style.color="#166534";}
     if(cls==="status-gray"){o.style.backgroundColor="#f1f5f9";o.style.color="#334155";}
     if(cls==="status-pink"){o.style.backgroundColor="#fdf2f8";o.style.color="#9d174d";}
@@ -3688,6 +3724,7 @@ function statusFilterClass(v){
   if(v==="Propadlá kontrola") return "status-red";
   if(v==="1–30 dní k termínu") return "status-orange";
   if(v==="Kontrola objednaná") return "status-yellow";
+  if(v==="Objednaná oprava") return "status-blue";
   if(v==="Stop Stav") return "status-gray";
   if(v==="OK / ostatní") return "status-green";
   if(v==="Hlídáme termín sami") return "status-pink";
@@ -3696,7 +3733,7 @@ function statusFilterClass(v){
 function updateStatusFilterColor(){
   const st=document.getElementById("statusFilter");
   if(!st) return;
-  st.classList.remove("status-red","status-orange","status-yellow","status-green","status-gray","status-pink");
+  st.classList.remove("status-red","status-orange","status-yellow","status-blue","status-green","status-gray","status-pink");
   const cls=statusFilterClass(st.value);
   if(cls) st.classList.add(cls);
 }
@@ -3705,10 +3742,59 @@ window.fit=fit;
 
 let mapFocusDetailKey="";
 let mapFocusReturnHandler=null;
+let manualGpsPickHandler=null;
+let manualGpsPickMarker=null;
 function setMapFocusMode(active){
   document.body.classList.toggle("map-focus-mode", !!active);
   setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},60);
   setTimeout(()=>{try{map.invalidateSize(true);}catch(e){}},300);
+}
+function setInputValueIfExists(selector,value){
+  const el=document.querySelector(selector);
+  if(el) el.value=value;
+}
+function beginManualGpsPick(options={}){
+  if(manualGpsPickHandler){
+    try{map.off("click",manualGpsPickHandler);}catch(e){}
+    manualGpsPickHandler=null;
+  }
+  mapFocusReturnHandler=typeof options.reopen==="function" ? options.reopen : null;
+  setMapFocusMode(true);
+  const center=map.getCenter();
+  setTimeout(()=>{
+    try{
+      L.popup({closeButton:false,autoClose:true})
+        .setLatLng(center)
+        .setContent(`<b>${esc(options.title || "Vyber místo na mapě")}</b><br>Klikni přímo na budovu nebo vstup. GPS se doplní automaticky.`)
+        .openOn(map);
+    }catch(e){}
+  },120);
+  manualGpsPickHandler=async e=>{
+    try{map.off("click",manualGpsPickHandler);}catch(_e){}
+    manualGpsPickHandler=null;
+    const lat=Number(e.latlng.lat.toFixed(6));
+    const lon=Number(e.latlng.lng.toFixed(6));
+    try{
+      if(manualGpsPickMarker) map.removeLayer(manualGpsPickMarker);
+      manualGpsPickMarker=L.circleMarker([lat,lon],{radius:10,color:"#111827",weight:2,fillColor:"#2563eb",fillOpacity:.95}).addTo(map);
+      manualGpsPickMarker.bindPopup("Ručně vybrané GPS").openPopup();
+    }catch(_e){}
+    try{
+      if(typeof options.apply==="function") await options.apply(lat,lon);
+      showSaveConfirmation(options.confirmation || "GPS vybráno z mapy.");
+    }catch(err){
+      const st=document.getElementById(options.statusId || "editStatus");
+      if(st) st.textContent="Chyba uložení GPS z mapy: "+err.message;
+    }
+    const reopen=typeof options.reopen==="function" ? options.reopen : null;
+    mapFocusReturnHandler=null;
+    setMapFocusMode(false);
+    setTimeout(()=>{
+      try{map.invalidateSize(true);}catch(_e){}
+      if(reopen) reopen();
+    },180);
+  };
+  map.on("click",manualGpsPickHandler);
 }
 function showMapFocusLocation(lat,lon,title,subtitle,returnHandler){
   if(!Number.isFinite(lat) || !Number.isFinite(lon)){
@@ -3742,6 +3828,10 @@ function showSelectedSiteOnMap(){
 function returnFromMapFocus(){
   const key=mapFocusDetailKey;
   const handler=mapFocusReturnHandler;
+  if(manualGpsPickHandler){
+    try{map.off("click",manualGpsPickHandler);}catch(e){}
+    manualGpsPickHandler=null;
+  }
   mapFocusReturnHandler=null;
   setMapFocusMode(false);
   setTimeout(()=>{
@@ -3753,6 +3843,7 @@ function returnFromMapFocus(){
 window.showSelectedSiteOnMap=showSelectedSiteOnMap;
 window.showMapFocusLocation=showMapFocusLocation;
 window.returnFromMapFocus=returnFromMapFocus;
+window.beginManualGpsPick=beginManualGpsPick;
 function siteDedupValue(v){
   return safe(v)
     .toLowerCase()
@@ -4100,6 +4191,106 @@ async function dataAddressToGps(){
     if(btn) btn.disabled=false;
   }
 }
+
+function reopenDetailAfterManualGps(key,wasEditing){
+  return ()=>{
+    if(key) window.openDetailById(key);
+    if(wasEditing){
+      setTimeout(()=>{
+        const btn=document.getElementById("editDataToggleBtn");
+        if(btn) btn.click();
+      },260);
+    }
+  };
+}
+
+function startDetailManualGpsPick(){
+  const key=selectedSite ? (detailKey(selectedSite) || selectedSite.id) : "";
+  const wasEditing=!!document.getElementById("detailTable")?.classList.contains("data-edit-table");
+  const drawer=document.getElementById("drawer");
+  if(drawer) drawer.classList.remove("open");
+  beginManualGpsPick({
+    title:"Vyber GPS pro tento bod",
+    statusId:"editStatus",
+    confirmation:"GPS poloha vybrána a uložena.",
+    reopen:reopenDetailAfterManualGps(key,wasEditing),
+    apply:async(lat,lon)=>{
+      setInputValueIfExists('#detailTable [data-key="GPS_lat"]',String(lat));
+      setInputValueIfExists('#detailTable [data-key="GPS_lon"]',String(lon));
+      setInputValueIfExists('#detailTable [data-key="Adresa_GPS"]',`${lat}, ${lon}`);
+      if(selectedSite){
+        await saveSelectedSiteGpsPosition(lat,lon,{display:"Ručně vybráno na mapě",address:{}}, "Ručně vybráno na mapě");
+      }
+    }
+  });
+}
+
+function startLegacyNewManualGpsPick(){
+  const drawer=document.getElementById("drawer");
+  if(drawer) drawer.classList.remove("open");
+  beginManualGpsPick({
+    title:"Vyber GPS pro nové místo",
+    statusId:"newSiteStatus",
+    confirmation:"GPS nového místa vybráno.",
+    reopen:()=>{
+      const d=document.getElementById("drawer");
+      if(d) d.classList.add("open");
+      const card=document.getElementById("newSiteCard");
+      if(card){card.style.display="block";card.scrollIntoView({block:"start"});}
+    },
+    apply:async(lat,lon)=>{
+      setInputValueIfExists("#newGpsLat",String(lat));
+      setInputValueIfExists("#newGpsLon",String(lon));
+      const st=document.getElementById("newSiteStatus");
+      if(st) st.textContent="GPS vybráno z mapy.";
+    }
+  });
+}
+
+function startOnlyNewManualGpsPick(){
+  const drawer=document.getElementById("drawer");
+  if(drawer) drawer.classList.remove("open");
+  beginManualGpsPick({
+    title:"Vyber GPS pro nové místo",
+    statusId:"onlyNewStatus",
+    confirmation:"GPS nového místa vybráno.",
+    reopen:()=>{
+      const d=document.getElementById("drawer");
+      if(d) d.classList.add("open");
+    },
+    apply:async(lat,lon)=>{
+      setInputValueIfExists("#onlyNewGpsLat",String(lat));
+      setInputValueIfExists("#onlyNewGpsLon",String(lon));
+      const st=document.getElementById("onlyNewStatus");
+      if(st) st.textContent="GPS vybráno z mapy.";
+    }
+  });
+}
+
+function startFbUnifiedManualGpsPick(){
+  const overlay=document.getElementById("fbUnifiedOverlay");
+  const panel=document.getElementById("fbUnifiedPanel");
+  if(overlay) overlay.classList.remove("open");
+  if(panel) panel.classList.remove("open");
+  beginManualGpsPick({
+    title:"Vyber GPS pro nové místo",
+    statusId:"fbUnifiedStatus",
+    confirmation:"GPS nového místa vybráno.",
+    reopen:()=>{
+      const o=document.getElementById("fbUnifiedOverlay");
+      const p=document.getElementById("fbUnifiedPanel");
+      if(o) o.classList.add("open");
+      if(p) p.classList.add("open");
+    },
+    apply:async(lat,lon)=>{
+      setInputValueIfExists('#fbUnifiedPanel [data-fb-key="GPS_lat"]',String(lat));
+      setInputValueIfExists('#fbUnifiedPanel [data-fb-key="GPS_lon"]',String(lon));
+      const st=document.getElementById("fbUnifiedStatus");
+      if(st) st.textContent="GPS vybráno z mapy.";
+    }
+  });
+}
+
 async function dataGpsToAddress(){
   const st=document.getElementById("editStatus");
   const latEl=document.querySelector('#detailTable [data-key="GPS_lat"]');const lonEl=document.querySelector('#detailTable [data-key="GPS_lon"]');
@@ -4253,6 +4444,7 @@ function userSiteInput(spec, value, site=null){
       <div class="gps-coordinate-edit">
         <input data-key="${dataKey}" value="${text}" readonly title="GPS souřadnice">
         <button class="secondary" type="button" id="detailGpsCalcInline">Dopočítat GPS</button>
+        <button class="secondary" type="button" id="detailGpsPickMapInline">Vybrat na mapě</button>
       </div>
       <div class="gps-lat-lon-edit">
         <input data-key="GPS_lat" value="${esc(gpsLat)}" placeholder="GPS lat">
@@ -4378,6 +4570,14 @@ async function saveAllDataEdits(){
   const nextCheck=safe(document.getElementById("detailNextCheckInput")?.value);
   if(lastCheck) editedRaw["Poslední_kontrola"]=lastCheck;
   if(nextCheck) editedRaw["Příští_kontrola"]=nextCheck;
+  const lastChanged=!!lastCheck && isoDateFromAny(lastCheck)!==isoDateFromAny(selectedSite && selectedSite.posledni);
+  const nextChanged=!!nextCheck && isoDateFromAny(nextCheck)!==isoDateFromAny(selectedSite && selectedSite.pristi);
+  const cancelOrderedByDateChange=selectedSite && selectedSite.ordered === true && (lastChanged || nextChanged);
+  if(cancelOrderedByDateChange){
+    editedRaw["Kontrola objednaná"]="NE";
+    editedRaw["Objednáno"]="NE";
+    editedRaw["Stav pro mapu"]="";
+  }
   const datePeriod=inferControlPeriodMonthsFromDateValues(
     lastCheck || editedRaw["Poslední_kontrola"] || (selectedSite && selectedSite.posledni),
     nextCheck || editedRaw["Příští_kontrola"] || (selectedSite && selectedSite.pristi)
@@ -4404,6 +4604,7 @@ async function saveAllDataEdits(){
       updatedBy: currentUser.email,
       updatedAt: new Date().toISOString()
     };
+    if(cancelOrderedByDateChange) edit.ordered=false;
 
     const firebaseDocId=safe(selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "");
     const matchesSelectedEditRow=(row)=>{
@@ -4445,8 +4646,8 @@ async function saveAllDataEdits(){
       }catch(e){}
     }
 
-    if(st) st.textContent="Data uložena.";
-    showSaveConfirmation("Data uložena.");
+    if(st) st.textContent=cancelOrderedByDateChange ? "Data uložena. Objednaná kontrola byla zrušena kvůli změně termínu." : "Data uložena.";
+    showSaveConfirmation(cancelOrderedByDateChange ? "Data uložena, objednání kontroly zrušeno." : "Data uložena.");
     const reopenKey=(selectedSite && (detailKey(selectedSite) || selectedSite.firebaseDocId || selectedKey)) || selectedKey;
     render();
     if(selectedSite && Number.isFinite(selectedSite.lat) && Number.isFinite(selectedSite.lon)){
@@ -4464,11 +4665,62 @@ function updateOrderedButton(){
   btn.textContent=selectedSite.ordered === true ? "Objednáno" : "Kontrola objednána";
   btn.className=selectedSite.ordered === true ? "secondary ordered-toggle-active" : "secondary";
 }
+function updateRepairButton(){
+  const btn=document.getElementById("toggleRepairBtn");
+  if(!btn || !selectedSite) return;
+  btn.textContent=selectedSite.repairOrdered === true ? "Oprava objednána" : "Objednaná oprava";
+  btn.className=selectedSite.repairOrdered === true ? "secondary repair-toggle-active" : "secondary";
+}
 function updateStopButton(){
   const btn=document.getElementById("toggleStopBtn");
   if(!btn || !selectedSite) return;
   btn.textContent=selectedSite.stopped === true ? "Stop Stav aktivní" : "Stop Stav";
   btn.className=selectedSite.stopped === true ? "secondary stop-toggle-active" : "secondary";
+}
+
+async function toggleRepairFromDetail(){
+  const st=document.getElementById("editStatus");
+  if(!selectedSite){ if(st) st.textContent="Není vybrané místo."; return; }
+  if(!firebaseReady){ if(st) st.textContent="Firebase není nastavený."; return; }
+  if(!currentUser){ if(st) st.textContent="Nejdřív se přihlaš."; return; }
+
+  const selectedKey=detailKey(selectedSite) || selectedSite.id;
+  const repairOrdered=selectedSite.repairOrdered !== true;
+  try{
+    const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    const existingEdit=editCache[selectedKey] || editCache[selectedSite.id] || {};
+    const edit={
+      repairOrdered,
+      rawEdits:{...(existingEdit.rawEdits || {}),"Objednaná oprava":repairOrdered ? "ANO" : "NE"},
+      updatedBy:currentUser.email,
+      updatedAt:new Date().toISOString()
+    };
+
+    const firebaseDocId=selectedSite.firebaseDocId || (selectedSite.raw && selectedSite.raw["Firebase_doc_id"]) || "";
+    if(firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
+      const mergedRaw={...(selectedSite.raw||{}), Firebase_doc_id:firebaseDocId};
+      mergedRaw["Objednaná oprava"]=repairOrdered ? "ANO" : "NE";
+      if(!repairOrdered && simpleNorm(mergedRaw["Stav pro mapu"]).includes("oprava")) mergedRaw["Stav pro mapu"]="";
+      if(!mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+firebaseDocId;
+      await setDoc(doc(db,"sitesUnified",firebaseDocId),{
+        raw:mergedRaw,
+        dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(mergedRaw) : [],
+        updatedBy:currentUser.email,
+        updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+      },{merge:true});
+    }
+
+    await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
+    editCache[selectedKey]={...existingEdit,...edit};
+    rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
+    selectedSite=rows.find(r=>detailKey(r)===selectedKey) || {...selectedSite, repairOrdered};
+    if(st) st.textContent=repairOrdered ? "Oprava označena jako objednaná." : "Objednání opravy zrušeno.";
+    showSaveConfirmation(repairOrdered ? "Oprava objednána." : "Objednání opravy zrušeno.");
+    render();
+    updateRepairButton();
+  }catch(e){
+    if(st) st.textContent="Chyba uložení objednané opravy: "+e.message;
+  }
 }
 
 async function toggleOrderedFromDetail(){
@@ -4481,8 +4733,15 @@ async function toggleOrderedFromDetail(){
   const ordered=selectedSite.ordered !== true;
   try{
     const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    const existingEdit=editCache[selectedKey] || editCache[selectedSite.id] || {};
     const edit={
       ordered,
+      rawEdits:{
+        ...(existingEdit.rawEdits || {}),
+        "Kontrola objednaná":ordered ? "ANO" : "NE",
+        "Objednáno":ordered ? "ANO" : "NE",
+        "Stav pro mapu":ordered ? "Kontrola objednaná" : ""
+      },
       updatedBy:currentUser.email,
       updatedAt:new Date().toISOString()
     };
@@ -4491,6 +4750,8 @@ async function toggleOrderedFromDetail(){
     if(firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
       const mergedRaw={...(selectedSite.raw||{}), Firebase_doc_id:firebaseDocId};
       mergedRaw["Kontrola objednaná"]=ordered ? "ANO" : "NE";
+      mergedRaw["Objednáno"]=ordered ? "ANO" : "NE";
+      mergedRaw["Stav pro mapu"]=ordered ? "Kontrola objednaná" : "";
       if(!mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+firebaseDocId;
       await setDoc(doc(db,"sitesUnified",firebaseDocId),{
         raw:mergedRaw,
@@ -4501,7 +4762,7 @@ async function toggleOrderedFromDetail(){
     }
 
     await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
-    editCache[selectedKey]={...(editCache[selectedKey]||editCache[selectedSite.id]||{}),...edit};
+    editCache[selectedKey]={...existingEdit,...edit};
     rows=rows.map(r=>detailKey(r)===selectedKey?applyEditToRow(r):r);
     selectedSite=rows.find(r=>detailKey(r)===selectedKey) || {...selectedSite, ordered};
     if(st) st.textContent=ordered ? "Kontrola označena jako objednaná." : "Objednání kontroly zrušeno.";
@@ -4865,6 +5126,7 @@ window.openDetail=function(i){
   const addDataRowBox=document.getElementById("addDataRowBox"); if(addDataRowBox) addDataRowBox.style.display="none";
   const editDataToggleBtn=document.getElementById("editDataToggleBtn");
   const toggleOrderedBtn=document.getElementById("toggleOrderedBtn");
+  const toggleRepairBtn=document.getElementById("toggleRepairBtn");
   const toggleStopBtn=document.getElementById("toggleStopBtn");
   const showSiteOnMapBtn=document.getElementById("showSiteOnMapBtn");
   const calcDataGpsBtn=document.getElementById("calcDataGpsBtn");
@@ -4875,6 +5137,11 @@ window.openDetail=function(i){
     toggleOrderedBtn.style.display="block";
     updateOrderedButton();
     toggleOrderedBtn.onclick=toggleOrderedFromDetail;
+  }
+  if(toggleRepairBtn){
+    toggleRepairBtn.style.display="block";
+    updateRepairButton();
+    toggleRepairBtn.onclick=toggleRepairFromDetail;
   }
   if(toggleStopBtn){
     toggleStopBtn.style.display="block";
@@ -4899,6 +5166,8 @@ window.openDetail=function(i){
       table.innerHTML=editableDataTable(selectedSite);
       const inlineGpsBtn=document.getElementById("detailGpsCalcInline");
       if(inlineGpsBtn) inlineGpsBtn.onclick=dataAddressToGps;
+      const inlineGpsPickBtn=document.getElementById("detailGpsPickMapInline");
+      if(inlineGpsPickBtn) inlineGpsPickBtn.onclick=startDetailManualGpsPick;
       showControlDateInputs(selectedSite);
       editDataToggleBtn.style.display="none";
       if(calcDataGpsBtn) calcDataGpsBtn.style.display="none";
@@ -5775,6 +6044,10 @@ if(toggleProtocolBtn){
 
 const editFindGpsBtn=document.getElementById("editFindGpsBtn");
 if(editFindGpsBtn) editFindGpsBtn.onclick=recalcGpsForEditedAddress;
+const editPickGpsBtn=document.getElementById("editPickGpsBtn");
+if(editPickGpsBtn) editPickGpsBtn.onclick=startDetailManualGpsPick;
+const newPickGpsBtn=document.getElementById("newPickGpsBtn");
+if(newPickGpsBtn) newPickGpsBtn.onclick=startLegacyNewManualGpsPick;
 
 const editGpsAddressEl=document.getElementById("editGpsAddress");
 if(editGpsAddressEl){
@@ -6897,6 +7170,7 @@ setTimeout(()=>{
           <div>
             <label>GPS</label>
             <button class="secondary" type="button" id="calcOnlyGpsBtn" style="width:100%;margin-bottom:6px">Dopočítat GPS</button>
+            <button class="secondary" type="button" id="pickOnlyGpsBtn" style="width:100%;margin-bottom:6px">Vybrat na mapě</button>
             <button class="primary" type="button" id="findOnlyGpsBtn" style="width:100%">Ukázat bod na mapě</button>
           </div>
           <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
@@ -6925,6 +7199,8 @@ setTimeout(()=>{
     document.getElementById("saveOnlyNew").onclick=saveOnlyNewSite;
     const gpsBtn=document.getElementById("calcOnlyGpsBtn");
     if(gpsBtn) gpsBtn.onclick=calcOnlyNewGps;
+    const pickGpsBtn=document.getElementById("pickOnlyGpsBtn");
+    if(pickGpsBtn) pickGpsBtn.onclick=window.startOnlyNewManualGpsPick;
     const findGpsBtn=document.getElementById("findOnlyGpsBtn");
     if(findGpsBtn) findGpsBtn.onclick=findOnlyNewGpsOnMap;
     setTimeout(()=>{const f=document.getElementById("onlyNewName"); if(f) f.focus();},100);
@@ -7386,6 +7662,7 @@ setTimeout(()=>{
 
           <div class="full gps-actions">
             <button class="secondary" type="button" id="calcOnlyGps">Dopočítat GPS</button>
+            <button class="secondary" type="button" id="pickOnlyGps">Vybrat na mapě</button>
             <button class="primary" type="button" id="findOnlyGps">Ukázat bod na mapě</button>
           </div>
 
@@ -7422,6 +7699,7 @@ setTimeout(()=>{
     document.getElementById("closeOnlyNew").onclick=()=>{drawer.classList.remove("open");};
     document.getElementById("cancelOnlyNew").onclick=()=>{drawer.classList.remove("open");};
     document.getElementById("calcOnlyGps").onclick=calcAddGps;
+    document.getElementById("pickOnlyGps").onclick=window.startOnlyNewManualGpsPick;
     document.getElementById("findOnlyGps").onclick=findAddOnMap;
     document.getElementById("saveOnlyNew").onclick=saveAddSite;
     setTimeout(()=>document.getElementById("onlyNewName")?.focus(),100);
@@ -7765,7 +8043,7 @@ setTimeout(()=>{
   }
   const allowedRawKeys = new Set([
     ...FB_USER_FIELDS.map(f=>f.key),
-    "GPS_lat","GPS_lon","Příští_kontrola","Poslední_kontrola","Kontrola objednaná","Stop Stav","Zdroj_dat","Firebase_doc_id","Klíč_adresy"
+    "GPS_lat","GPS_lon","Příští_kontrola","Poslední_kontrola","Kontrola objednaná","Objednaná oprava","Stop Stav","Zdroj_dat","Firebase_doc_id","Klíč_adresy"
   ]);
   const rawKeyAliases = {
     "nazev":"Název",
@@ -7807,6 +8085,9 @@ setTimeout(()=>{
     "posledni probehla kontrola":"Poslední_kontrola",
     "kontrola objednana":"Kontrola objednaná",
     "objednano":"Kontrola objednaná",
+    "objednana oprava":"Objednaná oprava",
+    "oprava objednana":"Objednaná oprava",
+    "objednano oprava":"Objednaná oprava",
     "stop":"Stop Stav",
     "stop stav":"Stop Stav",
     "stop stav zdroje":"Stop Stav",
@@ -8082,11 +8363,12 @@ setTimeout(()=>{
         <div class="control-date-box control-date-last"><span>Poslední proběhlá kontrola</span><input id="fbUnifiedLastCheck" type="date"></div>
         <div class="control-date-box control-date-next"><span>Příští plánovaná kontrola</span><input id="fbUnifiedNextCheck" type="date"></div>
       </div>
-      <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Ukázat bod na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
+      <div class="fbUnifiedActions"><button class="fbSecondary" id="fbUnifiedGps" type="button">Dopočítat GPS</button><button class="fbSecondary" id="fbUnifiedPick" type="button">Vybrat na mapě</button><button class="fbSecondary" id="fbUnifiedFind" type="button">Ukázat bod na mapě</button><button class="fbPrimary" id="fbUnifiedSave" type="button">Uložit bod a otevřít detail</button><button class="fbDanger" id="fbUnifiedClear" type="button">Vymazat formulář</button></div>
       <div class="fbUnifiedGrid">${FB_USER_FIELDS.map(field).join("")}${FB_HIDDEN_KEYS.map(k=>`<input type="hidden" data-fb-key="${esc(k)}">`).join("")}</div>`;
     document.body.appendChild(panel);
     document.getElementById("fbUnifiedClose").onclick=closePanel;
     document.getElementById("fbUnifiedGps").onclick=calcGps;
+    document.getElementById("fbUnifiedPick").onclick=window.startFbUnifiedManualGpsPick;
     document.getElementById("fbUnifiedFind").onclick=findOnMap;
     document.getElementById("fbUnifiedSave").onclick=savePoint;
     document.getElementById("fbUnifiedClear").onclick=clearForm;
