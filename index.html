@@ -1719,7 +1719,7 @@ const CLOUDINARY_PHOTOS = {
   folder:"astip-servis"
 };
 let app, auth, db, fb={}, currentUser=null;
-let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, editCache={};
+let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, addSourceBaseSite=null, editCache={};
 let firebaseUnifiedPrimary = firebaseReady;
 window.firebaseReady = firebaseReady;
 window.firebaseUnifiedPrimary = firebaseUnifiedPrimary;
@@ -2626,6 +2626,7 @@ function setNewSiteModeTitle(){
 function clearNewSiteMode(){
   const drawerEl=document.getElementById("drawer");
   if(drawerEl) drawerEl.classList.remove("adding-new-site");
+  addSourceBaseSite=null;
   const chooser=document.getElementById("sourceChooser");
   if(chooser){
     chooser.style.display="none";
@@ -2902,6 +2903,7 @@ function populateNewRegionOptions(){
 
 function openNewSiteForm(){
   selectedSite=null;
+  addSourceBaseSite=null;
   const chooser=document.getElementById("sourceChooser");
   if(chooser){chooser.style.display="none";chooser.innerHTML="";}
   populateNewRegionOptions();
@@ -3684,11 +3686,68 @@ function groupPopupHtml(group){
   }
   return `<b>${esc(group.label || "Místo")}</b><br>${rowsInGroup.length} zdrojů na jednom místě<div class="source-popup-list">${rowsInGroup.map(sourceButtonHtml).join("")}</div>`;
 }
+function setNewDataFieldValue(key,value){
+  document.querySelectorAll("#newAllFieldsBox [data-new-key]").forEach(el=>{
+    if(el.dataset.newKey===key) el.value=value || "";
+  });
+}
+function copyPlaceFieldsToNewSource(site){
+  if(!site) return;
+  const raw=site.raw || {};
+  const place=sitePlaceLabel(site);
+  const region=rowRegion(site);
+  const contact=safe(site.kontakt || rawValueForAny(raw,["Kontakt","Kontakt_mapy","Hlavní kontakt"]));
+  setInputValue("newName",safe(raw["Název"] || site.adresa || place));
+  setInputValue("newGpsAddress",place);
+  setInputValue("newGpsLat",Number.isFinite(site.lat) ? String(site.lat) : "");
+  setInputValue("newGpsLon",Number.isFinite(site.lon) ? String(site.lon) : "");
+  setInputValue("newRegion",region || "");
+  setInputValue("newContact",contact);
+  setInputValue("newSource","");
+  setInputValue("newNextCheck","");
+  setInputValue("newLastCheck","");
+  setInputValue("newNotes","");
+  setInputValue("newExtra","");
+  setInputChecked("newNoOrder",false);
+  setNewDataFieldValue("Název",safe(raw["Název"] || site.adresa || place));
+  setNewDataFieldValue("Adresa / umístění",place);
+  setNewDataFieldValue("Adresa_GPS",place);
+  setNewDataFieldValue("Kraj",region || "");
+  setNewDataFieldValue("Kontakt",contact);
+  setNewDataFieldValue("Popis_zdroje","");
+  setNewDataFieldValue("Zdroj","");
+  setNewDataFieldValue("Poznámky","");
+  setNewDataFieldValue("Důležitá poznámka","");
+}
+function openAddSourceForSite(site=selectedSite){
+  if(!site) return;
+  addSourceBaseSite=site;
+  openNewSiteForm();
+  addSourceBaseSite=site;
+  const title=document.getElementById("drawerTitle") || document.getElementById("detailTitle");
+  const sub=document.getElementById("drawerSub") || document.getElementById("detailSub");
+  if(title) title.textContent="Přidat další zdroj";
+  if(sub) sub.textContent=sitePlaceLabel(site) || site.adresa || "";
+  copyPlaceFieldsToNewSource(site);
+  const st=document.getElementById("newSiteStatus");
+  if(st) st.textContent="Adresa a GPS jsou převzaté z aktuálního místa. Doplň typ zdroje nebo výrobní číslo.";
+  setTimeout(()=>{
+    const source=document.getElementById("newSource") || document.querySelector('#newAllFieldsBox [data-new-key="Popis_zdroje"]');
+    if(source){
+      source.focus();
+      source.scrollIntoView({behavior:"smooth",block:"center"});
+    }
+  },120);
+}
+function openAddSourceForSiteByKey(key){
+  const row=rows.find(r=>detailKey(r)===String(key || "") || r.id===String(key || "") || r.firebaseDocId===String(key || ""));
+  if(row) openAddSourceForSite(row);
+}
 function renderSourceChooser(site=selectedSite){
   const box=document.getElementById("sourceChooser");
   if(!box) return;
   const siblings=siteSiblingRows(site);
-  if(!site || siblings.length<=1){
+  if(!site){
     box.style.display="none";
     box.innerHTML="";
     return;
@@ -3696,16 +3755,23 @@ function renderSourceChooser(site=selectedSite){
   const activeKey=detailKey(site);
   box.style.display="block";
   box.innerHTML=`
-    <div class="source-chooser-title">Na této adrese je více zdrojů. Vyber konkrétní zdroj:</div>
+    <div class="source-chooser-title">Zdroje na tomto místě</div>
     <div class="source-chooser-buttons">
       ${siblings.map(row=>`
         <button class="source-chooser-button ${detailKey(row)===activeKey ? "active" : ""}" type="button" data-source-key="${esc(detailKey(row))}">
           ${esc(siteSourceLabel(row))}
           <small>${esc(statusText(row))}</small>
         </button>`).join("")}
+      <button class="source-chooser-button" type="button" data-add-source="${esc(activeKey)}">
+        + Přidat další zdroj
+        <small>${esc(sitePlaceLabel(site) || site.adresa || "")}</small>
+      </button>
     </div>`;
   box.querySelectorAll("[data-source-key]").forEach(btn=>{
     btn.onclick=()=>window.openDetailById(btn.getAttribute("data-source-key"));
+  });
+  box.querySelectorAll("[data-add-source]").forEach(btn=>{
+    btn.onclick=()=>openAddSourceForSiteByKey(btn.getAttribute("data-add-source"));
   });
 }
 function rowRegion(r){
@@ -3797,6 +3863,8 @@ Object.assign(window,{
   siteSourceLabel,
   siteSourceIdentity,
   siteSiblingRows,
+  openAddSourceForSite,
+  openAddSourceForSiteByKey,
   siteRecordKeys,
   selectedSiteDocId,
   siteRecordTextKeys,
@@ -6137,11 +6205,14 @@ document.getElementById("addSiteBtn").onclick=()=>{
   },120);
 };
 document.getElementById("cancelNewSiteBtn").onclick=()=>{
+  const baseKey=addSourceBaseSite ? detailKey(addSourceBaseSite) : "";
   document.getElementById("newSiteCard").style.display="none";
   clearNewSiteMode();
+  if(baseKey) window.openDetailById(baseKey);
 };
 document.getElementById("saveNewSiteBtn").onclick=async()=>{
   const st=document.getElementById("newSiteStatus");
+  const sourceBaseSite=addSourceBaseSite;
   if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
   if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
 
@@ -6185,6 +6256,15 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     updatedBy:currentUser.email,
     updatedAt:new Date().toISOString()
   };
+  const newSourceType=safe(data.source || data.allRawData?.["Popis_zdroje"] || data.allRawData?.["Kontrolované zařízení"] || data.allRawData?.["Typ zařízení"]);
+  const newSourceSerial=sourceSerialTextFromRaw(data.allRawData || {});
+  if(sourceBaseSite && !newSourceType && !newSourceSerial){
+    st.className="small";
+    st.textContent="Pro další zdroj na stejné adrese doplň typ zdroje nebo výrobní číslo, aby se odlišil od ostatních.";
+    const sourceInput=document.getElementById("newSource") || document.querySelector('#newAllFieldsBox [data-new-key="Popis_zdroje"]') || document.querySelector('#newAllFieldsBox [data-new-key="Zdroj"]');
+    if(sourceInput) sourceInput.focus();
+    return;
+  }
   const newSiteDatePeriod=inferControlPeriodMonthsFromDateValues(data.lastCheck,data.nextCheck);
   if(newSiteDatePeriod){
     data.period=String(newSiteDatePeriod);
@@ -6212,9 +6292,18 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       raw["Poslední_kontrola"]=data.lastCheck || raw["Poslední_kontrola"] || "";
       if(data.period) raw["Perioda kontrol"]=data.period;
       if(data.noOrder) raw["Hlídáme sami termín"]="ano";
+      if(sourceBaseSite){
+        raw["Adresa / umístění"]=data.gpsAddress || sitePlaceLabel(sourceBaseSite) || raw["Adresa / umístění"] || raw["Název"] || "";
+        raw["Adresa_GPS"]=data.gpsAddress || raw["Adresa_GPS"] || raw["Adresa / umístění"] || "";
+        raw["GPS_lat"]=data.gpsLat || raw["GPS_lat"] || "";
+        raw["GPS_lon"]=data.gpsLon || raw["GPS_lon"] || "";
+        raw["Kraj"]=data.region || rowRegion(sourceBaseSite) || raw["Kraj"] || "";
+        raw["Zdroj_dat"]="Firebase další zdroj";
+      }
       const result=await window.saveUnifiedSiteRaw(raw);
       if(result.duplicate){
         st.textContent="Bod už existuje. Otevírám existující záznam.";
+        addSourceBaseSite=null;
         if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
         return;
       }
@@ -6223,8 +6312,9 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       const {collection,addDoc}=fb.fsMod;
       savedRef=await addDoc(collection(db,"sites"),data);
     }
-    st.textContent="Nové místo uloženo.";
-    showSaveConfirmation("Nové místo uloženo.");
+    st.textContent=sourceBaseSite ? "Nový zdroj uložen." : "Nové místo uloženo.";
+    showSaveConfirmation(sourceBaseSite ? "Nový zdroj uložen." : "Nové místo uloženo.");
+    addSourceBaseSite=null;
     document.getElementById("newName").value="";
     document.getElementById("newGpsAddress").value="";
     document.getElementById("newGpsLat").value="";
