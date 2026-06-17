@@ -129,6 +129,8 @@ button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:whit
 .dot{width:13px;height:13px;border-radius:50%;display:inline-block;border:2px solid white;box-shadow:0 0 0 1px #999}
 .item{border:1px solid var(--border);border-radius:14px;padding:10px;background:white;cursor:pointer;margin-bottom:8px}
 .item:hover{background:#eff6ff}.item-title{font-weight:700;font-size:13px}.item-meta{font-size:12px;color:#64748b;line-height:1.35}
+.item-sources{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.item-source-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:3px 7px;font-size:11px;font-weight:800}
 .pill{display:inline-block;padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;margin-top:6px}
 .red{background:#fee2e2;color:#991b1b}.orange{background:#ffedd5;color:#9a3412}.yellow{background:#fef3c7;color:#92400e}.green{background:#dcfce7;color:#166534}.gray{background:#f1f5f9;color:#334155}.blue{background:#dbeafe;color:#1d4ed8}
 #statusFilter.status-red{background:#fee2e2;color:#991b1b;border-color:#fecaca;font-weight:800}
@@ -148,6 +150,28 @@ button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:whit
 .drawer{position:fixed;right:0;top:0;height:100vh;width:min(760px,100vw);background:#fff;border-left:1px solid var(--border);box-shadow:-10px 0 35px #0003;z-index:2000;transform:translateX(105%);transition:.2s;overflow:auto;padding:16px}
 .drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between;gap:10px}.x{width:auto}
 .card{border:1px solid var(--border);border-radius:14px;padding:12px;background:#fff;margin:10px 0}
+.source-chooser{border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:10px;margin:10px 0}
+.source-chooser-title{font-weight:800;margin-bottom:7px;color:#1e3a8a}
+.source-chooser-buttons{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px}
+.source-chooser-button{border:1px solid #bfdbfe;background:white;color:#1d4ed8;border-radius:10px;padding:8px 9px;text-align:left;font-weight:800}
+.source-chooser-button.active{background:#2563eb;color:white;border-color:#2563eb}
+.source-chooser-button small{display:block;font-weight:700;opacity:.82;margin-top:2px}
+.source-popup-list{display:grid;gap:6px;margin-top:8px;min-width:190px}
+.source-popup-btn{border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:8px;padding:6px 8px;width:100%;text-align:left;font-weight:800;cursor:pointer}
+.source-popup-btn small{display:block;color:#475569;font-weight:700;margin-top:2px}
+.source-group-marker{
+  width:26px;
+  height:26px;
+  border-radius:999px;
+  border:2px solid #fff;
+  box-shadow:0 0 0 1px rgba(15,23,42,.35),0 8px 20px rgba(15,23,42,.25);
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  font-weight:900;
+}
 table{border-collapse:collapse;font-size:13px;width:100%}td{padding:6px 0;border-bottom:1px solid #f1f5f9;vertical-align:top}
 td:first-child{font-weight:700;color:#334155;width:205px;padding-right:8px}td:nth-child(2){word-break:break-word}
 .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -1309,6 +1333,7 @@ button,input,select,textarea{
 <div class="drawer" id="drawer">
 <div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
 
+<div id="sourceChooser" class="source-chooser" style="display:none"></div>
 
 <div class="card" id="protocolCard">
   <h3>Protokol / potvrzení o provedené zkoušce</h3>
@@ -2601,6 +2626,11 @@ function setNewSiteModeTitle(){
 function clearNewSiteMode(){
   const drawerEl=document.getElementById("drawer");
   if(drawerEl) drawerEl.classList.remove("adding-new-site");
+  const chooser=document.getElementById("sourceChooser");
+  if(chooser){
+    chooser.style.display="none";
+    chooser.innerHTML="";
+  }
 }
 
 
@@ -2872,6 +2902,8 @@ function populateNewRegionOptions(){
 
 function openNewSiteForm(){
   selectedSite=null;
+  const chooser=document.getElementById("sourceChooser");
+  if(chooser){chooser.style.display="none";chooser.innerHTML="";}
   populateNewRegionOptions();
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="block";
@@ -3520,6 +3552,162 @@ function rowMatchesSearch(r,normalizedQuery){
   const compactQuery=normalizedQuery.replace(/\s+/g,"");
   return compactQuery.length>=3 && compactHay.includes(compactQuery);
 }
+function rawValueForAny(raw,keys){
+  for(const k of keys){
+    const v=raw && raw[k];
+    if(safe(v)) return safe(v);
+  }
+  return "";
+}
+function sitePlaceLabel(site){
+  const raw=(site && site.raw) || {};
+  return safe(
+    rawValueForAny(raw,["Adresa / umístění","Adresa_GPS","Umístění","Umístění zdroje","Původní adresa / umístění"])
+    || site && site.gpsAddress
+    || site && site.adresa
+    || raw["Název"]
+  );
+}
+function sourceTypeTextFromRaw(raw){
+  return rawValueForAny(raw,[
+    "Popis_zdroje","Zdroj","Jaký zdroj","Kontrolované zařízení","Typ zařízení","Zařízení","Zarizeni",
+    "Upravený zdroj"
+  ]);
+}
+function sourceSerialTextFromRaw(raw){
+  return rawValueForAny(raw,[
+    "Výrobní číslo","Vyrobni cislo","Výrobní_číslo","Vyrobní_číslo","Sériové číslo","Seriove cislo",
+    "Serial","Serial number","Zdroj"
+  ]);
+}
+function siteSourceLabel(site){
+  const raw=(site && site.raw) || {};
+  const type=safe((site && site.zdroj) || sourceTypeTextFromRaw(raw));
+  const serial=sourceSerialTextFromRaw(raw);
+  if(type && serial && !searchNorm(type).includes(searchNorm(serial))) return `${type} · v.č. ${serial}`;
+  return type || (serial ? `Výr. č. ${serial}` : "Zdroj");
+}
+function siteSourceIdentity(site){
+  const raw=(site && site.raw) || {};
+  const type=sourceTypeTextFromRaw(raw) || (site && site.zdroj);
+  const serial=sourceSerialTextFromRaw(raw);
+  return searchNorm([type,serial].filter(Boolean).join(" "));
+}
+function sitePlaceGroupKey(site){
+  const place=siteDedupValue(sitePlaceLabel(site));
+  if(place && place.length>=3) return "addr:"+place;
+  const lat=Number(site && site.lat);
+  const lon=Number(site && site.lon);
+  if(Number.isFinite(lat) && Number.isFinite(lon)) return `gps:${lat.toFixed(5)},${lon.toFixed(5)}`;
+  return "single:"+(detailKey(site) || (site && site.id) || "");
+}
+function siteSiblingRows(site,pool=rows){
+  const key=sitePlaceGroupKey(site);
+  return (pool || [])
+    .filter(r=>sitePlaceGroupKey(r)===key)
+    .sort((a,b)=>siteSourceLabel(a).localeCompare(siteSourceLabel(b),"cs",{sensitivity:"base"}));
+}
+function siteHasMultipleSources(site){
+  return siteSiblingRows(site).length>1;
+}
+function recordSourceIdentity(record){
+  if(!record) return "";
+  return searchNorm([
+    record.siteSource,
+    record.siteSourceIdentity,
+    record.sourceIdentity,
+    record.deviceType,
+    record.source,
+    record.zdroj,
+    record.device,
+    record.deviceName,
+    record.serial,
+    record.serialNumber,
+    record.vyrobniCislo
+  ].filter(Boolean).join(" "));
+}
+function recordSourceMatchesSite(record,site){
+  const siteSource=siteSourceIdentity(site);
+  const recordSource=recordSourceIdentity(record);
+  if(!siteSource || !recordSource) return false;
+  return siteSource===recordSource || siteSource.includes(recordSource) || recordSource.includes(siteSource);
+}
+function statusPriority(r){
+  const st=statusText(r);
+  if(st==="Propadlá kontrola") return 70;
+  if(st==="1–30 dní k termínu") return 60;
+  if(st==="Kontrola objednaná") return 50;
+  if(st==="Objednaná oprava") return 45;
+  if(st==="Stop Stav") return 30;
+  if(isNoOrderSite(r)) return 20;
+  return 10;
+}
+function groupRepresentative(groupRows){
+  return (groupRows || []).slice().sort((a,b)=>{
+    const pa=statusPriority(a), pb=statusPriority(b);
+    if(pb!==pa) return pb-pa;
+    return (daysToComputedNext(a)??999999)-(daysToComputedNext(b)??999999);
+  })[0];
+}
+function groupColor(groupRows){
+  const rep=groupRepresentative(groupRows);
+  return rep ? color(rep) : "#16a34a";
+}
+function groupRowsByPlace(inputRows){
+  const mapByKey=new Map();
+  (inputRows || []).forEach(r=>{
+    const key=sitePlaceGroupKey(r);
+    if(!mapByKey.has(key)){
+      mapByKey.set(key,{key,rows:[],lat:null,lon:null,label:sitePlaceLabel(r)});
+    }
+    const group=mapByKey.get(key);
+    group.rows.push(r);
+    if(!group.label) group.label=sitePlaceLabel(r);
+    if(!Number.isFinite(group.lat) && Number.isFinite(r.lat) && Number.isFinite(r.lon)){
+      group.lat=r.lat;
+      group.lon=r.lon;
+    }
+  });
+  return [...mapByKey.values()].map(group=>{
+    group.rows=group.rows.sort((a,b)=>siteSourceLabel(a).localeCompare(siteSourceLabel(b),"cs",{sensitivity:"base"}));
+    return group;
+  });
+}
+function sourceButtonHtml(row){
+  return `<button class="source-popup-btn" type="button" onclick="openDetailById(${esc(JSON.stringify(detailKey(row)))})">${esc(siteSourceLabel(row))}<small>${esc(statusText(row))}</small></button>`;
+}
+function groupPopupHtml(group){
+  const rowsInGroup=group.rows || [];
+  if(rowsInGroup.length<=1){
+    const r=rowsInGroup[0];
+    return `<b>${esc(r.adresa||"Bez názvu")}</b><br>${esc(siteSourceLabel(r))}<br>${esc(statusText(r))}<br><button onclick="openDetailById(${esc(JSON.stringify(detailKey(r)))})">Detail</button>`;
+  }
+  return `<b>${esc(group.label || "Místo")}</b><br>${rowsInGroup.length} zdrojů na jednom místě<div class="source-popup-list">${rowsInGroup.map(sourceButtonHtml).join("")}</div>`;
+}
+function renderSourceChooser(site=selectedSite){
+  const box=document.getElementById("sourceChooser");
+  if(!box) return;
+  const siblings=siteSiblingRows(site);
+  if(!site || siblings.length<=1){
+    box.style.display="none";
+    box.innerHTML="";
+    return;
+  }
+  const activeKey=detailKey(site);
+  box.style.display="block";
+  box.innerHTML=`
+    <div class="source-chooser-title">Na této adrese je více zdrojů. Vyber konkrétní zdroj:</div>
+    <div class="source-chooser-buttons">
+      ${siblings.map(row=>`
+        <button class="source-chooser-button ${detailKey(row)===activeKey ? "active" : ""}" type="button" data-source-key="${esc(detailKey(row))}">
+          ${esc(siteSourceLabel(row))}
+          <small>${esc(statusText(row))}</small>
+        </button>`).join("")}
+    </div>`;
+  box.querySelectorAll("[data-source-key]").forEach(btn=>{
+    btn.onclick=()=>window.openDetailById(btn.getAttribute("data-source-key"));
+  });
+}
 function rowRegion(r){
   return canonicalRegionValue(r && r.kraj) || inferRegionFromAddressText(rowSearchText(r));
 }
@@ -3560,6 +3748,7 @@ function recordMatchesSite(record,site=selectedSite){
     ...(Array.isArray(record.siteKeys) ? record.siteKeys : [])
   ].map(x=>String(x || "").trim()).filter(Boolean);
   if(recordKeys.some(k=>keys.includes(k))) return true;
+  if(siteHasMultipleSources(site) && !recordSourceMatchesSite(record,site)) return false;
 
   const raw=site.raw || {};
   const siteTexts=[
@@ -3603,6 +3792,11 @@ Object.assign(window,{
   inferRegionFromAddressText,
   canonicalRegionValue,
   regionTextNorm,
+  sitePlaceGroupKey,
+  sitePlaceLabel,
+  siteSourceLabel,
+  siteSourceIdentity,
+  siteSiblingRows,
   siteRecordKeys,
   selectedSiteDocId,
   siteRecordTextKeys,
@@ -3630,12 +3824,35 @@ function render(){
   if(rows.length) resetFirebaseRowsAutoReload();
   layer.clearLayers();
   const vis=filtered(), gps=vis.filter(inCzSk);
-  gps.forEach(r=>L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:color(r),fillOpacity:.92})
-    .bindPopup(`<b>${esc(r.adresa||"Bez názvu")}</b><br>${esc(r.zdroj)}<br>${esc(statusText(r))}<br><button onclick="openDetailById(${esc(JSON.stringify(detailKey(r)))})">Detail</button>`).addTo(layer));
+  groupRowsByPlace(gps).forEach(group=>{
+    if(!Number.isFinite(group.lat) || !Number.isFinite(group.lon)) return;
+    const fill=groupColor(group.rows);
+    if(group.rows.length>1){
+      L.marker([group.lat,group.lon],{
+        icon:L.divIcon({
+          className:"source-group-marker-wrap",
+          html:`<div class="source-group-marker" style="background:${esc(fill)}">${group.rows.length}</div>`,
+          iconSize:[26,26],
+          iconAnchor:[13,13]
+        })
+      }).bindPopup(groupPopupHtml(group)).addTo(layer);
+    }else{
+      const r=group.rows[0];
+      L.circleMarker([r.lat,r.lon],{radius:8,color:"#fff",weight:2,fillColor:fill,fillOpacity:.92})
+        .bindPopup(groupPopupHtml(group)).addTo(layer);
+    }
+  });
   const list=document.getElementById("list");list.innerHTML="";
-  vis.slice().sort((a,b)=>((daysToComputedNext(a)??999999)-(daysToComputedNext(b)??999999))).slice(0,160).forEach(r=>{
+  groupRowsByPlace(vis).sort((a,b)=>{
+    const ar=groupRepresentative(a.rows), br=groupRepresentative(b.rows);
+    return ((daysToComputedNext(ar)??999999)-(daysToComputedNext(br)??999999));
+  }).slice(0,160).forEach(group=>{
+    const r=groupRepresentative(group.rows) || group.rows[0];
     const d=document.createElement("div");d.className="item";
-    d.innerHTML=`<div class="item-title">${esc(r.adresa||"Bez názvu")}</div><div class="item-meta">${esc(r.zdroj)}<br>Další kontrola: <b>${esc(displayNext(r)||"není vyplněno")}</b></div><span class="pill ${pill(r)}">${esc(statusText(r))}</span>`;
+    const sources=group.rows.length>1
+      ? `<div class="item-sources">${group.rows.slice(0,5).map(row=>`<span class="item-source-chip">${esc(siteSourceLabel(row))}</span>`).join("")}${group.rows.length>5 ? `<span class="item-source-chip">+${group.rows.length-5}</span>` : ""}</div>`
+      : "";
+    d.innerHTML=`<div class="item-title">${esc(group.label || r.adresa || "Bez názvu")}</div><div class="item-meta">${group.rows.length>1 ? `${group.rows.length} zdrojů na místě` : esc(siteSourceLabel(r))}<br>Další kontrola: <b>${esc(displayNext(r)||"není vyplněno")}</b></div>${sources}<span class="pill ${pill(r)}">${esc(statusText(r))}</span>`;
     d.onclick=()=>window.openDetailById(detailKey(r));list.appendChild(d);
   });
   document.getElementById("shownCount").textContent=vis.length;
@@ -3857,6 +4074,10 @@ function siteDedupValue(v){
 function siteDedupKeysFromRaw(raw){
   const keys=[];
   const seen=new Set();
+  const source=siteDedupValue([
+    sourceTypeTextFromRaw(raw || {}),
+    sourceSerialTextFromRaw(raw || {})
+  ].filter(Boolean).join(" "));
   function add(prefix,v){
     const n=siteDedupValue(v);
     if(!n || n.length<3) return;
@@ -3864,7 +4085,7 @@ function siteDedupKeysFromRaw(raw){
     const sorted=n.split(" ").filter(Boolean).sort().join(" ");
     if(sorted && sorted!==n) values.push("sorted:"+sorted);
     values.forEach(value=>{
-      const key=prefix+":"+value;
+      const key=source ? `${prefix}_source:${value}|${source}` : `${prefix}:${value}`;
       if(seen.has(key)) return;
       seen.add(key);
       keys.push(key);
@@ -5117,9 +5338,10 @@ window.openDetail=function(i){
   startDetailAsyncLoads(r);
   document.getElementById("drawer").classList.add("open"); document.getElementById("drawer").scrollTop=0;
   document.getElementById("newSiteCard").style.display="none";
-    clearNewSiteMode();
+  clearNewSiteMode();
   document.getElementById("detailTitle").textContent=r.adresa||"Bez názvu";
-  document.getElementById("detailSub").textContent=r.zdroj||"";
+  document.getElementById("detailSub").textContent=siteSourceLabel(r)||"";
+  renderSourceChooser(r);
   document.getElementById("detailTable").classList.remove("data-edit-table");
   document.getElementById("detailTable").innerHTML=detailTable(r);
   showControlDateDisplay(r);
@@ -5693,9 +5915,10 @@ async function loadHistory(siteId){
     embeddedRecords.forEach((item,idx)=>{
       addHistoryItem({...item,_type:"Servisní záznam",_collection:"embeddedServiceRecords",_id:item._id || `embedded_service_${idx}`});
     });
-    if(items.length){
-      items.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-      detailHistoryItems=items.slice();
+    const initialItems=items.filter(item=>recordMatchesSite(item,selectedSite));
+    if(initialItems.length){
+      initialItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
+      detailHistoryItems=initialItems.slice();
       detailHistoryIndex=0;
       renderHistory();
     }
@@ -5772,21 +5995,22 @@ async function loadHistory(siteId){
     await readCollection("serviceRecords","Servisní záznam");
     await readCollection("protocols","Protokol");
 
-    if(!items.length){
+    const finalItems=items.filter(item=>recordMatchesSite(item,selectedSite));
+    if(!finalItems.length){
       detailHistoryItems=[];
       detailHistoryIndex=0;
       history.textContent="Zatím žádný záznam.";
       return;
     }
 
-    items.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-    const latestProtocol=items.find(item=>item._type==="Protokol");
+    finalItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
+    const latestProtocol=finalItems.find(item=>item._type==="Protokol");
     if(latestProtocol && selectedSite){
       applyLatestProtocolToSite(latestProtocol,selectedSite);
       showControlDateDisplay(selectedSite);
       render();
     }
-    detailHistoryItems=items;
+    detailHistoryItems=finalItems;
     detailHistoryIndex=0;
     renderHistory();
   }catch(e){
@@ -6110,7 +6334,7 @@ if(serviceForm){
       const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
       const keys=siteRecordKeys(selectedSite);
       const serviceRef=doc(collection(db,"serviceRecords"));
-      const servicePayload={_id:serviceRef.id,siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:new Date().toISOString()};
+      const servicePayload={_id:serviceRef.id,siteId:selectedSite.id,siteKey:keys[0] || selectedSite.id,siteKeys:keys,firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",sourceGroupKey:sitePlaceGroupKey(selectedSite),sourceIdentity:siteSourceIdentity(selectedSite),siteAddress:selectedSite.adresa,siteSource:selectedSite.zdroj,technician:document.getElementById("technician").value,technicianEmail:currentUser.email,checkDate:document.getElementById("checkDate").value,result:document.getElementById("result").value,issues:document.getElementById("issues").value,recommendation:document.getElementById("recommendation").value,photoLinks:document.getElementById("photoLinks").value.split(/\n+/).map(x=>x.trim()).filter(Boolean),createdAt:new Date().toISOString()};
       const childOk=await saveSiteChildItem("serviceRecords",serviceRef.id,servicePayload,selectedSite);
       const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("serviceHistory",servicePayload,selectedSite);
       await appendEmbeddedSiteItem("serviceRefs",{
@@ -6663,7 +6887,10 @@ async function uploadSitePhotos(){
         siteKey,
         siteKeys:keys,
         firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
+        sourceGroupKey:sitePlaceGroupKey(selectedSite),
+        sourceIdentity:siteSourceIdentity(selectedSite),
         siteName:selectedSite.adresa || "",
+        siteSource:selectedSite.zdroj || "",
         url:cloudinaryResult.url,
         displayUrl:cloudinaryResult.displayUrl,
         fullUrl:cloudinaryResult.fullUrl,
@@ -6764,8 +6991,9 @@ async function getLastProtocol(site=selectedSite){
         }
       }
     }
-    items.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-    return items[0] || null;
+    const matchedItems=items.filter(item=>recordMatchesSite(item,site));
+    matchedItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
+    return matchedItems[0] || null;
   }catch(e){
     console.warn("Nepodařilo se načíst poslední protokol:",e);
     return null;
@@ -6897,6 +7125,8 @@ function protocolPayload(){
     siteKey:siteRecordKeys(selectedSite)[0] || selectedSite?.id || "",
     siteKeys:siteRecordKeys(selectedSite),
     firebaseDocId:selectedSite?.firebaseDocId || selectedSite?.raw?.["Firebase_doc_id"] || "",
+    sourceGroupKey:sitePlaceGroupKey(selectedSite),
+    sourceIdentity:siteSourceIdentity(selectedSite),
     siteName:selectedSite?.adresa || "",
     siteSource:selectedSite?.zdroj || "",
     technicianEmail:currentUser?.email || "",
