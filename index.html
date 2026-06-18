@@ -1590,40 +1590,42 @@ button,input,select,textarea{
   </div>
 </div>
 
-<div class="card" id="newSiteCard" style="order:-100" style="display:none">
+<div class="card" id="newSiteCard" style="display:none;order:-100">
   <h3>Přidat nové místo</h3>
   <p class="small">Nové místo se uloží a zobrazí se v mapě.</p>
 
-  <label><div class="legacy-newsite-fields">Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
-  <label>Adresa pro GPS / mapu</label><input id="newGpsAddress" placeholder="Ulice číslo, město, Česká republika">
-  <button type="button" class="secondary" id="newPickGpsBtn" style="margin:8px 0">Vybrat místo na mapě</button>
-  <div class="edit-grid">
-    <div><label>GPS lat</label><input id="newGpsLat" placeholder="49.123456"></div>
-    <div><label>GPS lon</label><input id="newGpsLon" placeholder="16.123456"></div>
-  </div>
+  <div class="legacy-newsite-fields" aria-hidden="true">
+    <label>Název / umístění</label><input id="newName" placeholder="např. Nemocnice, budova A">
+    <label>Adresa pro GPS / mapu</label><input id="newGpsAddress" placeholder="Ulice číslo, město, Česká republika">
+    <button type="button" class="secondary" id="newPickGpsBtn" style="margin:8px 0">Vybrat místo na mapě</button>
+    <div class="edit-grid">
+      <div><label>GPS lat</label><input id="newGpsLat" placeholder="49.123456"></div>
+      <div><label>GPS lon</label><input id="newGpsLon" placeholder="16.123456"></div>
+    </div>
 
-  <div class="edit-grid">
-    <div><label>Kraj</label><select id="newRegion"><option value="">Vyber kraj</option></select></div>
-    <div><label>Kontakt</label><input id="newContact"></div>
-  </div>
+    <div class="edit-grid">
+      <div><label>Kraj</label><select id="newRegion"><option value="">Vyber kraj</option></select></div>
+      <div><label>Kontakt</label><input id="newContact"></div>
+    </div>
 
-  <label>Zdroj / popis zařízení</label><input id="newSource">
-  <div class="checkrow"><input type="checkbox" id="newNoOrder"><label for="newNoOrder" style="margin:0">Hlídáme termín sami – označit růžově</label></div>
-  <label>Příští kontrola</label><input type="date" id="newNextCheck">
-  <label>Poslední kontrola</label><input type="date" id="newLastCheck">
-  <label>Poznámky</label><textarea id="newNotes"></textarea>
-  <label>Další informace</label><textarea id="newExtra" placeholder="Sem napiš cokoliv dalšího – fakturace, protokol, cena, poznámka..."></textarea>
-  <label>Veškerá data / vlastní pole</label>
-  <textarea id="newAllData" placeholder="Sem můžeš doplnit libovolná další data. Např.:
+    <label>Zdroj / popis zařízení</label><input id="newSource">
+    <div class="checkrow"><input type="checkbox" id="newNoOrder"><label for="newNoOrder" style="margin:0">Hlídáme termín sami – označit růžově</label></div>
+    <label>Příští kontrola</label><input type="date" id="newNextCheck">
+    <label>Poslední kontrola</label><input type="date" id="newLastCheck">
+    <label>Poznámky</label><textarea id="newNotes"></textarea>
+    <label>Další informace</label><textarea id="newExtra" placeholder="Sem napiš cokoliv dalšího – fakturace, protokol, cena, poznámka..."></textarea>
+    <label>Veškerá data / vlastní pole</label>
+    <textarea id="newAllData" placeholder="Sem můžeš doplnit libovolná další data. Např.:
 Rok výroby: 2024
 Serviska: ano
 Faktura na: ...
 Protokol na: ...
 Cena FZ: ..."></textarea>
+  </div>
 
+  <div id="newAllFieldsBox"></div>
   <div class="row" style="margin-top:8px">
-    </div><div id="newAllFieldsBox"></div>
-<button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
+    <button class="primary" id="saveNewSiteBtn">Uložit nové místo</button>
     <button class="secondary" id="cancelNewSiteBtn">Zrušit</button>
   </div>
   <p id="newSiteStatus" class="small"></p>
@@ -9349,6 +9351,264 @@ setTimeout(()=>{
   });
 
   setInterval(autoMigrateIfNeeded, 5000);
+})();
+</script>
+
+<script>
+/* FINAL FIX: další zdroj z detailu používá samostatný čistý formulář */
+(function(){
+  const escSource = v => String(v ?? "").replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
+  const attrSource = v => escSource(v);
+  const cleanSource = v => String(v ?? "").trim();
+  const numSource = v => {
+    const n = parseFloat(String(v ?? "").replace(",", "."));
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const dateInputSource = v => {
+    try{
+      if(typeof dateInputValueFromAny === "function") return dateInputValueFromAny(v) || "";
+    }catch(e){}
+    return cleanSource(v);
+  };
+
+  function firstRawValue(raw, keys){
+    for(const key of keys){
+      const value = cleanSource(raw && raw[key]);
+      if(value) return value;
+    }
+    return "";
+  }
+
+  function rowKeySource(row){
+    try{
+      if(typeof detailKey === "function") return detailKey(row);
+    }catch(e){}
+    const raw = (row && row.raw) || {};
+    return cleanSource((row && (row.firebaseDocId || row.id)) || raw["Firebase_doc_id"] || raw["Klíč_adresy"]);
+  }
+
+  function rowBySourceKey(key){
+    const wanted = cleanSource(key);
+    if(!wanted) return null;
+    return (window.rows || []).find(row=>{
+      const raw = (row && row.raw) || {};
+      return rowKeySource(row) === wanted
+        || cleanSource(row && row.id) === wanted
+        || cleanSource(row && row.firebaseDocId) === wanted
+        || cleanSource(raw["Firebase_doc_id"]) === wanted
+        || cleanSource(raw["Klíč_adresy"]) === wanted;
+    }) || null;
+  }
+
+  function saveNormalDrawerTemplateForSource(){
+    const drawer = document.getElementById("drawer");
+    if(!drawer || drawer.querySelector("#newSiteOnlyCard")) return;
+    if(drawer.innerHTML.includes('id="detailTable"')){
+      window.__normalDrawerTemplate = drawer.innerHTML;
+    }
+  }
+
+  function restoreNormalDrawerTemplateForSource(){
+    const drawer = document.getElementById("drawer");
+    if(!drawer) return false;
+    if(window.__normalDrawerTemplate && drawer.querySelector("#newSiteOnlyCard")){
+      drawer.innerHTML = window.__normalDrawerTemplate;
+      drawer.classList.remove("adding-new-site");
+      return true;
+    }
+    return false;
+  }
+
+  function returnToSourceDetail(site){
+    const key = rowKeySource(site);
+    restoreNormalDrawerTemplateForSource();
+    if(key && typeof window.openDetailById === "function"){
+      setTimeout(()=>window.openDetailById(key), 0);
+    }else{
+      const drawer = document.getElementById("drawer");
+      if(drawer) drawer.classList.remove("open");
+    }
+  }
+
+  function collectSourceFormRaw(){
+    const raw = {};
+    document.querySelectorAll("#newSiteOnlyCard [data-new-key]").forEach(el=>{
+      const key = el.dataset.newKey;
+      const value = cleanSource(el.value);
+      if(key && value) raw[key] = value;
+    });
+    return raw;
+  }
+
+  function openAddSourceDetailForm(site){
+    if(!site) return;
+    saveNormalDrawerTemplateForSource();
+
+    const drawer = document.getElementById("drawer");
+    if(!drawer) return;
+
+    const raw = site.raw || {};
+    const place = (typeof window.sitePlaceLabel === "function" ? window.sitePlaceLabel(site) : "")
+      || site.gpsAddress || site.adresa || raw["Adresa / umístění"] || raw["Adresa_GPS"] || raw["Název"] || "";
+    const region = (typeof window.rowRegion === "function" ? window.rowRegion(site) : "")
+      || site.kraj || raw["Kraj"] || "";
+    const name = raw["Název"] || site.adresa || place || "Nový zdroj";
+    const contact = site.kontakt || firstRawValue(raw, ["Kontakt","Kontakt_mapy","Hlavní kontakt"]);
+    const lat = Number.isFinite(Number(site.lat)) ? String(site.lat) : firstRawValue(raw, ["GPS_lat"]);
+    const lon = Number.isFinite(Number(site.lon)) ? String(site.lon) : firstRawValue(raw, ["GPS_lon"]);
+    const periodText = firstRawValue(raw, ["Perioda kontrol","Perioda"]);
+    const period = /\b6\b/.test(periodText) ? "6" : "12";
+    const lastCheck = dateInputSource(firstRawValue(raw, ["Poslední_kontrola","Poslední proběhlá kontrola","Poslední kontrola"]));
+    const nextCheck = dateInputSource(firstRawValue(raw, ["Příští_kontrola","Příští plánovaná kontrola","Příští kontrola"]));
+
+    drawer.classList.add("open");
+    drawer.classList.remove("adding-new-site");
+    drawer.innerHTML = `
+      <div class="drawer-head">
+        <div>
+          <h2>Přidat další zdroj</h2>
+          <p class="small">${escSource(place || "Stejné místo")}</p>
+        </div>
+        <button class="secondary x" type="button" id="closeOnlyNew">Zavřít</button>
+      </div>
+
+      <div class="card" id="newSiteOnlyCard" data-add-source-form="1">
+        <p class="small">Adresa a GPS jsou převzaté z aktuálního místa. Doplň hlavně popis zdroje nebo výrobní číslo.</p>
+        <div class="new-only-grid">
+          <div class="full"><label>Název místa</label><input data-new-key="Název" value="${attrSource(name)}"></div>
+          <div class="full"><label>Adresa / umístění</label><input data-new-key="Adresa / umístění" id="onlyNewAddress" value="${attrSource(place)}" readonly></div>
+          <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" value="${attrSource(lat)}" readonly></div>
+          <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" value="${attrSource(lon)}" readonly></div>
+          <div class="full"><label>Adresa_GPS</label><input data-new-key="Adresa_GPS" value="${attrSource(place)}" readonly></div>
+          <div><label>Kraj</label><input data-new-key="Kraj" value="${attrSource(region)}" readonly></div>
+          <div><label>Kontakt</label><input data-new-key="Kontakt" value="${attrSource(contact)}"></div>
+
+          <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje" id="addSourceType" placeholder="např. PS 20 000/3f - 45 min."></div>
+          <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj" id="addSourceSerial" placeholder="výrobní číslo zdroje"></div>
+          <div class="full"><label>Umístění zdroje</label><input data-new-key="Umístění zdroje" placeholder="např. suterén, rozvodna, serverovna"></div>
+
+          <div><label>Poslední kontrola</label><input type="date" data-new-key="Poslední_kontrola" value="${attrSource(lastCheck)}"></div>
+          <div><label>Příští kontrola</label><input type="date" data-new-key="Příští_kontrola" value="${attrSource(nextCheck)}"></div>
+          <div><label>Perioda kontrol</label><select data-new-key="Perioda kontrol">
+            <option value="6" ${period === "6" ? "selected" : ""}>6 měsíců</option>
+            <option value="12" ${period !== "6" ? "selected" : ""}>12 měsíců</option>
+          </select></div>
+          <div><label>Hlídáme sami termín</label><select data-new-key="Hlídáme sami termín">
+            <option value="ne" selected>ne</option>
+            <option value="ano">ano</option>
+          </select></div>
+
+          <div><label>Rok výroby</label><input data-new-key="Rok výroby"></div>
+          <div><label>Serviska</label><select data-new-key="Serviska"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
+          <div><label>Smlouva</label><select data-new-key="Smlouva ano/ne"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
+          <div><label>Cena FZ</label><input data-new-key="Cena FZ"></div>
+          <div class="full"><label>Faktura na</label><input data-new-key="Faktura na"></div>
+          <div class="full"><label>Poznámky</label><textarea data-new-key="Poznámky"></textarea></div>
+          <div class="full only-red"><label>Důležité poznámky</label><textarea data-new-key="Důležitá poznámka"></textarea></div>
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <button class="primary" type="button" id="saveAddSourceOnly">Uložit nový zdroj</button>
+          <button class="secondary" type="button" id="cancelOnlyNew">Zrušit</button>
+        </div>
+        <p class="small" id="onlyNewStatus"></p>
+      </div>`;
+
+    document.getElementById("closeOnlyNew").onclick = ()=>returnToSourceDetail(site);
+    document.getElementById("cancelOnlyNew").onclick = ()=>returnToSourceDetail(site);
+    document.getElementById("saveAddSourceOnly").onclick = ()=>saveAddSourceFromDetail(site);
+    setTimeout(()=>{
+      const first = document.getElementById("addSourceType") || document.getElementById("addSourceSerial");
+      if(first) first.focus();
+    }, 100);
+  }
+
+  async function saveAddSourceFromDetail(baseSite){
+    const st = document.getElementById("onlyNewStatus");
+    const baseRaw = (baseSite && baseSite.raw) || {};
+    const place = (typeof window.sitePlaceLabel === "function" ? window.sitePlaceLabel(baseSite) : "")
+      || baseSite.gpsAddress || baseSite.adresa || baseRaw["Adresa / umístění"] || baseRaw["Adresa_GPS"] || "";
+    const region = (typeof window.rowRegion === "function" ? window.rowRegion(baseSite) : "")
+      || baseSite.kraj || baseRaw["Kraj"] || "";
+    const lat = Number.isFinite(Number(baseSite.lat)) ? String(baseSite.lat) : firstRawValue(baseRaw, ["GPS_lat"]);
+    const lon = Number.isFinite(Number(baseSite.lon)) ? String(baseSite.lon) : firstRawValue(baseRaw, ["GPS_lon"]);
+
+    const raw = collectSourceFormRaw();
+    raw["Název"] = raw["Název"] || baseRaw["Název"] || baseSite.adresa || place || "Nový zdroj";
+    raw["Adresa / umístění"] = place;
+    raw["Adresa_GPS"] = place;
+    raw["GPS_lat"] = lat;
+    raw["GPS_lon"] = lon;
+    raw["Kraj"] = region || raw["Kraj"] || "";
+    raw["Zdroj_dat"] = "Firebase další zdroj";
+
+    const sourceType = cleanSource(raw["Popis_zdroje"]);
+    const serial = cleanSource(raw["Zdroj"] || raw["Výrobní číslo"]);
+    if(!sourceType && !serial){
+      if(st) st.textContent = "Doplň popis zdroje nebo výrobní číslo, aby se nový zdroj odlišil od původního.";
+      const target = document.getElementById("addSourceType") || document.getElementById("addSourceSerial");
+      if(target) target.focus();
+      return;
+    }
+    if(!Number.isFinite(numSource(lat)) || !Number.isFinite(numSource(lon))){
+      if(st) st.textContent = "Původní místo nemá GPS. Nejdřív oprav GPS u místa.";
+      return;
+    }
+    if(typeof window.saveUnifiedSiteRaw !== "function"){
+      if(st) st.textContent = "Firebase ukládání nových zdrojů ještě není připravené.";
+      return;
+    }
+
+    try{
+      if(st) st.textContent = "Ukládám nový zdroj...";
+      const docId = "site_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+      const result = await window.saveUnifiedSiteRaw(raw, {docId});
+      const savedId = result && result.id ? result.id : docId;
+
+      if(result && result.duplicate){
+        if(st) st.textContent = "Takový zdroj už existuje. Otevírám existující záznam.";
+        restoreNormalDrawerTemplateForSource();
+        if(typeof window.loadFirebaseSitesUnified === "function") await window.loadFirebaseSitesUnified(savedId);
+        if(typeof window.openDetailById === "function") setTimeout(()=>window.openDetailById(savedId), 250);
+        return;
+      }
+
+      if(window.showSaveConfirmation) window.showSaveConfirmation("Nový zdroj uložen.");
+      if(st) st.textContent = "Nový zdroj uložen.";
+
+      let visible = true;
+      if(typeof window.refreshFirebaseSitesAfterSave === "function"){
+        visible = await window.refreshFirebaseSitesAfterSave(savedId);
+      }else if(typeof window.loadFirebaseSitesUnified === "function"){
+        await window.loadFirebaseSitesUnified(savedId);
+      }
+      restoreNormalDrawerTemplateForSource();
+      if(visible && typeof window.openDetailById === "function"){
+        setTimeout(()=>window.openDetailById(savedId), 250);
+      }
+    }catch(e){
+      if(st) st.textContent = "Chyba uložení nového zdroje: " + e.message;
+    }
+  }
+
+  function openSourceByKey(key){
+    const site = rowBySourceKey(key) || window.selectedSite || selectedSite;
+    if(site) openAddSourceDetailForm(site);
+  }
+
+  window.openAddSourceForSite = openAddSourceDetailForm;
+  window.openAddSourceForSiteByKey = openSourceByKey;
+
+  document.addEventListener("click", e=>{
+    const button = e.target.closest && e.target.closest("[data-add-source]");
+    if(!button) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    openSourceByKey(button.getAttribute("data-add-source"));
+  }, true);
 })();
 </script>
 
