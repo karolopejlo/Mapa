@@ -894,10 +894,28 @@ button,input,select,textarea{
   gap:8px;
 }
 .site-photo-inputs input[type="file"]{
-  display:none;
+  position:absolute;
+  width:1px;
+  height:1px;
+  opacity:0;
+  overflow:hidden;
+  clip-path:inset(50%);
+  pointer-events:none;
 }
-.site-photo-inputs button{
+.site-photo-inputs button,
+.site-photo-inputs .photo-picker-btn{
   min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  cursor:pointer;
+  user-select:none;
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  font-weight:800;
+  padding:8px 10px;
+  box-sizing:border-box;
 }
 .site-photo-upload input{
   width:100%;
@@ -1541,10 +1559,10 @@ button,input,select,textarea{
   <h3>Fotografie bodu</h3>
   <div class="site-photo-upload">
     <div class="site-photo-inputs">
-      <button class="secondary" type="button" id="selectGalleryPhotosBtn">Galerie</button>
-      <button class="secondary" type="button" id="selectCameraPhotosBtn">Fotoaparát</button>
+      <label class="secondary photo-picker-btn" for="sitePhotosInput" id="selectGalleryPhotosBtn" role="button" tabindex="0" data-photo-picker="gallery">Galerie</label>
+      <label class="secondary photo-picker-btn" for="siteCameraInput" id="selectCameraPhotosBtn" role="button" tabindex="0" data-photo-picker="camera">Fotoaparát</label>
       <input id="sitePhotosInput" type="file" accept="image/*" multiple aria-label="Vybrat fotografie z galerie">
-      <input id="siteCameraInput" type="file" accept="image/*" capture="environment" multiple aria-label="Vyfotit nové fotografie">
+      <input id="siteCameraInput" type="file" accept="image/*" capture="environment" aria-label="Vyfotit novou fotografii">
     </div>
     <button class="primary" type="button" id="uploadSitePhotosBtn">Uložit fotografie</button>
   </div>
@@ -7390,11 +7408,42 @@ if(sitePhotosInputEl) sitePhotosInputEl.addEventListener("change",renderSitePhot
 const siteCameraInputEl=document.getElementById("siteCameraInput");
 if(siteCameraInputEl) siteCameraInputEl.addEventListener("change",renderSitePhotoPreview);
 const selectGalleryPhotosBtn=document.getElementById("selectGalleryPhotosBtn");
-if(selectGalleryPhotosBtn) selectGalleryPhotosBtn.addEventListener("click",()=>document.getElementById("sitePhotosInput")?.click());
+if(selectGalleryPhotosBtn && selectGalleryPhotosBtn.tagName==="BUTTON") selectGalleryPhotosBtn.addEventListener("click",()=>document.getElementById("sitePhotosInput")?.click());
 const selectCameraPhotosBtn=document.getElementById("selectCameraPhotosBtn");
-if(selectCameraPhotosBtn) selectCameraPhotosBtn.addEventListener("click",()=>document.getElementById("siteCameraInput")?.click());
+if(selectCameraPhotosBtn && selectCameraPhotosBtn.tagName==="BUTTON") selectCameraPhotosBtn.addEventListener("click",()=>document.getElementById("siteCameraInput")?.click());
 const uploadSitePhotosBtn=document.getElementById("uploadSitePhotosBtn");
-if(uploadSitePhotosBtn) uploadSitePhotosBtn.addEventListener("click",uploadSitePhotos);
+if(uploadSitePhotosBtn){
+  uploadSitePhotosBtn.__photoUploadDirectBound=true;
+  uploadSitePhotosBtn.addEventListener("click",uploadSitePhotos);
+}
+
+document.addEventListener("change",e=>{
+  const target=e.target;
+  if(!target || (target.id!=="sitePhotosInput" && target.id!=="siteCameraInput")) return;
+  renderSitePhotoPreview();
+  const st=document.getElementById("sitePhotosStatus");
+  const count=selectedSitePhotoFiles().length;
+  if(st && count) st.textContent=`Vybráno fotografií: ${count}.`;
+});
+document.addEventListener("click",e=>{
+  const picker=e.target && e.target.closest ? e.target.closest("[data-photo-picker]") : null;
+  if(!picker || picker.tagName!=="BUTTON") return;
+  e.preventDefault();
+  const inputId=picker.getAttribute("data-photo-picker")==="camera" ? "siteCameraInput" : "sitePhotosInput";
+  document.getElementById(inputId)?.click();
+});
+document.addEventListener("click",e=>{
+  const btn=e.target && e.target.closest ? e.target.closest("#uploadSitePhotosBtn") : null;
+  if(!btn || btn.__photoUploadDirectBound) return;
+  e.preventDefault();
+  uploadSitePhotos();
+});
+document.addEventListener("keydown",e=>{
+  const picker=e.target && e.target.closest ? e.target.closest("[data-photo-picker]") : null;
+  if(!picker || (e.key!=="Enter" && e.key!==" ")) return;
+  e.preventDefault();
+  picker.click();
+});
 
 window.addEventListener("resize",fixMapView);
 window.addEventListener("DOMContentLoaded",()=>{
