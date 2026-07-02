@@ -2181,6 +2181,18 @@ function yesNoBool(v){
   if(["ne","no","false","0",""].includes(n)) return false;
   return n.includes("ano") || n.includes("aktivni");
 }
+function yesNoFlagFromRaw(raw,keys){
+  for(const k of keys){
+    const v=get(raw||{},k);
+    if(!safe(v)) continue;
+    const n=simpleNorm(v);
+    if(["ano","yes","true","1","aktivni"].includes(n)) return true;
+    if(["ne","no","false","0"].includes(n)) return false;
+    if(n.includes("ano") || n.includes("aktivni")) return true;
+    if(n.includes("ne") || n.includes("false")) return false;
+  }
+  return null;
+}
 function stopFlagFromRaw(raw){
   const keys=["Stop Stav","Stop stav","Stop_stav","Stop","Zdroj ve Stop Stavu","Odstaveno","Mimo provoz"];
   for(const k of keys){
@@ -2349,18 +2361,18 @@ function displayNext(r){
 }
 function color(r){
   const d=daysToComputedNext(r);
-  if(r.stopped === true) return "#64748b";
   if(r.repairOrdered === true) return "#2563eb";
   if(r.ordered === true) return "#eab308";
+  if(r.stopped === true) return "#64748b";
   if(Number.isFinite(d) && d < 0) return "#dc2626";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "#f97316";
   return "#16a34a";
 }
 function statusText(r){
   const d=daysToComputedNext(r);
-  if(r.stopped === true) return "Stop Stav";
   if(r.repairOrdered === true) return "Objednaná oprava";
   if(r.ordered === true) return "Kontrola objednaná";
+  if(r.stopped === true) return "Stop Stav";
   if(Number.isFinite(d) && d < 0) return "Propadlá kontrola";
   if(Number.isFinite(d) && d >= 1 && d <= 30) return "1–30 dní k termínu";
   return "OK / ostatní";
@@ -2408,9 +2420,22 @@ function pinkMatch(place, pinkPlace){
 }
 
 function isNoOrderSite(r){
+  const raw=r.raw || {};
+  const explicit=yesNoFlagFromRaw(raw,[
+    "Hlídáme sami termín",
+    "Hlídáme kontroly sami",
+    "Hlídáme termín sami",
+    "Hlídat termín sami",
+    "Jezdit bez objednavky",
+    "Bez objednávky",
+    "Bez objednavky",
+    "Růžová",
+    "Ruzova"
+  ]);
+  if(explicit !== null) return explicit === true;
+
   if(r.noOrder === true) return true;
 
-  const raw=r.raw || {};
   const place = [
     r.adresa,
     raw["Název"],
@@ -2424,10 +2449,6 @@ function isNoOrderSite(r){
   if(ORIGINAL_PINK_PLACES.some(p => pinkMatch(place,p))) return true;
 
   const text=[
-    raw["Bez objednávky"],
-    raw["Bez objednavky"],
-    raw["Hlídáme termín sami"],
-    raw["Jezdit bez objednavky"],
     raw["Růžová"],
     raw["Ruzova"],
     raw["Typ"],
@@ -5582,6 +5603,13 @@ function historyDateLabel(item){
   return isNaN(d.getTime()) ? "bez data" : formatDateCz(d);
 }
 
+function photoDateLabel(item){
+  const raw=item?.createdAt || item?.uploadedAt || item?.date || "";
+  if(raw && typeof raw.toDate==="function") return formatDateCz(raw.toDate());
+  const d=new Date(raw || 0);
+  return isNaN(d.getTime()) ? "" : formatDateCz(d);
+}
+
 function historyObjectSummary(obj){
   if(!obj || typeof obj!=="object") return "";
   const labels={
@@ -5636,6 +5664,24 @@ function removeSiteLocalItem(kind,id,site=selectedSite){
   }catch(e){
     console.warn("Lokální cache se nepodařila upravit",kind,e);
   }
+}
+
+function makeLocalRecordId(prefix="local"){
+  if(window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function saveProtocolLocally(payload,site=selectedSite,reason=""){
+  const offlinePayload={
+    ...payload,
+    _id:safe(payload?._id) || makeLocalRecordId("protocol"),
+    _offline:true,
+    _syncStatus:"local",
+    offlineReason:safe(reason),
+    offlineSavedAt:new Date().toISOString()
+  };
+  appendSiteLocalArray("protocolHistory",offlinePayload,site,120);
+  return offlinePayload;
 }
 
 async function saveSiteChildItem(kind,id,item,site=selectedSite){
@@ -5969,14 +6015,31 @@ function renderHistory(){
 async function loadHistory(siteId){
   const history=document.getElementById("history");
   if(!history) return;
+  const localHistoryItems=readSiteLocalArray("protocolHistory",selectedSite).map((item,idx)=>({
+    ...item,
+    _type:"Protokol",
+    _collection:"localProtocols",
+    _id:item._id || `local_protocol_${idx}`
+  })).filter(item=>recordMatchesSite(item,selectedSite));
+  const showLocalHistoryOnly=message=>{
+    if(localHistoryItems.length){
+      localHistoryItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
+      detailHistoryItems=localHistoryItems.slice();
+      detailHistoryIndex=0;
+      renderHistory();
+      return true;
+    }
+    history.textContent=message;
+    return false;
+  };
   if(!firebaseReady){
-    history.textContent="Firebase není nastavený, historie se nenačte.";
+    showLocalHistoryOnly("Firebase není nastavený, historie se nenačte.");
     return;
   }
   history.textContent="Načítám historii…";
   const signedUser=await waitForFirebaseUser();
   if(!signedUser){
-    history.textContent="Čekám na přihlášení, historie se načte po přihlášení.";
+    showLocalHistoryOnly("Čekám na přihlášení, historie se načte po přihlášení.");
     return;
   }
 
@@ -6859,7 +6922,8 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   const fullUrl=photoFullUrl(item);
   const thumbCount=sitePhotoItems.length;
   const modeLabel=item.storageMode==="cloudinary" ? "Cloudinary" : "starší záznam";
-  const meta=[modeLabel, bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
+  const insertedAt=photoDateLabel(item);
+  const meta=[insertedAt ? `Vloženo: ${insertedAt}` : "", modeLabel, bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
   const downloadName=photoFileName(item,sitePhotoIndex);
   const deleteAllowed=canDeleteSitePhoto(item);
   list.innerHTML=`
@@ -7332,8 +7396,6 @@ function protocolPayload(){
 document.getElementById("protocolForm").addEventListener("submit",async e=>{
   e.preventDefault();
   const st=document.getElementById("protocolStatus");
-  if(!firebaseReady){st.textContent="Firebase není nastavený.";return;}
-  if(!currentUser){st.textContent="Nejdřív se přihlaš.";return;}
   if(!selectedSite){st.textContent="Není vybrané místo.";return;}
 
   if(!val("protoResetDiag")){
@@ -7342,13 +7404,28 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     return;
   }
 
+  const payload=protocolPayload();
+  payload.createdAt=new Date().toISOString();
+  payload.createdBy=currentUser?.email || "";
+  const onlineSaveAvailable=!!(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine !== false);
+  const saveOffline=reason=>{
+    const offlinePayload=saveProtocolLocally(payload,selectedSite,reason);
+    st.textContent="Protokol uložen lokálně v tomto prohlížeči. Internet/Firebase teď není dostupný.";
+    showSaveConfirmation("Protokol uložen lokálně.");
+    if(typeof loadHistory === "function") loadHistory(selectedSite.id);
+    return offlinePayload;
+  };
+
+  if(!onlineSaveAvailable){
+    saveOffline(!navigator.onLine ? "Bez připojení k internetu." : "Firebase nebo přihlášení není dostupné.");
+    return;
+  }
+
   try{
     const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
     const ref=doc(collection(db,"protocols"));
-    const payload=protocolPayload();
     payload._id=ref.id;
-    payload.createdAt=new Date().toISOString();
-    payload.createdBy=currentUser.email;
+    payload.createdBy=currentUser.email || payload.createdBy;
     const childOk=await saveSiteChildItem("protocols",ref.id,payload,selectedSite);
     const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("protocolHistory",payload,selectedSite);
     appendSiteLocalArray("protocolHistory",payload,selectedSite,120);
@@ -7372,7 +7449,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     render();
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
   }catch(err){
-    st.textContent="Chyba uložení protokolu: "+err.message;
+    saveOffline(err.message);
   }
 });
 
