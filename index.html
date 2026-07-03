@@ -527,13 +527,16 @@ button,input,select,textarea{
 }
 #protocolForm{
   display:grid;
-  gap:10px;
+  gap:9px;
 }
 #protocolForm h4{
-  margin:14px 0 2px;
-  padding:10px 0 0;
-  border-top:1px solid #e2e8f0;
+  margin:16px 0 4px;
+  padding:9px 11px;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  background:#f8fafc;
   color:#0f172a;
+  font-size:15px;
 }
 #protocolForm label{
   font-weight:700;
@@ -544,6 +547,16 @@ button,input,select,textarea{
 #protocolForm select,
 #protocolForm textarea{
   border-color:#cbd5e1;
+  background:#fff;
+  border-radius:10px;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+#protocolForm input:focus,
+#protocolForm select:focus,
+#protocolForm textarea:focus{
+  outline:0;
+  border-color:#2563eb;
+  box-shadow:0 0 0 3px rgba(37,99,235,.14);
   background:#fff;
 }
 #protocolForm textarea{
@@ -560,11 +573,14 @@ button,input,select,textarea{
 }
 #protocolForm .checkrow{
   margin:0;
-  padding:5px 7px;
+  padding:7px 8px;
   min-height:34px;
   border:1px solid #e2e8f0;
-  border-radius:9px;
+  border-radius:10px;
   background:#f8fafc;
+  display:flex;
+  align-items:center;
+  gap:7px;
 }
 #protocolForm .checkrow label{
   margin:0 !important;
@@ -578,7 +594,7 @@ button,input,select,textarea{
 }
 .protocol-section{
   border:1px solid #e2e8f0;
-  border-radius:14px;
+  border-radius:12px;
   padding:12px;
   background:#fff;
 }
@@ -638,9 +654,13 @@ button,input,select,textarea{
   color:#854d0e;
 }
 .protocol-point{
-  margin-top:18px !important;
-  padding-top:14px !important;
-  border-top:1px solid #e2e8f0;
+  margin-top:14px !important;
+  padding:9px 10px !important;
+  border:1px solid #cbd5e1 !important;
+  border-left:5px solid #2563eb !important;
+  border-radius:12px;
+  background:#f8fafc;
+  color:#0f172a !important;
 }
 #protocolForm input,
 #protocolForm select{
@@ -683,7 +703,7 @@ button,input,select,textarea{
 
 /* PROTOKOL BEZ MEZITLAČÍTKA + MENŠÍ MEZERY */
 #protocolForm{
-  gap:6px !important;
+  gap:8px !important;
 }
 #protocolForm label{
   margin:8px 0 2px !important;
@@ -696,11 +716,10 @@ button,input,select,textarea{
   min-height:54px !important;
 }
 #protocolForm .edit-grid{
-  gap:6px !important;
+  gap:8px !important;
 }
 #protocolForm .protocol-point{
   margin-top:14px !important;
-  padding-top:10px !important;
 }
 #protocolCard > .small{
   margin-top:0;
@@ -787,44 +806,62 @@ button,input,select,textarea{
 #deleteDataSiteBtn{
   grid-column:auto;
 }
-.save-toast{
+.save-toast-stack{
   position:fixed;
   left:50%;
   bottom:calc(18px + env(safe-area-inset-bottom));
-  transform:translate(-50%,24px);
-  opacity:0;
   pointer-events:none;
   z-index:6000;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  width:min(92vw,360px);
+  transform:translateX(-50%);
+}
+.save-toast-item{
+  width:max-content;
+  max-width:100%;
   padding:11px 16px;
   border-radius:999px;
   background:#166534;
   color:white;
   font-weight:800;
   box-shadow:0 14px 34px rgba(15,23,42,.3);
-  transition:opacity .18s ease, transform .18s ease;
+  opacity:0;
+  transform:translateY(18px) scale(.98);
+  transition:opacity .28s ease, transform .28s ease;
+  text-align:center;
 }
-.save-toast.show{
+.save-toast-item.show{
   opacity:1;
-  transform:translate(-50%,0);
+  transform:translateY(0) scale(1);
+}
+.save-toast-item.hide{
+  opacity:0;
+  transform:translateY(-8px) scale(.98);
 }
 .protocol-summary{
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:8px;
-  margin:8px 0 12px;
-  padding:10px;
-  border:1px solid #dbeafe;
-  border-radius:12px;
-  background:#eff6ff;
+  gap:10px;
+  margin:10px 0 14px;
+  padding:12px;
+  border:1px solid #bfdbfe;
+  border-radius:14px;
+  background:linear-gradient(180deg,#eff6ff,#f8fafc);
 }
 .protocol-summary div{
   font-size:12px;
   color:#1e3a8a;
+  padding:8px;
+  border-radius:10px;
+  background:rgba(255,255,255,.72);
 }
 .protocol-summary b{
   display:block;
   color:#0f172a;
-  font-size:13px;
+  font-size:14px;
   margin-top:2px;
   overflow-wrap:anywhere;
 }
@@ -888,6 +925,9 @@ button,input,select,textarea{
   gap:8px;
   margin-top:8px;
 }
+#sitePhotosList.history-photos{
+  display:block;
+}
 .site-photo-upload{
   display:grid;
   grid-template-columns:1fr auto;
@@ -944,6 +984,12 @@ button,input,select,textarea{
   display:grid;
   gap:8px;
 }
+.site-photo-stage{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(190px,260px);
+  gap:10px;
+  align-items:start;
+}
 .site-photo-main{
   display:block;
   border:1px solid #e2e8f0;
@@ -958,6 +1004,35 @@ button,input,select,textarea{
   max-height:360px;
   object-fit:contain;
   background:#0f172a;
+}
+.site-photo-info{
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  background:#f8fafc;
+  padding:10px;
+  display:grid;
+  gap:8px;
+}
+.site-photo-info-row{
+  display:grid;
+  gap:2px;
+  padding-bottom:7px;
+  border-bottom:1px solid #e2e8f0;
+}
+.site-photo-info-row:last-child{
+  padding-bottom:0;
+  border-bottom:0;
+}
+.site-photo-info-row span{
+  font-size:11px;
+  font-weight:800;
+  color:#64748b;
+  text-transform:uppercase;
+}
+.site-photo-info-row b{
+  font-size:13px;
+  color:#0f172a;
+  overflow-wrap:anywhere;
 }
 .site-photo-nav,
 .site-photo-actions{
@@ -1026,6 +1101,9 @@ button,input,select,textarea{
   .data-edit-actions,
   .site-photo-upload,
   .site-photo-actions{
+    grid-template-columns:1fr;
+  }
+  .site-photo-stage{
     grid-template-columns:1fr;
   }
   .protocol-summary{
@@ -1352,7 +1430,7 @@ button,input,select,textarea{
 </div>
 <div id="list"></div>
 </aside><div id="map"></div><button class="secondary map-back-btn" id="mapBackBtn" type="button">Zpět na detail</button></div>
-<div id="saveToast" class="save-toast">Uloženo.</div>
+<div id="saveToast" class="save-toast-stack" aria-live="polite"></div>
 
 <div class="drawer" id="drawer">
 <div class="drawer-head"><div><h2 id="detailTitle">Detail místa</h2><p id="detailSub" class="small"></p></div><button class="secondary x" id="closeDrawer">Zavřít</button></div>
@@ -2302,6 +2380,11 @@ function parseDateValue(v){
 function formatDateCz(dateObj){
   if(!dateObj || isNaN(dateObj.getTime())) return "";
   return `${dateObj.getDate()}.${dateObj.getMonth()+1}.${dateObj.getFullYear()}`;
+}
+function formatDateTimeCz(dateObj){
+  if(!dateObj || isNaN(dateObj.getTime())) return "";
+  const pad=n=>String(n).padStart(2,"0");
+  return `${dateObj.getDate()}.${dateObj.getMonth()+1}.${dateObj.getFullYear()} ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
 }
 function addMonths(dateObj, months){
   const d=new Date(dateObj.getTime());
@@ -5610,6 +5693,20 @@ function photoDateLabel(item){
   return isNaN(d.getTime()) ? "" : formatDateCz(d);
 }
 
+function photoDateTimeLabel(raw){
+  if(raw && typeof raw.toDate==="function") return formatDateTimeCz(raw.toDate());
+  const d=new Date(raw || 0);
+  return isNaN(d.getTime()) ? "" : formatDateTimeCz(d);
+}
+
+function photoTakenLabel(item){
+  return photoDateTimeLabel(item?.takenAt || item?.photoTakenAt || item?.lastModifiedAt || item?.createdAt || item?.uploadedAt || item?.date);
+}
+
+function photoInsertedLabel(item){
+  return photoDateTimeLabel(item?.createdAt || item?.uploadedAt || item?.date);
+}
+
 function historyObjectSummary(obj){
   if(!obj || typeof obj!=="object") return "";
   const labels={
@@ -6243,14 +6340,16 @@ function showLogin(){
   if(topLogout) topLogout.style.display="none";
 }
 
-let saveToastTimer=null;
 function showSaveConfirmation(message="Uloženo."){
-  const toast=document.getElementById("saveToast");
-  if(!toast) return;
-  toast.textContent=message;
-  toast.classList.add("show");
-  clearTimeout(saveToastTimer);
-  saveToastTimer=setTimeout(()=>toast.classList.remove("show"),2200);
+  const stack=document.getElementById("saveToast");
+  if(!stack) return;
+  const item=document.createElement("div");
+  item.className="save-toast-item";
+  item.textContent=message || "Uloženo.";
+  stack.appendChild(item);
+  requestAnimationFrame(()=>item.classList.add("show"));
+  setTimeout(()=>item.classList.add("hide"),2100);
+  setTimeout(()=>item.remove(),2700);
 }
 window.showSaveConfirmation=showSaveConfirmation;
 
@@ -6712,11 +6811,11 @@ function photoFileName(item,idx=0){
 }
 
 function photoDisplayUrl(item){
-  return safe(item && (item.displayUrl || item.url || item.fullUrl || item.downloadUrl));
+  return safe(item && (item.displayUrl || item.url || item.fullUrl || item.downloadUrl || item.dataUrl));
 }
 
 function photoFullUrl(item){
-  return safe(item && (item.fullUrl || item.originalUrl || item.downloadUrl || item.url || item.displayUrl));
+  return safe(item && (item.fullUrl || item.originalUrl || item.downloadUrl || item.url || item.displayUrl || item.dataUrl));
 }
 
 function photoThumbUrl(item){
@@ -6732,6 +6831,7 @@ function bytesLabel(bytes){
 }
 
 function canDeleteSitePhoto(item){
+  if(item && (item.storageMode==="offline" || item._offline === true)) return true;
   const uploadedBy=safe(item && item.uploadedBy).toLowerCase();
   const email=currentUserEmail();
   return isAppAdmin() || (!!uploadedBy && uploadedBy===email);
@@ -6806,6 +6906,50 @@ async function prepareCloudinaryUploadFile(file){
   }
 }
 
+function blobToDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result || ""));
+    reader.onerror=()=>reject(reader.error || new Error("Fotografii se nepodařilo načíst."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function prepareOfflinePhotoData(file){
+  if(!file) throw new Error("Fotografie není vybraná.");
+  let blob=file;
+  if(/^image\//i.test(file.type || "") && !/gif/i.test(file.type || "")){
+    try{
+      const img=await loadImageFileForResize(file);
+      const maxEdge=1600;
+      const quality=.78;
+      const width=img.naturalWidth || img.width;
+      const height=img.naturalHeight || img.height;
+      if(width && height){
+        const scale=Math.min(1,maxEdge/Math.max(width,height));
+        const canvas=document.createElement("canvas");
+        canvas.width=Math.max(1,Math.round(width*scale));
+        canvas.height=Math.max(1,Math.round(height*scale));
+        const ctx=canvas.getContext("2d");
+        if(ctx){
+          ctx.fillStyle="#fff";
+          ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",quality)) || file;
+        }
+      }
+    }catch(e){
+      console.warn("Offline fotku se nepodařilo zmenšit, ukládám původní verzi",e);
+    }
+  }
+  const dataUrl=await blobToDataUrl(blob);
+  return {
+    dataUrl,
+    size:blob.size || file.size || dataUrl.length,
+    type:blob.type || file.type || "image/jpeg"
+  };
+}
+
 async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
   if(!CLOUDINARY_PHOTOS.cloudName || !preset){
     throw new Error("Cloudinary není nastavené.");
@@ -6870,6 +7014,85 @@ let sitePhotoPreviewUrls=[];
 let sitePhotoItems=[];
 let sitePhotoIndex=0;
 let sitePhotoDeleteTokens=new Map();
+const LOCAL_PHOTO_DB_NAME="astipMapLocalPhotos";
+const LOCAL_PHOTO_STORE="photos";
+
+function openLocalPhotoDb(){
+  return new Promise((resolve,reject)=>{
+    if(!("indexedDB" in window)){
+      reject(new Error("IndexedDB není v prohlížeči dostupné."));
+      return;
+    }
+    const req=indexedDB.open(LOCAL_PHOTO_DB_NAME,1);
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains(LOCAL_PHOTO_STORE)){
+        const store=db.createObjectStore(LOCAL_PHOTO_STORE,{keyPath:"_id"});
+        store.createIndex("siteCacheKey","siteCacheKey",{unique:false});
+      }
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error || new Error("Lokální databázi fotek se nepodařilo otevřít."));
+  });
+}
+
+async function withLocalPhotoStore(mode,callback){
+  const db=await openLocalPhotoDb();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(LOCAL_PHOTO_STORE,mode);
+    const store=tx.objectStore(LOCAL_PHOTO_STORE);
+    let result;
+    tx.oncomplete=()=>{db.close();resolve(result);};
+    tx.onerror=()=>{db.close();reject(tx.error || new Error("Lokální databáze fotek selhala."));};
+    try{
+      callback(store,value=>{result=value;});
+    }catch(e){
+      db.close();
+      reject(e);
+    }
+  });
+}
+
+async function saveOfflinePhotoItem(item,site=selectedSite){
+  const payload={...item,siteCacheKey:siteLocalCacheKey("photos",site)};
+  try{
+    await withLocalPhotoStore("readwrite",(store)=>{store.put(payload);});
+  }catch(e){
+    appendSiteLocalArray("offlinePhotos",payload,site,50);
+  }
+  return payload;
+}
+
+async function readOfflinePhotoItems(site=selectedSite){
+  const cacheKey=siteLocalCacheKey("photos",site);
+  const fallback=readSiteLocalArray("offlinePhotos",site);
+  try{
+    const items=await withLocalPhotoStore("readonly",(store,setResult)=>{
+      const req=store.index("siteCacheKey").getAll(cacheKey);
+      req.onsuccess=()=>setResult(Array.isArray(req.result) ? req.result : []);
+      req.onerror=()=>setResult([]);
+    });
+    const all=[...(items || []),...fallback];
+    const seen=new Set();
+    return all.filter(item=>{
+      const id=safe(item && item._id);
+      if(id && seen.has(id)) return false;
+      if(id) seen.add(id);
+      return !!photoDisplayUrl(item);
+    });
+  }catch(e){
+    return fallback.filter(item=>!!photoDisplayUrl(item));
+  }
+}
+
+async function removeOfflinePhotoItem(id,site=selectedSite){
+  const cleanId=safe(id);
+  if(!cleanId) return;
+  try{
+    await withLocalPhotoStore("readwrite",(store)=>{store.delete(cleanId);});
+  }catch(e){}
+  removeSiteLocalItem("offlinePhotos",cleanId,site);
+}
 
 function resetSitePhotoInput(){
   const input=document.getElementById("sitePhotosInput");
@@ -6921,16 +7144,31 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   const mainUrl=photoDisplayUrl(item);
   const fullUrl=photoFullUrl(item);
   const thumbCount=sitePhotoItems.length;
-  const modeLabel=item.storageMode==="cloudinary" ? "Cloudinary" : "starší záznam";
+  const modeLabel=item.storageMode==="cloudinary" ? "Cloudinary" : (item.storageMode==="offline" ? "lokálně v tomto zařízení" : "starší záznam");
   const insertedAt=photoDateLabel(item);
   const meta=[insertedAt ? `Vloženo: ${insertedAt}` : "", modeLabel, bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
+  const takenAt=photoTakenLabel(item) || "není uvedeno";
+  const insertedAtFull=photoInsertedLabel(item) || "není uvedeno";
+  const uploadedBy=safe(item.uploadedBy || item.createdBy || item.ownerEmail) || "není uvedeno";
+  const photoInfoRows=[
+    ["Datum pořízení", takenAt],
+    ["Fotku uložil", uploadedBy],
+    ["Vloženo do mapy", insertedAtFull],
+    ["Úložiště", modeLabel],
+    ["Velikost", bytesLabel(item.size || item.originalSize) || "není uvedeno"]
+  ];
   const downloadName=photoFileName(item,sitePhotoIndex);
   const deleteAllowed=canDeleteSitePhoto(item);
   list.innerHTML=`
     <div class="site-photo-viewer">
-      <a class="site-photo-main" href="${esc(fullUrl || mainUrl)}" target="_blank">
-        <img src="${esc(mainUrl)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
-      </a>
+      <div class="site-photo-stage">
+        <a class="site-photo-main" href="${esc(fullUrl || mainUrl)}" target="_blank">
+          <img src="${esc(mainUrl)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
+        </a>
+        <div class="site-photo-info">
+          ${photoInfoRows.map(([label,value])=>`<div class="site-photo-info-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join("")}
+        </div>
+      </div>
       <div class="site-photo-actions">
         <a href="${esc(fullUrl || mainUrl)}" target="_blank" download="${esc(downloadName)}">Stáhnout fotku</a>
         <button class="danger" type="button" id="deleteSitePhotoBtn" ${deleteAllowed ? "" : "disabled"}>Smazat fotku</button>
@@ -6962,43 +7200,56 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
 async function loadSitePhotos(site=selectedSite){
   const st=document.getElementById("sitePhotosStatus");
   if(!st) return;
+  const items=[];
+  const addPhoto=item=>{
+    if(!item || !photoDisplayUrl(item)) return;
+    const id=String(item._id || "");
+    if(id && items.some(photo=>String(photo._id || "")===id)) return;
+    items.push(item);
+  };
+  const renderLoaded=(message="")=>{
+    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
+    renderSitePhotos(items);
+    st.textContent=message || (items.length ? `Načteno fotografií: ${items.length}.` : "");
+  };
+
+  if(site){
+    readSiteLocalArray("photos",site).forEach((item,idx)=>{
+      addPhoto({...item,_id:item._id || `local_photo_${idx}`});
+    });
+    const offlinePhotos=await readOfflinePhotoItems(site);
+    offlinePhotos.forEach((item,idx)=>{
+      addPhoto({...item,_id:item._id || `offline_photo_${idx}`,storageMode:item.storageMode || "offline",_offline:true});
+    });
+  }
+
   if(!firebaseReady || !db || !site){
-    st.textContent="";
-    renderSitePhotos([]);
+    renderLoaded(items.length ? `Načteno lokálních fotografií: ${items.length}.` : "");
     return;
   }
   st.textContent="Načítám fotografie...";
   const signedUser=await waitForFirebaseUser();
   if(!signedUser){
-    st.textContent="Čekám na přihlášení, fotografie se načtou po přihlášení.";
-    renderSitePhotos([]);
+    renderLoaded(items.length ? `Načteno lokálních fotografií: ${items.length}.` : "Čekám na přihlášení, fotografie se načtou po přihlášení.");
     return;
   }
   try{
-    const items=[];
-    const addPhoto=item=>{
-      if(!item || !photoDisplayUrl(item)) return;
-      const id=String(item._id || "");
-      if(id && items.some(photo=>String(photo._id || "")===id)) return;
-      items.push(item);
-    };
     await refreshSiteDataFromFirebase(site);
     const embeddedPhotos=Array.isArray(site?.firebaseData?.photos) ? site.firebaseData.photos : [];
     embeddedPhotos.forEach((item,idx)=>{
       addPhoto({...item,_id:item._id || `embedded_photo_${idx}`});
     });
-    readSiteLocalArray("photos",site).forEach((item,idx)=>{
-      addPhoto({...item,_id:item._id || `local_photo_${idx}`});
-    });
     const childPhotos=await loadSiteChildItems("photos",site);
     childPhotos.forEach((item,idx)=>{
       addPhoto({...item,_id:item._id || `site_photo_${idx}`});
     });
-    items.sort((a,b)=>historyTimeValue(b)-historyTimeValue(a));
-    renderSitePhotos(items);
-    st.textContent=items.length ? `Načteno fotografií: ${items.length}.` : "";
+    renderLoaded();
   }catch(e){
-    st.textContent="Chyba načtení fotografií: "+e.message;
+    if(items.length){
+      renderLoaded(`Načteno lokálních fotografií: ${items.length}. Online fotky se nepodařilo načíst.`);
+    }else{
+      st.textContent="Chyba načtení fotografií: "+e.message;
+    }
   }
 }
 
@@ -7020,6 +7271,7 @@ async function deleteCurrentSitePhoto(){
     await deleteSiteChildItem("photos",id,selectedSite);
     await removeEmbeddedSiteItem("photos",id,selectedSite);
     removeSiteLocalItem("photos",id,selectedSite);
+    await removeOfflinePhotoItem(id,selectedSite);
     await deleteCloudinaryUpload(item);
     sitePhotoDeleteTokens.delete(id);
     sitePhotoItems=sitePhotoItems.filter(photo=>safe(photo && photo._id)!==id);
@@ -7037,40 +7289,86 @@ async function uploadSitePhotos(){
   const files=selectedSitePhotoFiles();
   if(!st) return;
   if(!selectedSite){st.textContent="Není vybraný bod.";return;}
-  if(!firebaseReady || !db){st.textContent="Firebase není nastavený.";return;}
-  const signedUser=await waitForFirebaseUser();
-  if(!signedUser){st.textContent="Nejdřív se přihlaš.";return;}
   if(!files.length){st.textContent="Nejdřív vyber fotografie.";return;}
 
   try{
+    const signedUser=(firebaseReady && db) ? await waitForFirebaseUser(1200) : null;
+    const userEmail=signedUser?.email || currentUser?.email || "";
     const keys=sitePhotoKeys(selectedSite);
     const siteKey=keys[0] || selectedSite.id || "bod";
     const siteId=selectedSite.id || siteKey;
+    const onlineUploadAvailable=!!(firebaseReady && db && signedUser && navigator.onLine !== false);
     let localOnlyCount=0;
+    let offlineCount=0;
+    let onlineCount=0;
+
+    const buildBasePayload=(photoId,file,createdAt)=>({
+      _id:photoId,
+      siteId,
+      siteKey,
+      siteKeys:keys,
+      firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
+      sourceGroupKey:sitePlaceGroupKey(selectedSite),
+      sourceIdentity:siteSourceIdentity(selectedSite),
+      siteName:selectedSite.adresa || "",
+      siteSource:selectedSite.zdroj || "",
+      fileName:file.name || "",
+      uploadedBy:userEmail || "nepřihlášený uživatel",
+      createdAt,
+      takenAt:file.lastModified ? new Date(file.lastModified).toISOString() : createdAt
+    });
+
+    const saveOfflinePhoto=async (photoId,file,reason,index)=>{
+      st.textContent=`Ukládám fotografii ${index+1}/${files.length} lokálně...`;
+      const createdAt=new Date().toISOString();
+      const offlineData=await prepareOfflinePhotoData(file);
+      const photoPayload={
+        ...buildBasePayload(photoId,file,createdAt),
+        url:offlineData.dataUrl,
+        displayUrl:offlineData.dataUrl,
+        fullUrl:offlineData.dataUrl,
+        thumbUrl:offlineData.dataUrl,
+        storageMode:"offline",
+        _offline:true,
+        offlineReason:safe(reason),
+        size:offlineData.size || file.size,
+        originalSize:file.size
+      };
+      await saveOfflinePhotoItem(photoPayload,selectedSite);
+      offlineCount++;
+      renderSitePhotos([photoPayload,...sitePhotoItems.filter(photo=>safe(photo._id)!==photoPayload._id)]);
+    };
 
     for(let i=0;i<files.length;i++){
       const file=files[i];
       const photoId=(window.crypto && window.crypto.randomUUID)
         ? window.crypto.randomUUID()
         : `photo_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+      if(!onlineUploadAvailable){
+        await saveOfflinePhoto(photoId,file,!navigator.onLine ? "Bez připojení k internetu." : "Firebase nebo přihlášení není dostupné.",i);
+        continue;
+      }
+
       st.textContent=`Zmenšuji fotografii ${i+1}/${files.length}...`;
-      const uploadFile=await prepareCloudinaryUploadFile(file);
-      st.textContent=`Nahrávám fotografii ${i+1}/${files.length} na Cloudinary...`;
-      const cloudinaryResult=await uploadPhotoToCloudinary(photoId,uploadFile,selectedSite);
+      let uploadFile;
+      let cloudinaryResult;
+      try{
+        uploadFile=await prepareCloudinaryUploadFile(file);
+        st.textContent=`Nahrávám fotografii ${i+1}/${files.length} na Cloudinary...`;
+        cloudinaryResult=await uploadPhotoToCloudinary(photoId,uploadFile,selectedSite);
+      }catch(uploadError){
+        console.warn("Online nahrání fotky selhalo, ukládám lokálně",uploadError);
+        await saveOfflinePhoto(photoId,file,uploadError.message,i);
+        continue;
+      }
       if(cloudinaryResult?.cloudinaryDeleteToken){
         sitePhotoDeleteTokens.set(photoId,cloudinaryResult.cloudinaryDeleteToken);
       }
 
+      const createdAt=new Date().toISOString();
       const photoPayload={
-        _id:photoId,
-        siteId,
-        siteKey,
-        siteKeys:keys,
-        firebaseDocId:selectedSite.firebaseDocId || selectedSite.raw?.["Firebase_doc_id"] || "",
-        sourceGroupKey:sitePlaceGroupKey(selectedSite),
-        sourceIdentity:siteSourceIdentity(selectedSite),
-        siteName:selectedSite.adresa || "",
-        siteSource:selectedSite.zdroj || "",
+        ...buildBasePayload(photoId,file,createdAt),
         url:cloudinaryResult.url,
         displayUrl:cloudinaryResult.displayUrl,
         fullUrl:cloudinaryResult.fullUrl,
@@ -7081,10 +7379,7 @@ async function uploadSitePhotos(){
         cloudinaryVersion:cloudinaryResult.cloudinaryVersion,
         cloudinaryUploadPreset:cloudinaryResult.cloudinaryUploadPreset,
         size:uploadFile.size || file.size,
-        originalSize:file.size,
-        fileName:file.name || "",
-        uploadedBy:signedUser.email || "",
-        createdAt:new Date().toISOString()
+        originalSize:file.size
       };
       const childOk=await saveSiteChildItem("photos",photoId,photoPayload,selectedSite);
       const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("photos",photoPayload,selectedSite);
@@ -7093,14 +7388,21 @@ async function uploadSitePhotos(){
         localOnlyCount++;
         st.textContent="Fotografie je na Cloudinary. Firebase nepovolil uložení odkazu k bodu, proto je odkaz uložen lokálně v tomto prohlížeči.";
       }
+      onlineCount++;
       renderSitePhotos([photoPayload,...sitePhotoItems.filter(photo=>safe(photo._id)!==photoPayload._id)]);
     }
 
-    if(localOnlyCount){
+    if(offlineCount && onlineCount){
+      st.textContent=`Uloženo fotografií: ${onlineCount} online, ${offlineCount} lokálně v tomto zařízení.`;
+      showSaveConfirmation("Fotografie uloženy.");
+    }else if(offlineCount){
+      st.textContent=`Fotografie uloženy lokálně v tomto zařízení: ${offlineCount}. Po připojení budou vidět v tomto prohlížeči.`;
+      showSaveConfirmation("Fotografie uloženy lokálně.");
+    }else if(localOnlyCount){
       st.textContent=`Fotografie nahrány na Cloudinary. ${localOnlyCount} odkazů Firebase nepovolil uložit k bodu, proto jsou uložené lokálně v tomto prohlížeči.`;
       showSaveConfirmation("Fotografie nahrány.");
     }else{
-      st.textContent=`Uloženo fotografií: ${files.length} (Cloudinary).`;
+      st.textContent=`Uloženo fotografií: ${onlineCount} (Cloudinary).`;
       showSaveConfirmation("Fotografie uloženy.");
     }
     resetSitePhotoInput();
