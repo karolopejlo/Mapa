@@ -866,10 +866,37 @@ button,input,select,textarea{
   overflow-wrap:anywhere;
 }
 .photo-preview{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(82px,1fr));
+  display:block;
+  margin-top:10px;
+}
+.photo-preview:empty{
+  display:none;
+}
+.photo-preview-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
   gap:8px;
-  margin-top:8px;
+  margin-bottom:6px;
+  color:#475569;
+  font-size:12px;
+  font-weight:800;
+}
+.photo-preview-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(58px,72px));
+  justify-content:start;
+  gap:7px;
+  max-height:166px;
+  overflow:auto;
+  padding:8px;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  background:#f8fafc;
+}
+.photo-preview-item{
+  position:relative;
+  min-width:0;
 }
 .photo-preview img,
 .history-photos img{
@@ -878,6 +905,25 @@ button,input,select,textarea{
   object-fit:cover;
   border-radius:10px;
   border:1px solid #cbd5e1;
+}
+.photo-preview-item img{
+  display:block;
+  height:64px;
+}
+.photo-preview-index{
+  position:absolute;
+  right:4px;
+  bottom:4px;
+  min-width:18px;
+  height:18px;
+  padding:0 4px;
+  border-radius:999px;
+  background:rgba(15,23,42,.78);
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+  line-height:18px;
+  text-align:center;
 }
 .history-controls{
   display:grid;
@@ -1010,27 +1056,36 @@ button,input,select,textarea{
   border-radius:12px;
   background:#f8fafc;
   padding:10px;
-  display:grid;
-  gap:8px;
+  overflow:hidden;
 }
-.site-photo-info-row{
-  display:grid;
-  gap:2px;
-  padding-bottom:7px;
-  border-bottom:1px solid #e2e8f0;
+.site-photo-info h4{
+  margin:0 0 8px;
+  font-size:14px;
+  color:#0f172a;
 }
-.site-photo-info-row:last-child{
-  padding-bottom:0;
-  border-bottom:0;
+.site-photo-meta-table{
+  width:100%;
+  border-collapse:collapse;
+  table-layout:fixed;
 }
-.site-photo-info-row span{
+.site-photo-meta-table th,
+.site-photo-meta-table td{
+  padding:8px 0;
+  border-top:1px solid #e2e8f0;
+  text-align:left;
+  vertical-align:top;
+}
+.site-photo-meta-table th{
+  width:42%;
+  padding-right:10px;
   font-size:11px;
   font-weight:800;
   color:#64748b;
   text-transform:uppercase;
 }
-.site-photo-info-row b{
+.site-photo-meta-table td{
   font-size:13px;
+  font-weight:800;
   color:#0f172a;
   overflow-wrap:anywhere;
 }
@@ -1068,19 +1123,23 @@ button,input,select,textarea{
   text-align:center;
 }
 .site-photo-thumbs{
-  display:flex;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(52px,64px));
   gap:6px;
   overflow:auto;
-  padding-bottom:2px;
+  max-height:150px;
+  padding:6px;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  background:#f8fafc;
 }
 .site-photo-thumb{
   border:2px solid transparent;
   border-radius:10px;
   padding:0;
   background:#fff;
-  width:54px;
-  height:54px;
-  flex:0 0 auto;
+  width:100%;
+  aspect-ratio:1;
   overflow:hidden;
 }
 .site-photo-thumb.active{
@@ -5699,12 +5758,18 @@ function photoDateTimeLabel(raw){
   return isNaN(d.getTime()) ? "" : formatDateTimeCz(d);
 }
 
+function photoCloudinaryVersionDate(item){
+  const version=Number(item?.cloudinaryVersion || item?.version || 0);
+  if(!Number.isFinite(version) || version<1000000000) return "";
+  return new Date(version*1000).toISOString();
+}
+
 function photoTakenLabel(item){
-  return photoDateTimeLabel(item?.takenAt || item?.photoTakenAt || item?.lastModifiedAt || item?.createdAt || item?.uploadedAt || item?.date);
+  return photoDateTimeLabel(item?.takenAt || item?.photoTakenAt || item?.lastModifiedAt || item?.createdAt || item?.uploadedAt || item?.date || photoCloudinaryVersionDate(item));
 }
 
 function photoInsertedLabel(item){
-  return photoDateTimeLabel(item?.createdAt || item?.uploadedAt || item?.date);
+  return photoDateTimeLabel(item?.createdAt || item?.uploadedAt || item?.date || photoCloudinaryVersionDate(item));
 }
 
 function historyObjectSummary(obj){
@@ -7117,11 +7182,21 @@ function renderSitePhotoPreview(){
   sitePhotoPreviewUrls.forEach(url=>URL.revokeObjectURL(url));
   sitePhotoPreviewUrls=[];
   const files=selectedSitePhotoFiles();
-  box.innerHTML=files.map((file,idx)=>{
+  if(!files.length){
+    box.innerHTML="";
+    return;
+  }
+  const thumbs=files.map((file,idx)=>{
     const url=URL.createObjectURL(file);
     sitePhotoPreviewUrls.push(url);
-    return `<img src="${esc(url)}" alt="Nová fotografie ${idx+1}">`;
+    return `<div class="photo-preview-item"><img src="${esc(url)}" alt="Nová fotografie ${idx+1}"><span class="photo-preview-index">${idx+1}</span></div>`;
   }).join("");
+  box.innerHTML=`
+    <div class="photo-preview-head">
+      <span>Vybrané fotografie</span>
+      <span>${files.length} ks</span>
+    </div>
+    <div class="photo-preview-grid">${thumbs}</div>`;
 }
 
 function sitePhotoKeys(site=selectedSite){
@@ -7148,12 +7223,12 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   const insertedAt=photoDateLabel(item);
   const meta=[insertedAt ? `Vloženo: ${insertedAt}` : "", modeLabel, bytesLabel(item.size), item.uploadedBy].filter(Boolean).join(" · ");
   const takenAt=photoTakenLabel(item) || "není uvedeno";
-  const insertedAtFull=photoInsertedLabel(item) || "není uvedeno";
+  const insertedAtFull=photoInsertedLabel(item) || "datum není uložené";
   const uploadedBy=safe(item.uploadedBy || item.createdBy || item.ownerEmail) || "není uvedeno";
   const photoInfoRows=[
+    ["Datum přidání", insertedAtFull],
+    ["Uložil", uploadedBy],
     ["Datum pořízení", takenAt],
-    ["Fotku uložil", uploadedBy],
-    ["Vloženo do mapy", insertedAtFull],
     ["Úložiště", modeLabel],
     ["Velikost", bytesLabel(item.size || item.originalSize) || "není uvedeno"]
   ];
@@ -7166,7 +7241,10 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
           <img src="${esc(mainUrl)}" alt="Fotografie bodu ${sitePhotoIndex+1}">
         </a>
         <div class="site-photo-info">
-          ${photoInfoRows.map(([label,value])=>`<div class="site-photo-info-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join("")}
+          <h4>Metadata fotografie</h4>
+          <table class="site-photo-meta-table"><tbody>
+            ${photoInfoRows.map(([label,value])=>`<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>`).join("")}
+          </tbody></table>
         </div>
       </div>
       <div class="site-photo-actions">
