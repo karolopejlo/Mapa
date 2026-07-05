@@ -941,6 +941,8 @@ button,input,select,textarea{
 .history-actions{
   display:flex;
   justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
   margin-top:10px;
 }
 .history-actions button{
@@ -1670,6 +1672,7 @@ button,input,select,textarea{
 
     <div class="row" style="margin-top:10px">
       <button class="primary" type="submit">Uložit protokol</button>
+      <button class="secondary" type="button" id="exportProtocolFormBtn">Exportovat protokol</button>
     </div>
     <p id="protocolStatus" class="small"></p>
   </form>
@@ -5793,6 +5796,302 @@ function historyObjectSummary(obj){
     .join(", ");
 }
 
+function isProtocolHistoryItem(item){
+  return !!item && (
+    item._type==="Protokol" ||
+    ["protocols","siteProtocols","localProtocols","embeddedProtocols","protocolRefs"].includes(item._collection)
+  );
+}
+
+function protocolExportValue(value){
+  if(value===null || value===undefined) return "";
+  if(value && typeof value.toDate==="function") return formatDateTimeCz(value.toDate());
+  if(value instanceof Date) return formatDateTimeCz(value);
+  if(Array.isArray(value)) return value.map(protocolExportValue).filter(Boolean).join(", ");
+  if(typeof value==="object"){
+    const summary=historyObjectSummary(value);
+    if(summary) return summary;
+    try{return JSON.stringify(value)}catch(e){return String(value)}
+  }
+  return String(value).trim();
+}
+
+function excelXmlEscape(value){
+  return protocolExportValue(value)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&apos;");
+}
+
+function excelCell(value,styleId=""){
+  return `<Cell${styleId ? ` ss:StyleID="${styleId}"` : ""}><Data ss:Type="String">${excelXmlEscape(value)}</Data></Cell>`;
+}
+
+function excelRow(values,styleId=""){
+  return `<Row>${values.map(value=>excelCell(value,styleId)).join("")}</Row>`;
+}
+
+function excelSectionRow(title){
+  return `<Row><Cell ss:MergeAcross="1" ss:StyleID="Section"><Data ss:Type="String">${excelXmlEscape(title)}</Data></Cell></Row>`;
+}
+
+function excelFileNamePart(value){
+  return simpleNorm(value || "protokol")
+    .replace(/[^a-z0-9]+/g,"-")
+    .replace(/^-+|-+$/g,"")
+    .slice(0,60) || "protokol";
+}
+
+function protocolExportDatePart(protocol={}){
+  const raw=safe(protocol.date || protocol.checkDate || protocol.createdAt || "");
+  const d=parseDateValue(raw);
+  if(d){
+    const pad=n=>String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  return new Date().toISOString().slice(0,10);
+}
+
+function protocolExportSections(protocol={}){
+  const site=selectedSite || {};
+  const createdBy=protocol.createdBy || protocol.technicianEmail || currentUser?.email || "";
+  return [
+    {
+      title:"Základní údaje",
+      rows:[
+        ["Datum kontroly", protocol.date || protocol.checkDate || ""],
+        ["Název / adresa místa", protocol.siteName || site.adresa || ""],
+        ["Místo kontroly", protocol.place || protocol.siteAddress || protocol.siteName || ""],
+        ["Provozovatel zařízení", protocol.operator || ""],
+        ["Objednatel zkoušky provozuschopnosti", protocol.customer || ""],
+        ["Technik", protocol.techSign || protocol.technician || currentUser?.displayName || ""],
+        ["E-mail technika", protocol.technicianEmail || createdBy]
+      ]
+    },
+    {
+      title:"Zdroj",
+      rows:[
+        ["Kontrolované zařízení - typ", protocol.deviceType || ""],
+        ["Vybraný zdroj", protocol.selectedDevice || protocol.siteSource || ""],
+        ["Popis zdroje z mapy", protocol.siteSource || site.zdroj || ""],
+        ["Výrobní číslo", protocol.serial || ""],
+        ["Plomba", protocol.seal || ""],
+        ["Umístění PBZ v objektu", protocol.pbzLocation || ""],
+        ["Perioda zkoušky", protocol.period || ""]
+      ]
+    },
+    {
+      title:"Baterie",
+      rows:[
+        ["Počet baterií (ks)", protocol.batteryCount || ""],
+        ["Kapacita (Ah)", protocol.capacityAh || ""],
+        ["Počet sad (ks)", protocol.setCount || ""],
+        ["Pom. bat. (Ah)", protocol.auxBatteryAh || ""],
+        ["Teplota okolí (°C)", protocol.temperature || ""],
+        ["Plomba 2", protocol.seal2 || ""]
+      ]
+    },
+    {
+      title:"Měření AC",
+      rows:[
+        ["Vstup (Vac)", protocol.inputVac || ""],
+        ["Výstup 1 (Vac)", protocol.output1Vac || ""],
+        ["Výstup 2 (Vac)", protocol.output2Vac || ""],
+        ["Výstup zál. 1 (Vac)", protocol.backup1Vac || ""],
+        ["Výstup zál. 2 (Vac)", protocol.backup2Vac || ""]
+      ]
+    },
+    {
+      title:"Měření DC",
+      rows:[
+        ["Hl. bat. 1 (Vdc)", protocol.mainBatVdc || ""],
+        ["Reset diagnostiky", protocol.resetDiagnostics || ""],
+        ["Pom. bat. (Vdc)", protocol.auxBatVdc || ""],
+        ["Rozvážení 1 (Vdc)", protocol.unbalance1 || ""],
+        ["Rozvážení 2 (Vdc)", protocol.unbalance2 || ""]
+      ]
+    },
+    {
+      title:"Umístění a zařízení",
+      rows:[
+        ["Umístění jističů UPS a záložního zařízení", protocol.breakersLocation || ""],
+        ["Typ a umístění zálohovaných zařízení", historyObjectSummary(protocol.backedDevices)],
+        ["Umístění ovládání a režim", protocol.controlLocation || ""],
+        ["Parkování, vstup do objektu a OOPP", historyObjectSummary(protocol.access)]
+      ]
+    },
+    {
+      title:"Kontakty a dostupnost",
+      rows:[
+        ["Kontakty", protocol.contacts || ""],
+        ["Dostupnost", historyObjectSummary(protocol.availability)]
+      ]
+    },
+    {
+      title:"Výsledek a poznámky",
+      rows:[
+        ["Zařízení pracuje ve vyhovujících podmínkách", protocol.conditions || protocol.result || ""],
+        ["Odůvodnění podmínek", protocol.conditionsReason || ""],
+        ["Poznámky", protocol.notes || protocol.issues || ""],
+        ["Doporučení", protocol.recommendation || ""],
+        ["Za objednavatele", protocol.clientSign || ""],
+        ["Kontrolu provedl", protocol.techSign || ""]
+      ]
+    },
+    {
+      title:"Identifikace v mapě",
+      rows:[
+        ["ID místa", protocol.siteId || site.id || ""],
+        ["Klíč místa", protocol.siteKey || siteRecordKeys(site)[0] || ""],
+        ["Firebase dokument", protocol.firebaseDocId || selectedSiteDocId(site) || ""],
+        ["Skupina zdroje", protocol.sourceGroupKey || ""],
+        ["Identita zdroje", protocol.sourceIdentity || ""],
+        ["Vytvořeno", protocol.createdAt || ""],
+        ["Vytvořil", createdBy],
+        ["Exportováno", new Date()]
+      ]
+    }
+  ];
+}
+
+function protocolExportDataRows(protocol={}){
+  return [
+    ["siteId","ID místa",protocol.siteId],
+    ["siteKey","Klíč místa",protocol.siteKey],
+    ["siteKeys","Všechny klíče místa",protocol.siteKeys],
+    ["firebaseDocId","Firebase dokument",protocol.firebaseDocId],
+    ["sourceGroupKey","Skupina zdroje",protocol.sourceGroupKey],
+    ["sourceIdentity","Identita zdroje",protocol.sourceIdentity],
+    ["siteName","Název / adresa místa",protocol.siteName],
+    ["siteSource","Popis zdroje z mapy",protocol.siteSource],
+    ["technicianEmail","E-mail technika",protocol.technicianEmail],
+    ["date","Datum kontroly",protocol.date],
+    ["selectedDevice","Vybraný zdroj",protocol.selectedDevice],
+    ["deviceType","Kontrolované zařízení - typ",protocol.deviceType],
+    ["serial","Výrobní číslo",protocol.serial],
+    ["seal","Plomba",protocol.seal],
+    ["place","Místo kontroly",protocol.place],
+    ["operator","Provozovatel zařízení",protocol.operator],
+    ["customer","Objednatel zkoušky",protocol.customer],
+    ["pbzLocation","Umístění PBZ",protocol.pbzLocation],
+    ["batteryCount","Počet baterií",protocol.batteryCount],
+    ["capacityAh","Kapacita Ah",protocol.capacityAh],
+    ["setCount","Počet sad",protocol.setCount],
+    ["auxBatteryAh","Pom. bat. Ah",protocol.auxBatteryAh],
+    ["temperature","Teplota",protocol.temperature],
+    ["seal2","Plomba 2",protocol.seal2],
+    ["inputVac","Vstup Vac",protocol.inputVac],
+    ["output1Vac","Výstup 1 Vac",protocol.output1Vac],
+    ["output2Vac","Výstup 2 Vac",protocol.output2Vac],
+    ["backup1Vac","Výstup zál. 1 Vac",protocol.backup1Vac],
+    ["backup2Vac","Výstup zál. 2 Vac",protocol.backup2Vac],
+    ["mainBatVdc","Hl. bat. Vdc",protocol.mainBatVdc],
+    ["resetDiagnostics","Reset diagnostiky",protocol.resetDiagnostics],
+    ["auxBatVdc","Pom. bat. Vdc",protocol.auxBatVdc],
+    ["unbalance1","Rozvážení 1",protocol.unbalance1],
+    ["unbalance2","Rozvážení 2",protocol.unbalance2],
+    ["breakersLocation","Umístění jističů",protocol.breakersLocation],
+    ["backedDevices","Zálohovaná zařízení",protocol.backedDevices],
+    ["controlLocation","Umístění ovládání",protocol.controlLocation],
+    ["access","Vstup / OOPP",protocol.access],
+    ["contacts","Kontakty",protocol.contacts],
+    ["availability","Dostupnost",protocol.availability],
+    ["period","Perioda",protocol.period],
+    ["conditions","Vyhovující podmínky",protocol.conditions],
+    ["conditionsReason","Odůvodnění podmínek",protocol.conditionsReason],
+    ["notes","Poznámky",protocol.notes],
+    ["clientSign","Za objednavatele",protocol.clientSign],
+    ["techSign","Kontrolu provedl",protocol.techSign],
+    ["createdAt","Vytvořeno",protocol.createdAt],
+    ["createdBy","Vytvořil",protocol.createdBy]
+  ];
+}
+
+function buildProtocolExcelXml(protocol={}){
+  const sections=protocolExportSections(protocol);
+  const protocolRows=[
+    excelRow(["Pole","Hodnota"],"Header"),
+    ...sections.flatMap(section=>[
+      excelSectionRow(section.title),
+      ...section.rows.map(row=>excelRow(row))
+    ])
+  ];
+  const dataRows=[
+    excelRow(["Klíč","Popis","Hodnota"],"Header"),
+    ...protocolExportDataRows(protocol).map(row=>excelRow(row))
+  ];
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Top" ss:WrapText="1"/>
+   <Font ss:FontName="Calibri" ss:Size="11"/>
+  </Style>
+  <Style ss:ID="Header">
+   <Alignment ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#0F172A"/>
+   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="Section">
+   <Alignment ss:Vertical="Center"/>
+   <Font ss:FontName="Calibri" ss:Size="12" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#2563EB" ss:Pattern="Solid"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Protokol">
+  <Table>
+   <Column ss:AutoFitWidth="0" ss:Width="230"/>
+   <Column ss:AutoFitWidth="0" ss:Width="420"/>
+   ${protocolRows.join("\n   ")}
+  </Table>
+ </Worksheet>
+ <Worksheet ss:Name="Data">
+  <Table>
+   <Column ss:AutoFitWidth="0" ss:Width="150"/>
+   <Column ss:AutoFitWidth="0" ss:Width="260"/>
+   <Column ss:AutoFitWidth="0" ss:Width="420"/>
+   ${dataRows.join("\n   ")}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+}
+
+function downloadTextFile(filename,content,mimeType){
+  const blob=new Blob([content],{type:mimeType || "text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement("a");
+  link.href=url;
+  link.download=filename;
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(()=>{
+    URL.revokeObjectURL(url);
+    link.remove();
+  },0);
+}
+
+function exportProtocolToExcel(protocol){
+  if(!protocol){
+    showSaveConfirmation("Není vybraný protokol k exportu.");
+    return;
+  }
+  const filled={
+    ...protocol,
+    createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
+  };
+  const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "protokol";
+  const fileName=`protokol-${protocolExportDatePart(filled)}-${excelFileNamePart(baseName)}.xls`;
+  downloadTextFile(fileName,buildProtocolExcelXml(filled),"application/vnd.ms-excel;charset=utf-8");
+  showSaveConfirmation("Protokol exportován do Excelu.");
+}
+
 function siteLocalCacheKey(kind,site=selectedSite){
   const key=selectedSiteDocId(site) || detailKey(site) || site?.id || "unknown";
   return `astipMap:${kind}:${key}`;
@@ -6121,7 +6420,12 @@ function renderHistory(){
   if(detailHistoryIndex>=detailHistoryItems.length) detailHistoryIndex=detailHistoryItems.length-1;
 
   const d=detailHistoryItems[detailHistoryIndex];
-  const canDeleteProtocol=isHistoryAdmin() && (d._type==="Protokol" || d._collection==="protocols" || d._collection==="siteProtocols" || d._collection==="localProtocols" || d._collection==="embeddedProtocols" || d._collection==="protocolRefs");
+  const canExportProtocol=isProtocolHistoryItem(d);
+  const canDeleteProtocol=isHistoryAdmin() && canExportProtocol;
+  const historyActionButtons=[
+    canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat protokol</button>' : "",
+    canDeleteProtocol ? '<button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button>' : ""
+  ].filter(Boolean).join("");
   const rows=[
     ["Typ záznamu", d._type || "Záznam"],
     ["Datum", historyDateLabel(d)],
@@ -6156,7 +6460,7 @@ function renderHistory(){
     <div class="history-item">
       ${rows.map(([label,value])=>`<div class="history-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join("")}
       ${photos.length ? `<div class="history-photos">${photos.map((url,idx)=>`<a href="${esc(url)}" target="_blank"><img src="${esc(url)}" alt="Foto ${idx+1}"></a>`).join("")}</div>` : ""}
-      ${canDeleteProtocol ? '<div class="history-actions"><button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button></div>' : ""}
+      ${historyActionButtons ? `<div class="history-actions">${historyActionButtons}</div>` : ""}
     </div>
   `;
 
@@ -6172,6 +6476,8 @@ function renderHistory(){
   }
   const del=document.getElementById("deleteHistoryProtocolBtn");
   if(del) del.onclick=deleteCurrentHistoryProtocol;
+  const exp=document.getElementById("exportHistoryProtocolBtn");
+  if(exp) exp.onclick=()=>exportProtocolToExcel(detailHistoryItems[detailHistoryIndex]);
 }
 
 async function loadHistory(siteId){
@@ -7769,9 +8075,19 @@ function protocolPayload(){
   };
 }
 
-
-
-
+const exportProtocolFormBtn=document.getElementById("exportProtocolFormBtn");
+if(exportProtocolFormBtn){
+  exportProtocolFormBtn.addEventListener("click",()=>{
+    const st=document.getElementById("protocolStatus");
+    if(!selectedSite){
+      if(st) st.textContent="Není vybrané místo.";
+      return;
+    }
+    const payload=protocolPayload();
+    payload.createdBy=currentUser?.email || payload.technicianEmail || "";
+    exportProtocolToExcel(payload);
+  });
+}
 
 document.getElementById("protocolForm").addEventListener("submit",async e=>{
   e.preventDefault();
