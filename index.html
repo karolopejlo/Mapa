@@ -1672,7 +1672,7 @@ button,input,select,textarea{
 
     <div class="row" style="margin-top:10px">
       <button class="primary" type="submit">Uložit protokol</button>
-      <button class="secondary" type="button" id="exportProtocolFormBtn">Exportovat protokol</button>
+      <button class="secondary" type="button" id="exportProtocolFormBtn">Exportovat do Wordu</button>
     </div>
     <p id="protocolStatus" class="small"></p>
   </form>
@@ -5813,31 +5813,10 @@ function protocolExportValue(value){
     if(summary) return summary;
     try{return JSON.stringify(value)}catch(e){return String(value)}
   }
-  return String(value).trim();
+  return String(value).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g," ").trim();
 }
 
-function excelXmlEscape(value){
-  return protocolExportValue(value)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&apos;");
-}
-
-function excelCell(value,styleId=""){
-  return `<Cell${styleId ? ` ss:StyleID="${styleId}"` : ""}><Data ss:Type="String">${excelXmlEscape(value)}</Data></Cell>`;
-}
-
-function excelRow(values,styleId=""){
-  return `<Row>${values.map(value=>excelCell(value,styleId)).join("")}</Row>`;
-}
-
-function excelSectionRow(title){
-  return `<Row><Cell ss:MergeAcross="1" ss:StyleID="Section"><Data ss:Type="String">${excelXmlEscape(title)}</Data></Cell></Row>`;
-}
-
-function excelFileNamePart(value){
+function protocolWordFileNamePart(value){
   return simpleNorm(value || "protokol")
     .replace(/[^a-z0-9]+/g,"-")
     .replace(/^-+|-+$/g,"")
@@ -5854,217 +5833,424 @@ function protocolExportDatePart(protocol={}){
   return new Date().toISOString().slice(0,10);
 }
 
-function protocolExportSections(protocol={}){
-  const site=selectedSite || {};
-  const createdBy=protocol.createdBy || protocol.technicianEmail || currentUser?.email || "";
-  return [
-    {
-      title:"Základní údaje",
-      rows:[
-        ["Datum kontroly", protocol.date || protocol.checkDate || ""],
-        ["Název / adresa místa", protocol.siteName || site.adresa || ""],
-        ["Místo kontroly", protocol.place || protocol.siteAddress || protocol.siteName || ""],
-        ["Provozovatel zařízení", protocol.operator || ""],
-        ["Objednatel zkoušky provozuschopnosti", protocol.customer || ""],
-        ["Technik", protocol.techSign || protocol.technician || currentUser?.displayName || ""],
-        ["E-mail technika", protocol.technicianEmail || createdBy]
-      ]
-    },
-    {
-      title:"Zdroj",
-      rows:[
-        ["Kontrolované zařízení - typ", protocol.deviceType || ""],
-        ["Vybraný zdroj", protocol.selectedDevice || protocol.siteSource || ""],
-        ["Popis zdroje z mapy", protocol.siteSource || site.zdroj || ""],
-        ["Výrobní číslo", protocol.serial || ""],
-        ["Plomba", protocol.seal || ""],
-        ["Umístění PBZ v objektu", protocol.pbzLocation || ""],
-        ["Perioda zkoušky", protocol.period || ""]
-      ]
-    },
-    {
-      title:"Baterie",
-      rows:[
-        ["Počet baterií (ks)", protocol.batteryCount || ""],
-        ["Kapacita (Ah)", protocol.capacityAh || ""],
-        ["Počet sad (ks)", protocol.setCount || ""],
-        ["Pom. bat. (Ah)", protocol.auxBatteryAh || ""],
-        ["Teplota okolí (°C)", protocol.temperature || ""],
-        ["Plomba 2", protocol.seal2 || ""]
-      ]
-    },
-    {
-      title:"Měření AC",
-      rows:[
-        ["Vstup (Vac)", protocol.inputVac || ""],
-        ["Výstup 1 (Vac)", protocol.output1Vac || ""],
-        ["Výstup 2 (Vac)", protocol.output2Vac || ""],
-        ["Výstup zál. 1 (Vac)", protocol.backup1Vac || ""],
-        ["Výstup zál. 2 (Vac)", protocol.backup2Vac || ""]
-      ]
-    },
-    {
-      title:"Měření DC",
-      rows:[
-        ["Hl. bat. 1 (Vdc)", protocol.mainBatVdc || ""],
-        ["Reset diagnostiky", protocol.resetDiagnostics || ""],
-        ["Pom. bat. (Vdc)", protocol.auxBatVdc || ""],
-        ["Rozvážení 1 (Vdc)", protocol.unbalance1 || ""],
-        ["Rozvážení 2 (Vdc)", protocol.unbalance2 || ""]
-      ]
-    },
-    {
-      title:"Umístění a zařízení",
-      rows:[
-        ["Umístění jističů UPS a záložního zařízení", protocol.breakersLocation || ""],
-        ["Typ a umístění zálohovaných zařízení", historyObjectSummary(protocol.backedDevices)],
-        ["Umístění ovládání a režim", protocol.controlLocation || ""],
-        ["Parkování, vstup do objektu a OOPP", historyObjectSummary(protocol.access)]
-      ]
-    },
-    {
-      title:"Kontakty a dostupnost",
-      rows:[
-        ["Kontakty", protocol.contacts || ""],
-        ["Dostupnost", historyObjectSummary(protocol.availability)]
-      ]
-    },
-    {
-      title:"Výsledek a poznámky",
-      rows:[
-        ["Zařízení pracuje ve vyhovujících podmínkách", protocol.conditions || protocol.result || ""],
-        ["Odůvodnění podmínek", protocol.conditionsReason || ""],
-        ["Poznámky", protocol.notes || protocol.issues || ""],
-        ["Doporučení", protocol.recommendation || ""],
-        ["Za objednavatele", protocol.clientSign || ""],
-        ["Kontrolu provedl", protocol.techSign || ""]
-      ]
-    },
-    {
-      title:"Identifikace v mapě",
-      rows:[
-        ["ID místa", protocol.siteId || site.id || ""],
-        ["Klíč místa", protocol.siteKey || siteRecordKeys(site)[0] || ""],
-        ["Firebase dokument", protocol.firebaseDocId || selectedSiteDocId(site) || ""],
-        ["Skupina zdroje", protocol.sourceGroupKey || ""],
-        ["Identita zdroje", protocol.sourceIdentity || ""],
-        ["Vytvořeno", protocol.createdAt || ""],
-        ["Vytvořil", createdBy],
-        ["Exportováno", new Date()]
-      ]
-    }
-  ];
+function protocolDisplayDate(value){
+  const d=parseDateValue(value);
+  return d ? formatDateCz(d) : protocolExportValue(value);
 }
 
-function protocolExportDataRows(protocol={}){
-  return [
-    ["siteId","ID místa",protocol.siteId],
-    ["siteKey","Klíč místa",protocol.siteKey],
-    ["siteKeys","Všechny klíče místa",protocol.siteKeys],
-    ["firebaseDocId","Firebase dokument",protocol.firebaseDocId],
-    ["sourceGroupKey","Skupina zdroje",protocol.sourceGroupKey],
-    ["sourceIdentity","Identita zdroje",protocol.sourceIdentity],
-    ["siteName","Název / adresa místa",protocol.siteName],
-    ["siteSource","Popis zdroje z mapy",protocol.siteSource],
-    ["technicianEmail","E-mail technika",protocol.technicianEmail],
-    ["date","Datum kontroly",protocol.date],
-    ["selectedDevice","Vybraný zdroj",protocol.selectedDevice],
-    ["deviceType","Kontrolované zařízení - typ",protocol.deviceType],
-    ["serial","Výrobní číslo",protocol.serial],
-    ["seal","Plomba",protocol.seal],
-    ["place","Místo kontroly",protocol.place],
-    ["operator","Provozovatel zařízení",protocol.operator],
-    ["customer","Objednatel zkoušky",protocol.customer],
-    ["pbzLocation","Umístění PBZ",protocol.pbzLocation],
-    ["batteryCount","Počet baterií",protocol.batteryCount],
-    ["capacityAh","Kapacita Ah",protocol.capacityAh],
-    ["setCount","Počet sad",protocol.setCount],
-    ["auxBatteryAh","Pom. bat. Ah",protocol.auxBatteryAh],
-    ["temperature","Teplota",protocol.temperature],
-    ["seal2","Plomba 2",protocol.seal2],
-    ["inputVac","Vstup Vac",protocol.inputVac],
-    ["output1Vac","Výstup 1 Vac",protocol.output1Vac],
-    ["output2Vac","Výstup 2 Vac",protocol.output2Vac],
-    ["backup1Vac","Výstup zál. 1 Vac",protocol.backup1Vac],
-    ["backup2Vac","Výstup zál. 2 Vac",protocol.backup2Vac],
-    ["mainBatVdc","Hl. bat. Vdc",protocol.mainBatVdc],
-    ["resetDiagnostics","Reset diagnostiky",protocol.resetDiagnostics],
-    ["auxBatVdc","Pom. bat. Vdc",protocol.auxBatVdc],
-    ["unbalance1","Rozvážení 1",protocol.unbalance1],
-    ["unbalance2","Rozvážení 2",protocol.unbalance2],
-    ["breakersLocation","Umístění jističů",protocol.breakersLocation],
-    ["backedDevices","Zálohovaná zařízení",protocol.backedDevices],
-    ["controlLocation","Umístění ovládání",protocol.controlLocation],
-    ["access","Vstup / OOPP",protocol.access],
-    ["contacts","Kontakty",protocol.contacts],
-    ["availability","Dostupnost",protocol.availability],
-    ["period","Perioda",protocol.period],
-    ["conditions","Vyhovující podmínky",protocol.conditions],
-    ["conditionsReason","Odůvodnění podmínek",protocol.conditionsReason],
-    ["notes","Poznámky",protocol.notes],
-    ["clientSign","Za objednavatele",protocol.clientSign],
-    ["techSign","Kontrolu provedl",protocol.techSign],
-    ["createdAt","Vytvořeno",protocol.createdAt],
-    ["createdBy","Vytvořil",protocol.createdBy]
-  ];
+function wordXmlEscape(value){
+  return protocolExportValue(value)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&apos;");
 }
 
-function buildProtocolExcelXml(protocol={}){
-  const sections=protocolExportSections(protocol);
-  const protocolRows=[
-    excelRow(["Pole","Hodnota"],"Header"),
-    ...sections.flatMap(section=>[
-      excelSectionRow(section.title),
-      ...section.rows.map(row=>excelRow(row))
+function wordTextXml(value){
+  const raw=protocolExportValue(value);
+  if(!raw) return '<w:t xml:space="preserve"> </w:t>';
+  return raw.split(/\r?\n/).map((part,idx)=>`${idx ? "<w:br/>" : ""}<w:t xml:space="preserve">${wordXmlEscape(part)}</w:t>`).join("");
+}
+
+function wordRun(value,options={}){
+  const props=[
+    '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/>',
+    `<w:sz w:val="${options.size || 20}"/>`,
+    `<w:szCs w:val="${options.size || 20}"/>`
+  ];
+  if(options.bold) props.push("<w:b/><w:bCs/>");
+  if(options.italic) props.push("<w:i/><w:iCs/>");
+  if(options.color) props.push(`<w:color w:val="${options.color}"/>`);
+  return `<w:r><w:rPr>${props.join("")}</w:rPr>${wordTextXml(value)}</w:r>`;
+}
+
+function wordParagraphXml(runXml,options={}){
+  const props=[];
+  if(options.align) props.push(`<w:jc w:val="${options.align}"/>`);
+  props.push(`<w:spacing w:before="${options.before || 0}" w:after="${options.after ?? 0}" w:line="240" w:lineRule="auto"/>`);
+  return `<w:p><w:pPr>${props.join("")}</w:pPr>${runXml || wordRun(" ")}</w:p>`;
+}
+
+function wordParagraph(value,options={}){
+  return wordParagraphXml(wordRun(value,options),options);
+}
+
+function wordBlank(after=60){
+  return wordParagraph(" ",{size:4,after});
+}
+
+function wordCellXml(contentXml,width,options={}){
+  const props=[
+    `<w:tcW w:w="${width}" w:type="dxa"/>`,
+    `<w:vAlign w:val="${options.vAlign || "center"}"/>`,
+    '<w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar>'
+  ];
+  if(options.colSpan && options.colSpan>1) props.push(`<w:gridSpan w:val="${options.colSpan}"/>`);
+  if(options.fill) props.push(`<w:shd w:fill="${options.fill}"/>`);
+  return `<w:tc><w:tcPr>${props.join("")}</w:tcPr>${contentXml || wordParagraph(" ")}</w:tc>`;
+}
+
+function wordCellText(text,width,options={}){
+  const paragraph=wordParagraph(text || " ",{
+    size:options.size || 20,
+    bold:!!options.bold,
+    align:options.align || "left",
+    after:0
+  });
+  return wordCellXml(paragraph,width,options);
+}
+
+function wordTable(rows,widths,options={}){
+  const total=widths.reduce((sum,w)=>sum+w,0);
+  const borders=options.noBorders
+    ? '<w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders>'
+    : '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders>';
+  const grid=widths.map(width=>`<w:gridCol w:w="${width}"/>`).join("");
+  const rowXml=rows.map(row=>{
+    let colIndex=0;
+    const minHeight=row.reduce((max,cell)=>Math.max(max,(cell && cell.height) || 0),0);
+    const trPr=minHeight ? `<w:trPr><w:trHeight w:val="${minHeight}" w:hRule="atLeast"/></w:trPr>` : "";
+    const cells=row.map(cell=>{
+      const c=typeof cell==="string" ? {text:cell} : (cell || {});
+      const span=c.colSpan || 1;
+      const width=c.width || widths.slice(colIndex,colIndex+span).reduce((sum,w)=>sum+w,0);
+      colIndex+=span;
+      if(c.xml) return wordCellXml(c.xml,width,c);
+      return wordCellText(c.text,width,c);
+    }).join("");
+    return `<w:tr>${trPr}${cells}</w:tr>`;
+  }).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="${total}" w:type="dxa"/><w:tblLayout w:type="fixed"/>${borders}</w:tblPr><w:tblGrid>${grid}</w:tblGrid>${rowXml}</w:tbl>`;
+}
+
+function wordFormField(label,value,width=9630){
+  return wordTable([
+    [{text:label,bold:true,size:18,fill:"F2F2F2"}],
+    [{text:protocolExportValue(value) || " ",size:20,height:420}]
+  ],[width]) + wordBlank(55);
+}
+
+function wordFormGrid(labels,values,widths){
+  return wordTable([
+    labels.map(label=>({text:label,bold:true,size:18,fill:"F2F2F2"})),
+    values.map(value=>({text:protocolExportValue(value) || " ",size:20,height:420}))
+  ],widths) + wordBlank(55);
+}
+
+function wordCheck(value){
+  return value ? "☒" : "☐";
+}
+
+function protocolCheckedText(items){
+  return items.map(item=>`${wordCheck(!!item.checked)} ${item.label}`).join("   ");
+}
+
+function protocolBackedDevicesText(protocol={}){
+  const d=protocol.backedDevices || {};
+  return protocolCheckedText([
+    {checked:d.lift,label:"Výtah"},
+    {checked:d.vent,label:"vent. výt. šachty"},
+    {checked:d.machineLight,label:"osvětlení strojovny"},
+    {checked:d.chuc,label:"CHÚC"},
+    {checked:d.damper,label:"klapka"},
+    {checked:d.skylight,label:"světlík"},
+    {checked:d.gate,label:"vrata"},
+    {checked:d.ats,label:"ATS"},
+    {checked:d.rpo,label:"RPO"},
+    {checked:d.no,label:"NO"},
+    {checked:d.sprinkler,label:"sprinkler"},
+    {checked:d.csTs,label:"CS/TS"},
+    {checked:safe(d.other),label:`jiné: ${safe(d.other)}`}
+  ]);
+}
+
+function protocolAccessText(protocol={}){
+  const d=protocol.access || {};
+  return protocolCheckedText([
+    {checked:d.blue,label:"modrá"},
+    {checked:d.b,label:"B"},
+    {checked:d.c,label:"C"},
+    {checked:d.garage,label:"garáže"},
+    {checked:d.carLift,label:"auto výtah"},
+    {checked:d.barrier,label:"závora"},
+    {checked:d.parkingHouse,label:"park. dům"},
+    {checked:d.permit,label:"povolení"},
+    {checked:d.training,label:"školení"},
+    {checked:d.shoes,label:"boty"},
+    {checked:d.vest,label:"vesta"},
+    {checked:d.helmet,label:"helma"},
+    {checked:safe(d.other),label:`jiné: ${safe(d.other)}`}
+  ]);
+}
+
+function protocolAvailabilityText(protocol={}){
+  const d=protocol.availability || {};
+  return [
+    `WC ${wordCheck(d.wcOk)} Ok / ${wordCheck(d.wcNok)} Nok`,
+    `Osvětlení ${wordCheck(d.lightOk)} Ok / ${wordCheck(d.lightNok)} Nok`,
+    protocolCheckedText([
+      {checked:d.ladder,label:"žebřík"},
+      {checked:d.stairs,label:"schody"},
+      {checked:d.lowCeiling,label:"snížený strop"},
+      {checked:d.extremeTemp,label:"extrémní teploty"},
+      {checked:safe(d.other),label:`jiné: ${safe(d.other)}`}
     ])
-  ];
-  const dataRows=[
-    excelRow(["Klíč","Popis","Hodnota"],"Header"),
-    ...protocolExportDataRows(protocol).map(row=>excelRow(row))
-  ];
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:html="http://www.w3.org/TR/REC-html40">
- <Styles>
-  <Style ss:ID="Default" ss:Name="Normal">
-   <Alignment ss:Vertical="Top" ss:WrapText="1"/>
-   <Font ss:FontName="Calibri" ss:Size="11"/>
-  </Style>
-  <Style ss:ID="Header">
-   <Alignment ss:Vertical="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#0F172A"/>
-   <Interior ss:Color="#DBEAFE" ss:Pattern="Solid"/>
-  </Style>
-  <Style ss:ID="Section">
-   <Alignment ss:Vertical="Center"/>
-   <Font ss:FontName="Calibri" ss:Size="12" ss:Bold="1" ss:Color="#FFFFFF"/>
-   <Interior ss:Color="#2563EB" ss:Pattern="Solid"/>
-  </Style>
- </Styles>
- <Worksheet ss:Name="Protokol">
-  <Table>
-   <Column ss:AutoFitWidth="0" ss:Width="230"/>
-   <Column ss:AutoFitWidth="0" ss:Width="420"/>
-   ${protocolRows.join("\n   ")}
-  </Table>
- </Worksheet>
- <Worksheet ss:Name="Data">
-  <Table>
-   <Column ss:AutoFitWidth="0" ss:Width="150"/>
-   <Column ss:AutoFitWidth="0" ss:Width="260"/>
-   <Column ss:AutoFitWidth="0" ss:Width="420"/>
-   ${dataRows.join("\n   ")}
-  </Table>
- </Worksheet>
-</Workbook>`;
+  ].join("   ");
 }
 
-function downloadTextFile(filename,content,mimeType){
-  const blob=new Blob([content],{type:mimeType || "text/plain;charset=utf-8"});
+function protocolPeriodText(protocol={}){
+  const period=simpleNorm(protocol.period);
+  return `${wordCheck(period.includes("6"))} 6 měsíců / ${wordCheck(period.includes("12"))} 12 měsíců`;
+}
+
+function protocolConditionsText(protocol={}){
+  const n=simpleNorm(protocol.conditions || protocol.result);
+  const base=`${wordCheck(n==="ano" || n==="ok")} ano / ${wordCheck(n==="ne" || n==="nok")} ne`;
+  return safe(protocol.conditionsReason) ? `${base}\nOdůvodnění: ${protocol.conditionsReason}` : base;
+}
+
+function protocolMeasurementTable(protocol={}){
+  const w=[1070,1070,1070,1070,1070,1070,1070,1070,1070];
+  const label={bold:true,size:17,fill:"F2F2F2",align:"center"};
+  const value={size:18,align:"center",height:420};
+  return wordTable([
+    [
+      {...label,text:"Počet baterií: (ks)"},
+      {...label,text:"Kapacita (Ah)"},
+      {...label,text:"Počet sad (ks)",colSpan:2},
+      {...label,text:"Pom. Bat (Ah)",colSpan:2},
+      {...label,text:"Teplota okolí (°C)",colSpan:2},
+      {...label,text:"Plomba"}
+    ],
+    [
+      {...value,text:protocol.batteryCount},
+      {...value,text:protocol.capacityAh},
+      {...value,text:protocol.setCount,colSpan:2},
+      {...value,text:protocol.auxBatteryAh,colSpan:2},
+      {...value,text:protocol.temperature,colSpan:2},
+      {...value,text:protocol.seal2}
+    ],
+    [
+      {...label,text:"Vstup (Vac)"},
+      {...label,text:"Výstup 1 (Vac)",colSpan:2},
+      {...label,text:"Výstup 2 (Vac)",colSpan:2},
+      {...label,text:"Výstup zál. 1 (Vac)",colSpan:2},
+      {...label,text:"Výstup zál. 2 (Vac)",colSpan:2}
+    ],
+    [
+      {...value,text:protocol.inputVac},
+      {...value,text:protocol.output1Vac,colSpan:2},
+      {...value,text:protocol.output2Vac,colSpan:2},
+      {...value,text:protocol.backup1Vac,colSpan:2},
+      {...value,text:protocol.backup2Vac,colSpan:2}
+    ],
+    [
+      {...label,text:"Hl. bat. 1 (Vdc)"},
+      {...label,text:"Reset Diagnostiky",colSpan:2},
+      {...label,text:"Pom. bat. (Vdc)",colSpan:2},
+      {...label,text:"Rozvážení 1 (Vdc)",colSpan:2},
+      {...label,text:"Rozvážení 2 (Vdc)",colSpan:2}
+    ],
+    [
+      {...value,text:protocol.mainBatVdc},
+      {...value,text:protocol.resetDiagnostics,colSpan:2},
+      {...value,text:protocol.auxBatVdc,colSpan:2},
+      {...value,text:protocol.unbalance1,colSpan:2},
+      {...value,text:protocol.unbalance2,colSpan:2}
+    ]
+  ],w) + wordBlank(70);
+}
+
+function protocolLegendXml(){
+  const items=[
+    ["Místo kontroly","oficiální stálá, dočasná nebo stavební adresa v tomto pořadí, popř. GPS navigace"],
+    ["Provozovatel zařízení","Adresa dle obchodního rejstříku a IČO majitele zařízení (developer, SVJ)."],
+    ["Objednatel zkoušky provozuschopnosti","případně objednatel montáže s následnou zkouškou, může se jednat o dodavatele zálohovaných zařízení, jehož jsme subdodavatelem, apd."],
+    ["Umístění PBZ v objektu","co nejpřesnější popis zahrnuje patro a lokaci oproti vchodu do objektu, rozlišení jako např.: chodba, sklepní koje, garáže, pod schodištěm apd."],
+    ["Umístění jističů UPS a zál. zařízení v objektu","poloha jističe přívodu do UPS a poloha jističů za UPS, případně poznámka, zda lze bezpečně použít odpínač uvnitř UPS."],
+    ["Typ a umístění zálohovaných zařízení v objektu","např.: výtah, ventilátor, klapky, světlíky, čerpadlo, CS a TS, EPS, nouzové osvětlení, závora, vrata, sprinklery, RPO."],
+    ["Umístění ovládání zálohovaných zařízení a jejich režim","např. umístění tlačítka odvětrání, informace zda vyvolá ostrý poplach a zda lze chod vypnout/resetovat."],
+    ["Parkování a vstup do objektu, předepsané OOPP","informace o parkování, vjezdu, klíčích a povinných ochranných pomůckách."],
+    ["Kontakty","správce za developera, správce za SVJ, firma, telefon a email."],
+    ["Dostupnost","žebříky, stropy, osvětlení, WC a vše, co je anomální a ztěžuje provedení prací."],
+    ["Perioda zkoušky provozuschopnosti","6 měsíců pro veřejné budovy a objekty se zvýšeným výskytem osob; 12 měsíců pro klasické bytové domy, pokud PBŘ nepředepisuje jinak."],
+    ["Zařízení pracuje ve vyhovujících podmínkách","v odůvodnění uvést např. teplotu okolí, vlhkost, prašnost, mechanické poškození nebo znepřístupněné zařízení."],
+    ["Poznámky","např. UPS je plně funkční, STOP STAV, vadná akumulátorová sada, vadná deska střídače apd."]
+  ];
+  return wordParagraph("Legenda:",{bold:true,size:20,before:90,after:40}) +
+    items.map(([label,text])=>wordParagraphXml(wordRun(`${label}: `,{bold:true,size:16}) + wordRun(text,{size:16}),{after:25})).join("");
+}
+
+function buildProtocolWordDocumentXml(protocol={}){
+  const site=selectedSite || {};
+  const deviceType=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || site.zdroj || "";
+  const place=protocol.place || protocol.siteAddress || protocol.siteName || site.adresa || "";
+  const blocks=[
+    wordParagraph("Potvrzení o provedené zkoušce provozuschopnosti",{align:"center",bold:true,size:28,after:120}),
+    wordParagraph("Tento formulář slouží zároveň jako objednávka zkoušky provozuschopnosti. Kontrolu záložního zdroje na PBZ dle Vyhl. 246/2001 Sb. §6, §7 provedl: Servis záložních zdrojů s.r.o., IČ: 09391126",{size:18,after:120}),
+    wordFormField("Datum provedení kontroly zdroje:",protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt)),
+    wordFormGrid(["Kontrolované zařízení – Typ","Výrobní č.","Plomba"],[deviceType,protocol.serial,protocol.seal],[4300,2650,2680]),
+    wordFormField("1) Místo kontroly:",place),
+    wordFormField("2) Provozovatel zařízení:",protocol.operator),
+    wordFormField("3) Objednatel zkoušky provozuschopnosti:",protocol.customer),
+    wordFormField("4) Umístění PBZ v objektu:",protocol.pbzLocation),
+    protocolMeasurementTable(protocol),
+    wordFormField("5) Umístění jističů UPS a zál. zařízení v objektu:",protocol.breakersLocation),
+    wordFormField("6) Typ a umístění zálohovaných zařízení v objektu:",protocolBackedDevicesText(protocol)),
+    wordFormField("7) Umístění ovládání zálohovaných zařízení a jejich režim:",protocol.controlLocation),
+    wordFormField("8) Parkování a vstup do objektu, předepsané OOPP:",protocolAccessText(protocol)),
+    wordFormField("9) Kontakty:",protocol.contacts),
+    wordFormField("10) Dostupnost:",protocolAvailabilityText(protocol)),
+    wordFormField("11) Perioda zkoušky provozuschopnosti:",protocolPeriodText(protocol)),
+    wordFormField("12) Zařízení pracuje ve vyhovujících podmínkách (odůvodnění):",protocolConditionsText(protocol)),
+    wordFormField("13) Poznámky:",protocol.notes || protocol.issues),
+    wordFormGrid(["Za objednavatele:","Kontrolu provedl:"],[protocol.clientSign,protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || ""],[4815,4815]),
+    wordParagraph("(čitelně + podpis)",{size:16,after:80}),
+    protocolLegendXml()
+  ];
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">
+<w:body>${blocks.join("")}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="850" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+}
+
+function buildProtocolWordStylesXml(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
+<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>
+</w:styles>`;
+}
+
+function buildProtocolWordEntries(protocol={}){
+  const now=new Date().toISOString();
+  const title=`Protokol ${protocol.siteName || protocol.place || ""}`.trim();
+  return [
+    {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
+    {name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},
+    {name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>`},
+    {name:"word/document.xml",data:buildProtocolWordDocumentXml(protocol)},
+    {name:"word/styles.xml",data:buildProtocolWordStylesXml()},
+    {name:"word/settings.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:zoom w:percent="100"/><w:defaultTabStop w:val="708"/><w:compat/></w:settings>`},
+    {name:"docProps/core.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${wordXmlEscape(title)}</dc:title><dc:creator>${wordXmlEscape(protocol.createdBy || protocol.technicianEmail || currentUser?.email || "")}</dc:creator><cp:lastModifiedBy>${wordXmlEscape(currentUser?.email || "")}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`},
+    {name:"docProps/app.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Servis záložních zdrojů - mapa FZ</Application></Properties>`}
+  ];
+}
+
+function utf8Bytes(text){
+  return new TextEncoder().encode(text);
+}
+
+let zipCrcTable=null;
+function zipCrc32(bytes){
+  if(!zipCrcTable){
+    zipCrcTable=new Uint32Array(256);
+    for(let i=0;i<256;i++){
+      let c=i;
+      for(let k=0;k<8;k++) c=(c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1);
+      zipCrcTable[i]=c>>>0;
+    }
+  }
+  let crc=0xFFFFFFFF;
+  for(const b of bytes) crc=zipCrcTable[(crc^b)&0xFF] ^ (crc>>>8);
+  return (crc^0xFFFFFFFF)>>>0;
+}
+
+function zipDosDateTime(date=new Date()){
+  const year=Math.max(1980,date.getFullYear());
+  return {
+    time:((date.getHours()&31)<<11)|((date.getMinutes()&63)<<5)|Math.floor((date.getSeconds()&63)/2),
+    date:((year-1980)<<9)|((date.getMonth()+1)<<5)|date.getDate()
+  };
+}
+
+function zipHeader(size){
+  const bytes=new Uint8Array(size);
+  const view=new DataView(bytes.buffer);
+  return {
+    bytes,
+    u16(offset,value){view.setUint16(offset,value,true);},
+    u32(offset,value){view.setUint32(offset,value>>>0,true);}
+  };
+}
+
+function concatBytes(parts){
+  const total=parts.reduce((sum,part)=>sum+part.length,0);
+  const out=new Uint8Array(total);
+  let offset=0;
+  for(const part of parts){
+    out.set(part,offset);
+    offset+=part.length;
+  }
+  return out;
+}
+
+function buildStoredZip(entries){
+  const now=zipDosDateTime(new Date());
+  const prepared=entries.map(entry=>{
+    const data=typeof entry.data==="string" ? utf8Bytes(entry.data) : entry.data;
+    return {name:entry.name,nameBytes:utf8Bytes(entry.name),data,crc:zipCrc32(data)};
+  });
+  const localParts=[];
+  const centralParts=[];
+  let offset=0;
+  for(const file of prepared){
+    const local=zipHeader(30+file.nameBytes.length);
+    local.u32(0,0x04034b50);
+    local.u16(4,20);
+    local.u16(6,0x0800);
+    local.u16(8,0);
+    local.u16(10,now.time);
+    local.u16(12,now.date);
+    local.u32(14,file.crc);
+    local.u32(18,file.data.length);
+    local.u32(22,file.data.length);
+    local.u16(26,file.nameBytes.length);
+    local.u16(28,0);
+    local.bytes.set(file.nameBytes,30);
+    localParts.push(local.bytes,file.data);
+
+    const central=zipHeader(46+file.nameBytes.length);
+    central.u32(0,0x02014b50);
+    central.u16(4,20);
+    central.u16(6,20);
+    central.u16(8,0x0800);
+    central.u16(10,0);
+    central.u16(12,now.time);
+    central.u16(14,now.date);
+    central.u32(16,file.crc);
+    central.u32(20,file.data.length);
+    central.u32(24,file.data.length);
+    central.u16(28,file.nameBytes.length);
+    central.u16(30,0);
+    central.u16(32,0);
+    central.u16(34,0);
+    central.u16(36,0);
+    central.u32(38,0);
+    central.u32(42,offset);
+    central.bytes.set(file.nameBytes,46);
+    centralParts.push(central.bytes);
+    offset+=local.bytes.length+file.data.length;
+  }
+  const centralStart=offset;
+  const centralBytes=concatBytes(centralParts);
+  const end=zipHeader(22);
+  end.u32(0,0x06054b50);
+  end.u16(4,0);
+  end.u16(6,0);
+  end.u16(8,prepared.length);
+  end.u16(10,prepared.length);
+  end.u32(12,centralBytes.length);
+  end.u32(16,centralStart);
+  end.u16(20,0);
+  return concatBytes([...localParts,centralBytes,end.bytes]);
+}
+
+function buildProtocolWordBlob(protocol={}){
+  return new Blob([buildStoredZip(buildProtocolWordEntries(protocol))],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
+}
+
+function downloadBlobFile(filename,blob){
   const url=URL.createObjectURL(blob);
   const link=document.createElement("a");
   link.href=url;
@@ -6077,7 +6263,7 @@ function downloadTextFile(filename,content,mimeType){
   },0);
 }
 
-function exportProtocolToExcel(protocol){
+function exportProtocolToWord(protocol){
   if(!protocol){
     showSaveConfirmation("Není vybraný protokol k exportu.");
     return;
@@ -6087,9 +6273,9 @@ function exportProtocolToExcel(protocol){
     createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
   };
   const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "protokol";
-  const fileName=`protokol-${protocolExportDatePart(filled)}-${excelFileNamePart(baseName)}.xls`;
-  downloadTextFile(fileName,buildProtocolExcelXml(filled),"application/vnd.ms-excel;charset=utf-8");
-  showSaveConfirmation("Protokol exportován do Excelu.");
+  const fileName=`protokol-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.docx`;
+  downloadBlobFile(fileName,buildProtocolWordBlob(filled));
+  showSaveConfirmation("Protokol exportován do Wordu.");
 }
 
 function siteLocalCacheKey(kind,site=selectedSite){
@@ -6423,7 +6609,7 @@ function renderHistory(){
   const canExportProtocol=isProtocolHistoryItem(d);
   const canDeleteProtocol=isHistoryAdmin() && canExportProtocol;
   const historyActionButtons=[
-    canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat protokol</button>' : "",
+    canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat do Wordu</button>' : "",
     canDeleteProtocol ? '<button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button>' : ""
   ].filter(Boolean).join("");
   const rows=[
@@ -6477,7 +6663,7 @@ function renderHistory(){
   const del=document.getElementById("deleteHistoryProtocolBtn");
   if(del) del.onclick=deleteCurrentHistoryProtocol;
   const exp=document.getElementById("exportHistoryProtocolBtn");
-  if(exp) exp.onclick=()=>exportProtocolToExcel(detailHistoryItems[detailHistoryIndex]);
+  if(exp) exp.onclick=()=>exportProtocolToWord(detailHistoryItems[detailHistoryIndex]);
 }
 
 async function loadHistory(siteId){
@@ -8085,7 +8271,7 @@ if(exportProtocolFormBtn){
     }
     const payload=protocolPayload();
     payload.createdBy=currentUser?.email || payload.technicianEmail || "";
-    exportProtocolToExcel(payload);
+    exportProtocolToWord(payload);
   });
 }
 
