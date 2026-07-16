@@ -28,6 +28,7 @@ function astipEmail(request) {
 
 exports.sendProtocolMail = onCall({
   region: "europe-west1",
+  invoker: "public",
   secrets: [SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS],
   timeoutSeconds: 60,
   memory: "256MiB"
