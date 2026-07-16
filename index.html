@@ -6526,6 +6526,26 @@ async function sendProtocolByMail(protocol){
   showSaveConfirmation("Protokol odeslán na mail.");
 }
 
+function protocolMailErrorText(error){
+  const code=safe(error && error.code);
+  const message=safe(error && error.message || error);
+  if(code==="functions/unauthenticated" || code==="unauthenticated"){
+    return "Nejdřív se znovu přihlaš přes Google účtem @astip.cz.";
+  }
+  if(code==="functions/permission-denied" || code==="permission-denied"){
+    return message || "Odeslání je povolené jen přihlášeným uživatelům @astip.cz.";
+  }
+  if(code==="functions/resource-exhausted" || code==="resource-exhausted"){
+    return message || "Příloha protokolu je moc velká.";
+  }
+  return [code,message].filter(Boolean).join(": ") || "E-mail se nepodařilo odeslat.";
+}
+
+function protocolMailToastText(error){
+  const message=protocolMailErrorText(error);
+  return message.length>120 ? `${message.slice(0,117)}...` : message;
+}
+
 function siteLocalCacheKey(kind,site=selectedSite){
   const key=selectedSiteDocId(site) || detailKey(site) || site?.id || "unknown";
   return `astipMap:${kind}:${key}`;
@@ -6921,8 +6941,9 @@ function renderHistory(){
       await sendProtocolByMail(detailHistoryItems[detailHistoryIndex]);
     }catch(e){
       const st=document.getElementById("protocolStatus");
-      if(st) st.textContent=`Chyba odeslání e-mailu: ${e.message || e}`;
-      showSaveConfirmation("E-mail se nepodařilo odeslat.");
+      const message=protocolMailErrorText(e);
+      if(st) st.textContent=`Chyba odeslání e-mailu: ${message}`;
+      showSaveConfirmation(`E-mail: ${protocolMailToastText(e)}`);
     }finally{
       mail.disabled=false;
     }
@@ -8638,8 +8659,9 @@ if(mailProtocolFormBtn){
     try{
       await sendProtocolByMail(payload);
     }catch(e){
-      if(st) st.textContent=`Chyba odeslání e-mailu: ${e.message || e}`;
-      showSaveConfirmation("E-mail se nepodařilo odeslat.");
+      const message=protocolMailErrorText(e);
+      if(st) st.textContent=`Chyba odeslání e-mailu: ${message}`;
+      showSaveConfirmation(`E-mail: ${protocolMailToastText(e)}`);
     }finally{
       mailProtocolFormBtn.disabled=false;
     }
