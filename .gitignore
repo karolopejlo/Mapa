@@ -1,0 +1,5 @@
+firebase-debug.log
+node_modules/
+functions/node_modules/
+functions/pnpm-lock.yaml
+functions/pnpm-workspace.yaml
