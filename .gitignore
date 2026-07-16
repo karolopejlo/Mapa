@@ -3,3 +3,9 @@ node_modules/
 functions/node_modules/
 functions/pnpm-lock.yaml
 functions/pnpm-workspace.yaml
+android/.gradle/
+android/**/build/
+android/local.properties
+android/keystore/
+*.jks
+*.keystore
