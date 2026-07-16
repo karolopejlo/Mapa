@@ -1,0 +1,19 @@
+{
+  "name": "Servis zaloznich zdroju",
+  "short_name": "SZZ mapa",
+  "description": "Servisni mapa zaloznich zdroju ASTIP.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "./szz-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
