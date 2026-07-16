@@ -6,6 +6,16 @@ Funkce odesle Word protokol na:
 - `iva.glozova@astip.cz`
 - kopie `jan.soldan@astip.cz`
 
+## Dulezite omezeni Firebase
+
+Firebase nema vlastni SMTP server. Pro tiche odeslani e-mailu bez vyskakovaciho
+okna musi byt nasazena Cloud Function a ta musi mit nastavene SMTP udaje.
+
+Projekt musi byt na tarifu **Blaze (pay-as-you-go)**, jinak Firebase nedovoli
+zapnout Secret Manager ani nasadit funkci se secrets:
+
+https://console.firebase.google.com/project/astip---servis/usage/details
+
 ## Nastaveni SMTP pristupu
 
 V projektu Firebase je potreba jednorazove nastavit secrets:
