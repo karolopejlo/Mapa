@@ -1703,6 +1703,7 @@ button,input,select,textarea{
     <div class="row" style="margin-top:10px">
       <button class="primary" type="submit">Uložit protokol</button>
       <button class="secondary" type="button" id="exportProtocolFormBtn">Exportovat do Wordu</button>
+      <button class="secondary" type="button" id="mailProtocolFormBtn">Poslat na mail</button>
     </div>
     <p id="protocolStatus" class="small"></p>
   </form>
@@ -6412,6 +6413,9 @@ function buildProtocolWordBlob(protocol={}){
   return new Blob([buildStoredZip(buildProtocolWordEntries(protocol))],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});
 }
 
+const PROTOCOL_MAIL_TO="iva.glozova@astip.cz";
+const PROTOCOL_MAIL_CC="jan.soldan@astip.cz";
+
 function downloadBlobFile(filename,blob){
   const url=URL.createObjectURL(blob);
   const link=document.createElement("a");
@@ -6425,19 +6429,74 @@ function downloadBlobFile(filename,blob){
   },0);
 }
 
-function exportProtocolToWord(protocol){
-  if(!protocol){
-    showSaveConfirmation("Není vybraný protokol k exportu.");
-    return;
-  }
+function preparedProtocolExport(protocol){
+  if(!protocol) return null;
   const filled={
     ...protocol,
     createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
   };
   const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "protokol";
   const fileName=`protokol-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.docx`;
-  downloadBlobFile(fileName,buildProtocolWordBlob(filled));
+  return {
+    filled,
+    fileName,
+    blob:buildProtocolWordBlob(filled)
+  };
+}
+
+function exportProtocolToWord(protocol){
+  if(!protocol){
+    showSaveConfirmation("Není vybraný protokol k exportu.");
+    return;
+  }
+  const prepared=preparedProtocolExport(protocol);
+  downloadBlobFile(prepared.fileName,prepared.blob);
   showSaveConfirmation("Protokol exportován do Wordu.");
+}
+
+function protocolMailSubject(protocol={}){
+  const date=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt);
+  const place=safe(protocol.place || protocol.siteAddress || protocol.siteName || selectedSite?.adresa || "");
+  return ["Protokol zkoušky provozuschopnosti",date,place].filter(Boolean).join(" - ");
+}
+
+function protocolMailBody(protocol={},fileName=""){
+  const date=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt);
+  const place=safe(protocol.place || protocol.siteAddress || protocol.siteName || selectedSite?.adresa || "");
+  const device=safe(protocol.deviceType || protocol.selectedDevice || protocol.siteSource || selectedSite?.zdroj || "");
+  return [
+    "Dobrý den,",
+    "",
+    "v příloze posílám vyexportovaný protokol.",
+    "",
+    date ? `Datum kontroly: ${date}` : null,
+    place ? `Místo: ${place}` : null,
+    device ? `Zařízení: ${device}` : null,
+    fileName ? `Soubor: ${fileName}` : null,
+    "",
+    "S pozdravem"
+  ].filter(line=>line!==null).join("\n");
+}
+
+function openProtocolMailDraft(protocol={},fileName=""){
+  const subject=encodeURIComponent(protocolMailSubject(protocol));
+  const body=encodeURIComponent(protocolMailBody(protocol,fileName));
+  const to=encodeURIComponent(PROTOCOL_MAIL_TO);
+  const cc=encodeURIComponent(PROTOCOL_MAIL_CC);
+  window.location.href=`mailto:${to}?cc=${cc}&subject=${subject}&body=${body}`;
+}
+
+function sendProtocolByMail(protocol){
+  if(!protocol){
+    showSaveConfirmation("Není vybraný protokol k poslání.");
+    return;
+  }
+  const prepared=preparedProtocolExport(protocol);
+  const st=document.getElementById("protocolStatus");
+  downloadBlobFile(prepared.fileName,prepared.blob);
+  openProtocolMailDraft(prepared.filled,prepared.fileName);
+  if(st) st.textContent="Protokol byl stažen. V otevřeném e-mailu ho přilož jako přílohu.";
+  showSaveConfirmation("E-mail připraven, protokol stažen.");
 }
 
 function siteLocalCacheKey(kind,site=selectedSite){
@@ -6772,6 +6831,7 @@ function renderHistory(){
   const canDeleteProtocol=isHistoryAdmin() && canExportProtocol;
   const historyActionButtons=[
     canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat do Wordu</button>' : "",
+    canExportProtocol ? '<button class="secondary" type="button" id="mailHistoryProtocolBtn">Poslat na mail</button>' : "",
     canDeleteProtocol ? '<button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button>' : ""
   ].filter(Boolean).join("");
   const rows=[
@@ -6827,6 +6887,8 @@ function renderHistory(){
   if(del) del.onclick=deleteCurrentHistoryProtocol;
   const exp=document.getElementById("exportHistoryProtocolBtn");
   if(exp) exp.onclick=()=>exportProtocolToWord(detailHistoryItems[detailHistoryIndex]);
+  const mail=document.getElementById("mailHistoryProtocolBtn");
+  if(mail) mail.onclick=()=>sendProtocolByMail(detailHistoryItems[detailHistoryIndex]);
 }
 
 async function loadHistory(siteId){
@@ -8521,6 +8583,20 @@ if(exportProtocolFormBtn){
     const payload=protocolPayload();
     payload.createdBy=currentUser?.email || payload.technicianEmail || "";
     exportProtocolToWord(payload);
+  });
+}
+
+const mailProtocolFormBtn=document.getElementById("mailProtocolFormBtn");
+if(mailProtocolFormBtn){
+  mailProtocolFormBtn.addEventListener("click",()=>{
+    const st=document.getElementById("protocolStatus");
+    if(!selectedSite){
+      if(st) st.textContent="Není vybrané místo.";
+      return;
+    }
+    const payload=protocolPayload();
+    payload.createdBy=currentUser?.email || payload.technicianEmail || "";
+    sendProtocolByMail(payload);
   });
 }
 
