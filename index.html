@@ -671,6 +671,28 @@ button,input,select,textarea{
   min-height:58px;
   padding:7px 9px;
 }
+.signature-pad-wrap{
+  grid-column:1 / -1;
+  margin-top:8px;
+}
+.signature-pad-wrap canvas{
+  display:block;
+  width:100%;
+  height:170px;
+  border:1px solid #cbd5e1;
+  border-radius:8px;
+  background:#fff;
+  touch-action:none;
+}
+.signature-pad-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:6px;
+}
+.signature-pad-hint{
+  margin:5px 0 0;
+  color:#64748b;
+}
 #protocolDeviceSelectWrap.hidden{
   display:none !important;
 }
@@ -1668,6 +1690,14 @@ button,input,select,textarea{
     <div class="edit-grid">
       <div><label>Za objednavatele</label><input id="protoClientSign" placeholder="čitelně + podpis"></div>
       <div><label>Kontrolu provedl</label><input id="protoTechSign"></div>
+      <div class="signature-pad-wrap">
+        <label>Elektronický podpis objednavatele</label>
+        <canvas id="protoClientSignaturePad" width="900" height="260"></canvas>
+        <div class="signature-pad-actions">
+          <button class="secondary" type="button" id="clearClientSignatureBtn">Vymazat podpis</button>
+        </div>
+        <p class="small signature-pad-hint">Podepiš prstem nebo elektronickou tužkou.</p>
+      </div>
     </div>
 
     <div class="row" style="margin-top:10px">
@@ -2333,6 +2363,82 @@ function yesNoFlagFromRaw(raw,keys){
   }
   return null;
 }
+const WATCH_SELF_PRIMARY_KEYS=[
+  "Hlídáme sami termín",
+  "Hlídáme kontroly sami",
+  "Hlídáme termín sami",
+  "Hlídat termín sami",
+  "Hlidame kontroly sami",
+  "Hlidat termin sami",
+  "Jezdit hlídáme termín sami"
+];
+const WATCH_SELF_LEGACY_FLAG_KEYS=[
+  "Jezdit bez objednávky",
+  "Jezdit bez objednavky",
+  "Bez objednávky",
+  "Bez objednavky",
+  "Růžová",
+  "Ruzova"
+];
+const WATCH_SELF_RAW_KEYS=[...WATCH_SELF_PRIMARY_KEYS,...WATCH_SELF_LEGACY_FLAG_KEYS];
+window.WATCH_SELF_RAW_KEYS=WATCH_SELF_RAW_KEYS;
+function watchRawValue(raw,key){
+  const source=raw || {};
+  const direct=get(source,key);
+  if(safe(direct)) return direct;
+  const wanted=simpleNorm(key);
+  for(const existingKey of Object.keys(source)){
+    if(simpleNorm(existingKey)===wanted && safe(source[existingKey])) return source[existingKey];
+  }
+  return "";
+}
+function yesNoExplicitValue(v){
+  const n=simpleNorm(v);
+  if(["ano","yes","true","1","aktivni"].includes(n)) return true;
+  if(["ne","no","false","0",""].includes(n)) return false;
+  if(n.includes("ano") || n.includes("aktivni")) return true;
+  if(n.includes("ne") || n.includes("false")) return false;
+  return null;
+}
+function explicitFlagFromKeys(raw,keys){
+  let foundYes=false;
+  for(const key of keys){
+    const value=watchRawValue(raw,key);
+    if(!safe(value)) continue;
+    const flag=yesNoExplicitValue(value);
+    if(flag===false) return false;
+    if(flag===true) foundYes=true;
+  }
+  return foundYes ? true : null;
+}
+function explicitWatchSelfFromRaw(raw){
+  const primary=explicitFlagFromKeys(raw,WATCH_SELF_PRIMARY_KEYS);
+  if(primary!==null) return primary;
+  return explicitFlagFromKeys(raw,WATCH_SELF_LEGACY_FLAG_KEYS);
+}
+function canonicalWatchSelfValue(raw){
+  return explicitWatchSelfFromRaw(raw)===true ? "ano" : "ne";
+}
+function applyWatchSelfAliases(raw,value){
+  const target=raw || {};
+  let flag=yesNoExplicitValue(value);
+  if(flag===null) flag=explicitWatchSelfFromRaw(target);
+  const yes=flag===true;
+  target["Hlídáme sami termín"]=yes ? "ano" : "ne";
+  target["Hlídáme kontroly sami"]=yes ? "ano" : "ne";
+  target["Hlídáme termín sami"]=yes ? "ano" : "ne";
+  target["Hlídat termín sami"]=yes ? "ano" : "ne";
+  target["Jezdit bez objednávky"]=yes ? "ANO" : "NE";
+  target["Jezdit bez objednavky"]=yes ? "ANO" : "NE";
+  target["Bez objednávky"]=yes ? "ANO" : "NE";
+  target["Bez objednavky"]=yes ? "ANO" : "NE";
+  target["Růžová"]=yes ? "ANO" : "NE";
+  target["Ruzova"]=yes ? "ANO" : "NE";
+  return target;
+}
+window.explicitWatchSelfFromRaw=explicitWatchSelfFromRaw;
+window.canonicalWatchSelfValue=canonicalWatchSelfValue;
+window.applyWatchSelfAliases=applyWatchSelfAliases;
 function stopFlagFromRaw(raw){
   const keys=["Stop Stav","Stop stav","Stop_stav","Stop","Zdroj ve Stop Stavu","Odstaveno","Mimo provoz"];
   for(const k of keys){
@@ -2566,17 +2672,7 @@ function pinkMatch(place, pinkPlace){
 
 function isNoOrderSite(r){
   const raw=r.raw || {};
-  const explicit=yesNoFlagFromRaw(raw,[
-    "Hlídáme sami termín",
-    "Hlídáme kontroly sami",
-    "Hlídáme termín sami",
-    "Hlídat termín sami",
-    "Jezdit bez objednavky",
-    "Bez objednávky",
-    "Bez objednavky",
-    "Růžová",
-    "Ruzova"
-  ]);
+  const explicit=explicitWatchSelfFromRaw(raw);
   if(explicit !== null) return explicit === true;
 
   if(r.noOrder === true) return true;
@@ -2626,7 +2722,8 @@ function applyEditToRow(r){
   const lat = num(e.gpsLat) ?? num((e.rawEdits||{})["GPS_lat"]);
   const lon = num(e.gpsLon) ?? num((e.rawEdits||{})["GPS_lon"]);
   const updatedRaw = {...r.raw, ...rawEdits};
-  const rawWatch = yesNoFixed(rawEdits["Hlídáme sami termín"] || rawEdits["Hlídáme kontroly sami"], "");
+  const rawWatch = explicitWatchSelfFromRaw(rawEdits);
+  if(rawWatch !== null) applyWatchSelfAliases(updatedRaw, rawWatch ? "ano" : "ne");
 
   if(e.name) updatedRaw["Upravený název"] = e.name;
   if(e.contact) updatedRaw["Upravený kontakt"] = e.contact;
@@ -2665,7 +2762,7 @@ function applyEditToRow(r){
     ordered:e.ordered !== undefined ? e.ordered === true : r.ordered,
     repairOrdered:e.repairOrdered !== undefined ? e.repairOrdered === true : repairOrderFlagFromRaw(updatedRaw),
     stopped:e.stopped !== undefined ? e.stopped === true : stopFlagFromRaw(updatedRaw),
-    noOrder:rawWatch ? rawWatch==="ano" : (e.noOrder === true ? true : r.noOrder),
+    noOrder:rawWatch !== null ? rawWatch === true : (e.noOrder === true ? true : e.noOrder === false ? false : isNoOrderSite({...r, raw:updatedRaw})),
     edit:e
   };
 }
@@ -2699,7 +2796,7 @@ function normalize(data){
       ordered:(first(raw,["Kontrola objednaná","Kontrola_objednaná","Objednáno","Objednano"]).toLowerCase()==="ano" || (first(raw,["Stav pro mapu"]).toLowerCase().includes("objednan") && !simpleNorm(first(raw,["Stav pro mapu"])).includes("oprava"))),
       repairOrdered:repairOrderFlagFromRaw(raw),
       stopped:stopFlagFromRaw(raw),
-      noOrder:(first(raw,["Hlídáme termín sami","Hlídáme sami termín","Hlídáme kontroly sami","Jezdit bez objednavky","Bez objednávky","Bez objednavky","Růžová","Ruzova"]).toLowerCase()==="ano")
+      noOrder:explicitWatchSelfFromRaw(raw)===true
     };
     return applyEditToRow(r);
   });
@@ -2790,6 +2887,7 @@ function getAllKnownDataKeys(){
 
   const required=[
     "Název","Adresa_GPS","Kraj","Popis_zdroje","Zdroj",
+    "Historie oprav","Postup testování","Jistič UPS",
     "Perioda kontrol","Hlídáme kontroly sami","Důležitá poznámka",
     "Serviska","Smlouva ano/ne","Rok výroby","Poznámky"
   ];
@@ -2848,6 +2946,21 @@ function forceRenderNewSiteForm(){
     <div class="full">
       <label>Umístění zdroje</label>
       <input data-new-key="Adresa_GPS">
+    </div>
+
+    <div class="full">
+      <label>Historie oprav</label>
+      <textarea data-new-key="Historie oprav"></textarea>
+    </div>
+
+    <div class="full">
+      <label>Postup testování</label>
+      <textarea data-new-key="Postup testování"></textarea>
+    </div>
+
+    <div class="full">
+      <label>Jistič UPS</label>
+      <input data-new-key="Jistič UPS">
     </div>
 
     <div class="full">
@@ -2939,6 +3052,21 @@ function renderNewSiteAllFields(){
     </div>
 
     <div class="full">
+      <label>Historie oprav</label>
+      <textarea data-new-key="Historie oprav"></textarea>
+    </div>
+
+    <div class="full">
+      <label>Postup testování</label>
+      <textarea data-new-key="Postup testování"></textarea>
+    </div>
+
+    <div class="full">
+      <label>Jistič UPS</label>
+      <input data-new-key="Jistič UPS">
+    </div>
+
+    <div class="full">
       <label>Popis_zdroje</label>
       <input data-new-key="Popis_zdroje">
     </div>
@@ -3016,15 +3144,13 @@ function collectNewSiteAllFields(){
     raw[key]=val;
 
     const n=newSiteFieldNorm(key);
-    if(n==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
-      raw["Hlídáme sami termín"]="ano";
-      raw["Jezdit bez objednávky"]="ANO";
-      raw["Bez objednávky"]="ANO";
-    }
     if(n==="perioda kontrol"){
       raw["Perioda kontrol"]=val;
     }
   });
+  if(typeof window.applyWatchSelfAliases==="function"){
+    window.applyWatchSelfAliases(raw, raw["Hlídáme sami termín"] || raw["Hlídáme kontroly sami"] || "ne");
+  }
   return raw;
 }
 
@@ -3055,6 +3181,7 @@ function newSiteToRow(docId, d){
     "Zdroj_dat": "Firebase nové místo",
     "Firebase_doc_id": docId
   };
+  applyWatchSelfAliases(raw, d.noOrder ? "ano" : raw["Hlídáme termín sami"] || "ne");
   const r = normalize([raw])[0];
   r.id = "firebase_site_" + docId;
   r.isNewSite = true;
@@ -3906,6 +4033,9 @@ function copyPlaceFieldsToNewSource(site){
   setNewDataFieldValue("Adresa_GPS",place);
   setNewDataFieldValue("Kraj",region || "");
   setNewDataFieldValue("Kontakt",contact);
+  setNewDataFieldValue("Historie oprav","");
+  setNewDataFieldValue("Postup testování","");
+  setNewDataFieldValue("Jistič UPS","");
   setNewDataFieldValue("Popis_zdroje","");
   setNewDataFieldValue("Zdroj","");
   setNewDataFieldValue("Poznámky","");
@@ -4833,6 +4963,9 @@ const USER_SITE_DATA_FIELDS = [
   {label:"Výrobní číslo", key:"Zdroj", keys:["Výrobní číslo","Výrobní_číslo","Seriové číslo","Sériové číslo","Serial","SN","Zdroj"]},
   {label:"Kontakt", key:"Kontakt", keys:["Kontakt","Kontakt_mapy","Hlavní kontakt"]},
   {label:"Umístění zdroje", key:"Umístění zdroje", keys:["Umístění zdroje","Umístění"]},
+  {label:"Historie oprav", key:"Historie oprav", keys:["Historie oprav","Historie_oprav"], type:"textarea"},
+  {label:"Postup testování", key:"Postup testování", keys:["Postup testování","Postup testovani"], type:"textarea"},
+  {label:"Jistič UPS", key:"Jistič UPS", keys:["Jistič UPS","Jistic UPS","Jističe UPS","Jistič"], type:"textarea"},
   {label:"Poznámky", key:"Poznámky", keys:["Poznámky","Poznámky_mapy"], type:"textarea"},
   {label:"Perioda kontrol", key:"Perioda kontrol", keys:["Perioda kontrol","Perioda zkoušky","Perioda zkoušek","Perioda kontroly","Perioda kontrol (6/12)","Perioda","Četnost","Cetnost","Kontrola","Interval"], type:"period"},
   {label:"Hlídáme sami termín", key:"Hlídáme sami termín", keys:["Hlídáme sami termín","Hlídáme termín sami","Hlídat termín sami","Hlidat termin sami","Hlídáme kontroly sami","Hlidame kontroly sami","Jezdit hlídáme termín sami","Bez objednávky"], type:"yesno"},
@@ -5065,7 +5198,8 @@ async function saveAllDataEdits(){
   );
   if(datePeriod) editedRaw["Perioda kontrol"]=String(datePeriod);
 
-  const watchSelf=yesNoFixed(editedRaw["Hlídáme sami termín"],"ne")==="ano";
+  applyWatchSelfAliases(editedRaw, editedRaw["Hlídáme sami termín"]);
+  const watchSelf=explicitWatchSelfFromRaw(editedRaw)===true;
 
   try{
     const selectedKey=detailKey(selectedSite) || selectedSite.id;
@@ -5357,6 +5491,11 @@ function hideDataUser(k){
   if(n==="stav kontroly") return true;
   if(n==="stav pro mapu") return true;
   if(n==="zdrojovy radek") return true;
+  if(n==="jezdit bez objednavky") return true;
+  if(n==="bez objednavky") return true;
+  if(n==="ruzova") return true;
+  if(n==="hlidame termin sami") return true;
+  if(n==="hlidat termin sami") return true;
 
   if(n==="pristi planovana kontrola") return true;
   if(n==="posledni probehla kontrola") return true;
@@ -5408,11 +5547,7 @@ function orderedDataUser(raw){
 
 
 function getWatchSelfValue(raw){
-  const keys=["Hlídáme kontroly sami","Hlídáme sami termín","Hlidame kontroly sami","Hlídáme termín sami","Bez objednávky"];
-  for(const k of keys){
-    if(raw && raw[k]!==undefined && safe(raw[k])) return safe(raw[k]);
-  }
-  return "";
+  return canonicalWatchSelfValue(raw);
 }
 
 
@@ -5440,6 +5575,9 @@ function hideDataFixed(k){
   if(n==="zdroj dat") return true;
   if(n==="jezdit bez objednavky") return true;
   if(n==="bez objednavky") return true;
+  if(n==="ruzova") return true;
+  if(n==="hlidame termin sami") return true;
+  if(n==="hlidat termin sami") return true;
   if(n==="perioda kontrol") return true;
 
   if(n==="pristi planovana kontrola") return true;
@@ -5474,7 +5612,13 @@ function dataLabelFixed(k){
 
 function isWatchFixed(k){
   const n=dataNormFixed(k);
-  return n==="hlidame kontroly sami" || n==="hlidame sami termin";
+  return [
+    "hlidame kontroly sami",
+    "hlidame sami termin",
+    "hlidame termin sami",
+    "hlidat termin sami",
+    "jezdit hlidame termin sami"
+  ].includes(n);
 }
 
 function isNoteFixed(k){
@@ -5489,18 +5633,7 @@ function valNormFixed(v){
 }
 
 function getWatchFixed(raw){
-  const value=firstSiteField(raw,[
-    "Hlídáme kontroly sami",
-    "Hlídáme sami termín",
-    "Hlídáme termín sami",
-    "Hlídat termín sami",
-    "Hlidame kontroly sami",
-    "Hlidat termin sami",
-    "Jezdit hlídáme termín sami",
-    "Bez objednávky"
-  ]);
-  if(value) return value;
-  return "ne";
+  return canonicalWatchSelfValue(raw);
 }
 
 function getImportantNoteFixed(raw){
@@ -5567,21 +5700,7 @@ function detectControlPeriod(raw){
 
 
 function shouldWatchSelf(raw){
-  const keys=[
-    "Hlídáme kontroly sami",
-    "Hlídáme sami termín",
-    "Hlidame kontroly sami",
-    "Jezdit hlídáme termín sami",
-    "Bez objednávky"
-  ];
-
-  for(const k of keys){
-    if(raw && raw[k]!==undefined){
-      const v=String(raw[k]).toLowerCase().trim();
-      if(v==="ano" || v==="true" || v==="1") return true;
-    }
-  }
-  return false;
+  return explicitWatchSelfFromRaw(raw)===true;
 }
 
 function detailTable(r){
@@ -5938,6 +6057,45 @@ function wordFormGrid(labels,values,widths){
   ],widths) + wordBlank(55);
 }
 
+function base64ToBytes(base64){
+  const binary=atob(base64 || "");
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  return bytes;
+}
+
+function protocolSignatureImageBytes(protocol={}){
+  const dataUrl=safe(protocol.clientSignatureDataUrl || protocol.clientSignature || "");
+  const match=dataUrl.match(/^data:image\/png;base64,(.+)$/);
+  if(!match) return null;
+  try{return base64ToBytes(match[1]);}catch(e){return null;}
+}
+
+function wordSignatureImageRun(relId="rIdSignature"){
+  return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="2600000" cy="760000"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="7" name="Podpis objednavatele"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="7" name="podpis-objednavatele.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2600000" cy="760000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+}
+
+function wordClientSignatureCellXml(protocol={}){
+  const parts=[];
+  if(safe(protocol.clientSign)) parts.push(wordParagraph(protocol.clientSign,{size:18,after:30}));
+  if(protocolSignatureImageBytes(protocol)) parts.push(wordParagraphXml(wordSignatureImageRun(),{after:0}));
+  return parts.join("") || wordParagraph(" ",{size:18,after:0});
+}
+
+function wordSignatureGrid(protocol={}){
+  const tech=protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || "";
+  return wordTable([
+    [
+      {text:"Za objednavatele:",bold:true,size:18,fill:"F2F2F2"},
+      {text:"Kontrolu provedl:",bold:true,size:18,fill:"F2F2F2"}
+    ],
+    [
+      {xml:wordClientSignatureCellXml(protocol),height:1050},
+      {text:protocolExportValue(tech) || " ",size:20,height:1050}
+    ]
+  ],[4815,4815]) + wordParagraph("(čitelně + podpis)",{size:16,after:80});
+}
+
 function wordCheck(value){
   return value ? "☒" : "☐";
 }
@@ -6105,8 +6263,7 @@ function buildProtocolWordDocumentXml(protocol={}){
     wordFormField("11) Perioda zkoušky provozuschopnosti:",protocolPeriodText(protocol)),
     wordFormField("12) Zařízení pracuje ve vyhovujících podmínkách (odůvodnění):",protocolConditionsText(protocol)),
     wordFormField("13) Poznámky:",protocol.notes || protocol.issues),
-    wordFormGrid(["Za objednavatele:","Kontrolu provedl:"],[protocol.clientSign,protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || ""],[4815,4815]),
-    wordParagraph("(čitelně + podpis)",{size:16,after:80}),
+    wordSignatureGrid(protocol),
     protocolLegendXml()
   ];
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -6125,16 +6282,21 @@ function buildProtocolWordStylesXml(){
 function buildProtocolWordEntries(protocol={}){
   const now=new Date().toISOString();
   const title=`Protokol ${protocol.siteName || protocol.place || ""}`.trim();
-  return [
-    {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
+  const signatureBytes=protocolSignatureImageBytes(protocol);
+  const imageContentType=signatureBytes ? '<Default Extension="png" ContentType="image/png"/>' : "";
+  const imageRel=signatureBytes ? '<Relationship Id="rIdSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/client-signature.png"/>' : "";
+  const entries=[
+    {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageContentType}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
     {name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},
-    {name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>`},
+    {name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>${imageRel}</Relationships>`},
     {name:"word/document.xml",data:buildProtocolWordDocumentXml(protocol)},
     {name:"word/styles.xml",data:buildProtocolWordStylesXml()},
     {name:"word/settings.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:zoom w:percent="100"/><w:defaultTabStop w:val="708"/><w:compat/></w:settings>`},
     {name:"docProps/core.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${wordXmlEscape(title)}</dc:title><dc:creator>${wordXmlEscape(protocol.createdBy || protocol.technicianEmail || currentUser?.email || "")}</dc:creator><cp:lastModifiedBy>${wordXmlEscape(currentUser?.email || "")}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`},
     {name:"docProps/app.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Servis záložních zdrojů - mapa FZ</Application></Properties>`}
   ];
+  if(signatureBytes) entries.push({name:"word/media/client-signature.png",data:signatureBytes});
+  return entries;
 }
 
 function utf8Bytes(text){
@@ -6633,7 +6795,8 @@ function renderHistory(){
     ["Kontakty", d.contacts || ""],
     ["Dostupnost", historyObjectSummary(d.availability)],
     ["Zjištění / poznámky", d.issues || d.notes || d.conditionsReason || ""],
-    ["Doporučení", d.recommendation || ""]
+    ["Doporučení", d.recommendation || ""],
+    ["Podpis objednavatele", d.clientSignatureDataUrl ? "uložen elektronicky" : ""]
   ].filter(([,value])=>safe(value));
 
   const photos=d._collection==="protocols" ? [] : (d.photoLinks||[]).filter(Boolean);
@@ -7036,7 +7199,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       raw["Příští_kontrola"]=data.nextCheck || raw["Příští_kontrola"] || "";
       raw["Poslední_kontrola"]=data.lastCheck || raw["Poslední_kontrola"] || "";
       if(data.period) raw["Perioda kontrol"]=data.period;
-      if(data.noOrder) raw["Hlídáme sami termín"]="ano";
+      applyWatchSelfAliases(raw, data.noOrder ? "ano" : raw["Hlídáme sami termín"] || raw["Hlídáme kontroly sami"] || "ne");
       if(sourceBaseSite){
         raw["Adresa / umístění"]=data.gpsAddress || sitePlaceLabel(sourceBaseSite) || raw["Adresa / umístění"] || raw["Název"] || "";
         raw["Adresa_GPS"]=data.gpsAddress || raw["Adresa_GPS"] || raw["Adresa / umístění"] || "";
@@ -7096,7 +7259,10 @@ if(toggleProtocolBtn){
     const open=f.style.display !== "none";
     f.style.display=open ? "none" : "block";
     toggleProtocolBtn.textContent=open ? "Vyplnit protokol" : "Skrýt protokol";
-    if(!open && typeof prefillProtocol==="function") prefillProtocol();
+    if(!open){
+      initProtocolClientSignaturePad();
+      if(typeof prefillProtocol==="function") prefillProtocol();
+    }
   };
 }
 
@@ -7196,6 +7362,87 @@ if(serviceForm){
 
 function checkbox(id){return document.getElementById(id)?.checked || false;}
 function val(id){return document.getElementById(id)?.value || "";}
+
+let protoClientSignatureDirty=false;
+function protocolSignatureCanvas(){
+  return document.getElementById("protoClientSignaturePad");
+}
+function protocolSignaturePoint(e,canvas){
+  const rect=canvas.getBoundingClientRect();
+  return {
+    x:(e.clientX-rect.left)*(canvas.width/rect.width),
+    y:(e.clientY-rect.top)*(canvas.height/rect.height)
+  };
+}
+function protocolSignatureContext(){
+  const canvas=protocolSignatureCanvas();
+  if(!canvas) return null;
+  const ctx=canvas.getContext("2d");
+  if(!ctx) return null;
+  ctx.lineWidth=4;
+  ctx.lineCap="round";
+  ctx.lineJoin="round";
+  ctx.strokeStyle="#0f172a";
+  return ctx;
+}
+function clearProtocolClientSignature(){
+  const canvas=protocolSignatureCanvas();
+  const ctx=protocolSignatureContext();
+  if(!canvas || !ctx) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  protoClientSignatureDirty=false;
+}
+function initProtocolClientSignaturePad(){
+  const canvas=protocolSignatureCanvas();
+  if(!canvas) return;
+  const ctx=protocolSignatureContext();
+  if(!ctx) return;
+  if(canvas.dataset.signatureReady==="1") return;
+  canvas.dataset.signatureReady="1";
+  let drawing=false;
+  let last=null;
+  const start=e=>{
+    e.preventDefault();
+    drawing=true;
+    last=protocolSignaturePoint(e,canvas);
+    ctx.beginPath();
+    ctx.arc(last.x,last.y,2,0,Math.PI*2);
+    ctx.fillStyle="#0f172a";
+    ctx.fill();
+    protoClientSignatureDirty=true;
+    try{canvas.setPointerCapture(e.pointerId);}catch(_e){}
+  };
+  const move=e=>{
+    if(!drawing || !last) return;
+    e.preventDefault();
+    const point=protocolSignaturePoint(e,canvas);
+    ctx.beginPath();
+    ctx.moveTo(last.x,last.y);
+    ctx.lineTo(point.x,point.y);
+    ctx.stroke();
+    last=point;
+    protoClientSignatureDirty=true;
+  };
+  const stop=e=>{
+    if(!drawing) return;
+    e.preventDefault();
+    drawing=false;
+    last=null;
+    try{canvas.releasePointerCapture(e.pointerId);}catch(_e){}
+  };
+  canvas.addEventListener("pointerdown",start);
+  canvas.addEventListener("pointermove",move);
+  canvas.addEventListener("pointerup",stop);
+  canvas.addEventListener("pointercancel",stop);
+  canvas.addEventListener("pointerleave",stop);
+  const clearBtn=document.getElementById("clearClientSignatureBtn");
+  if(clearBtn) clearBtn.onclick=clearProtocolClientSignature;
+}
+function protocolClientSignatureDataUrl(){
+  const canvas=protocolSignatureCanvas();
+  if(!canvas || !protoClientSignatureDirty) return "";
+  try{return canvas.toDataURL("image/png");}catch(e){return "";}
+}
 
 
 function splitPossibleSources(text){
@@ -7352,6 +7599,7 @@ function resetProtocolFormForSelectedSite(siteId){
   if(protocolPrefillSiteId===key) return;
   const form=document.getElementById("protocolForm");
   if(form) form.reset();
+  clearProtocolClientSignature();
   protocolPrefillSiteId=key;
 }
 
@@ -8256,6 +8504,7 @@ function protocolPayload(){
     conditionsReason:val("protoConditionsReason"),
     notes:val("protoNotes"),
     clientSign:val("protoClientSign"),
+    clientSignatureDataUrl:protocolClientSignatureDataUrl(),
     techSign:val("protoTechSign") || (currentUser?.displayName || currentUser?.email || ""),
     createdAt:new Date().toISOString()
   };
@@ -8512,6 +8761,9 @@ setTimeout(()=>{
           <div><label>GPS lat</label><input data-new-key="GPS_lat" id="onlyNewGpsLat" placeholder="49.123456"></div>
           <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
           <div class="full"><label>Umístění zdroje</label><input data-new-key="Adresa_GPS"></div>
+          <div class="full"><label>Historie oprav</label><textarea data-new-key="Historie oprav"></textarea></div>
+          <div class="full"><label>Postup testování</label><textarea data-new-key="Postup testování"></textarea></div>
+          <div class="full"><label>Jistič UPS</label><input data-new-key="Jistič UPS"></div>
           <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje"></div>
           <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj"></div>
           <div><label>Kontakt</label><input data-new-key="Kontakt"></div>
@@ -8549,13 +8801,10 @@ setTimeout(()=>{
       const val=String(el.value||"").trim();
       if(!key || !val) return;
       raw[key]=val;
-      const norm=key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-      if(norm==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
-        raw["Hlídáme sami termín"]="ano";
-        raw["Jezdit bez objednávky"]="ANO";
-        raw["Bez objednávky"]="ANO";
-      }
     });
+    if(typeof window.applyWatchSelfAliases==="function"){
+      window.applyWatchSelfAliases(raw, raw["Hlídáme sami termín"] || raw["Hlídáme kontroly sami"] || "ne");
+    }
     return raw;
   }
 
@@ -8689,7 +8938,9 @@ setTimeout(()=>{
       lat:Number.isFinite(latManual)?latManual:null,
       lon:Number.isFinite(lonManual)?lonManual:null,
       ordered:false,
-      noOrder:String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano",
+      noOrder:typeof window.explicitWatchSelfFromRaw==="function"
+        ? window.explicitWatchSelfFromRaw(raw)===true
+        : String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano",
       raw:raw
     };
 
@@ -8858,13 +9109,10 @@ setTimeout(()=>{
       const val=String(el.value||"").trim();
       if(!key || !val) return;
       raw[key]=val;
-
-      if(normAdd(key)==="hlidame kontroly sami" && val.toLowerCase()==="ano"){
-        raw["Hlídáme sami termín"]="ano";
-        raw["Jezdit bez objednávky"]="ANO";
-        raw["Bez objednávky"]="ANO";
-      }
     });
+    if(typeof window.applyWatchSelfAliases==="function"){
+      window.applyWatchSelfAliases(raw, raw["Hlídáme sami termín"] || raw["Hlídáme kontroly sami"] || "ne");
+    }
     return raw;
   }
 
@@ -8875,7 +9123,9 @@ setTimeout(()=>{
 
     const name=raw["Název"] || raw["Adresa / umístění"] || raw["Adresa_GPS"] || "Nové místo";
     const addr=raw["Adresa / umístění"] || raw["Adresa_GPS"] || name;
-    const noOrder=String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano";
+    const noOrder=typeof window.explicitWatchSelfFromRaw==="function"
+      ? window.explicitWatchSelfFromRaw(raw)===true
+      : String(raw["Hlídáme kontroly sami"]||"").toLowerCase()==="ano";
 
     return {
       id,
@@ -9006,6 +9256,9 @@ setTimeout(()=>{
           <div><label>GPS lon</label><input data-new-key="GPS_lon" id="onlyNewGpsLon" placeholder="16.123456"></div>
 
           <div class="full"><label>Umístění zdroje</label><input data-new-key="Adresa_GPS"></div>
+          <div class="full"><label>Historie oprav</label><textarea data-new-key="Historie oprav"></textarea></div>
+          <div class="full"><label>Postup testování</label><textarea data-new-key="Postup testování"></textarea></div>
+          <div class="full"><label>Jistič UPS</label><input data-new-key="Jistič UPS"></div>
           <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje"></div>
           <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj"></div>
 
@@ -9349,6 +9602,9 @@ setTimeout(()=>{
     {label:"Výrobní číslo", key:"Zdroj"},
     {label:"Kontakt", key:"Kontakt"},
     {label:"Umístění zdroje", key:"Umístění zdroje", full:true},
+    {label:"Historie oprav", key:"Historie oprav", type:"textarea", full:true},
+    {label:"Postup testování", key:"Postup testování", type:"textarea", full:true},
+    {label:"Jistič UPS", key:"Jistič UPS", type:"textarea", full:true},
     {label:"Poznámky", key:"Poznámky", type:"textarea", full:true},
     {label:"Perioda kontrol", key:"Perioda kontrol", type:"period"},
     {label:"Hlídáme sami termín", key:"Hlídáme sami termín", type:"yesno"},
@@ -9379,6 +9635,7 @@ setTimeout(()=>{
   }
   const allowedRawKeys = new Set([
     ...FB_USER_FIELDS.map(f=>f.key),
+    ...(window.WATCH_SELF_RAW_KEYS || []),
     "GPS_lat","GPS_lon","Příští_kontrola","Poslední_kontrola","Kontrola objednaná","Objednaná oprava","Stop Stav","Zdroj_dat","Firebase_doc_id","Klíč_adresy"
   ]);
   const rawKeyAliases = {
@@ -9399,6 +9656,12 @@ setTimeout(()=>{
     "hlavni kontakt":"Kontakt",
     "umisteni zdroje":"Umístění zdroje",
     "umisteni":"Umístění zdroje",
+    "historie oprav":"Historie oprav",
+    "historie oprav zdroje":"Historie oprav",
+    "postup testovani":"Postup testování",
+    "postup testu":"Postup testování",
+    "jistic ups":"Jistič UPS",
+    "jistice ups":"Jistič UPS",
     "poznamky":"Poznámky",
     "poznamky mapy":"Poznámky",
     "perioda":"Perioda kontrol",
@@ -9406,6 +9669,11 @@ setTimeout(()=>{
     "cetnost":"Perioda kontrol",
     "hlidame sami termin":"Hlídáme sami termín",
     "hlidame kontroly sami":"Hlídáme sami termín",
+    "hlidame termin sami":"Hlídáme sami termín",
+    "hlidat termin sami":"Hlídáme sami termín",
+    "jezdit bez objednavky":"Jezdit bez objednávky",
+    "bez objednavky":"Bez objednávky",
+    "ruzova":"Růžová",
     "smlouva":"Smlouva ano/ne",
     "smlouva ano ne":"Smlouva ano/ne",
     "cena fz":"Cena FZ",
@@ -9737,6 +10005,7 @@ setTimeout(()=>{
     document.querySelectorAll("#fbUnifiedPanel [data-fb-key]").forEach(el=>{const k=el.getAttribute("data-fb-key"); const v=val(el.value); if(v) raw[k]=v;});
     if(raw["Adresa / umístění"] && !raw["Název"]) raw["Název"]=raw["Adresa / umístění"];
     raw["Hlídáme sami termín"]=yesNo(raw["Hlídáme sami termín"],"ne");
+    if(typeof window.applyWatchSelfAliases==="function") window.applyWatchSelfAliases(raw, raw["Hlídáme sami termín"]);
     raw["Smlouva ano/ne"]=yesNo(raw["Smlouva ano/ne"],"ne");
     const last=val(document.getElementById("fbUnifiedLastCheck")?.value);
     const next=val(document.getElementById("fbUnifiedNextCheck")?.value);
@@ -9751,7 +10020,11 @@ setTimeout(()=>{
   function completeFirebaseRaw(raw, docId=null){
     const out=compactFirebaseRaw(raw || {});
     if(val(out["Adresa / umístění"]) && !val(out["Název"])) out["Název"]=out["Adresa / umístění"];
-    if(val(out["Hlídáme sami termín"])) out["Hlídáme sami termín"]=yesNo(out["Hlídáme sami termín"],"ne");
+    const watchValue=val(out["Hlídáme sami termín"])
+      ? yesNo(out["Hlídáme sami termín"],"ne")
+      : (typeof window.canonicalWatchSelfValue==="function" ? window.canonicalWatchSelfValue(out) : "ne");
+    out["Hlídáme sami termín"]=watchValue;
+    if(typeof window.applyWatchSelfAliases==="function") window.applyWatchSelfAliases(out, watchValue);
     if(val(out["Smlouva ano/ne"])) out["Smlouva ano/ne"]=yesNo(out["Smlouva ano/ne"],"ne");
     if(val(out["Stop Stav"])) out["Stop Stav"]=yesNo(out["Stop Stav"],"ne");
     const datePeriod=typeof window.inferControlPeriodMonthsFromDates==="function" ? window.inferControlPeriodMonthsFromDates(out) : null;
@@ -10453,6 +10726,9 @@ setTimeout(()=>{
       const value = cleanSource(el.value);
       if(key && value) raw[key] = value;
     });
+    if(typeof window.applyWatchSelfAliases === "function"){
+      window.applyWatchSelfAliases(raw, raw["Hlídáme sami termín"] || raw["Hlídáme kontroly sami"] || "ne");
+    }
     return raw;
   }
 
@@ -10502,6 +10778,9 @@ setTimeout(()=>{
           <div class="full"><label>Popis zdroje</label><input data-new-key="Popis_zdroje" id="addSourceType" placeholder="např. PS 20 000/3f - 45 min."></div>
           <div class="full"><label>Výrobní číslo</label><input data-new-key="Zdroj" id="addSourceSerial" placeholder="výrobní číslo zdroje"></div>
           <div class="full"><label>Umístění zdroje</label><input data-new-key="Umístění zdroje" placeholder="např. suterén, rozvodna, serverovna"></div>
+          <div class="full"><label>Historie oprav</label><textarea data-new-key="Historie oprav"></textarea></div>
+          <div class="full"><label>Postup testování</label><textarea data-new-key="Postup testování"></textarea></div>
+          <div class="full"><label>Jistič UPS</label><input data-new-key="Jistič UPS"></div>
 
           <div><label>Poslední kontrola</label><input type="date" data-new-key="Poslední_kontrola" value="${attrSource(lastCheck)}"></div>
           <div><label>Příští kontrola</label><input type="date" data-new-key="Příští_kontrola" value="${attrSource(nextCheck)}"></div>
