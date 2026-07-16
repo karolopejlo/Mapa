@@ -1,13 +1,33 @@
 {
+  "id": "./",
   "name": "Servis zaloznich zdroju",
   "short_name": "SZZ mapa",
   "description": "Servisni mapa zaloznich zdroju ASTIP.",
   "start_url": "./",
   "scope": "./",
+  "lang": "cs-CZ",
+  "categories": ["business", "productivity", "utilities"],
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#0f172a",
   "theme_color": "#2563eb",
   "orientation": "any",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Otevrit mapu",
+      "short_name": "Mapa",
+      "url": "./",
+      "icons": [
+        {
+          "src": "./szz-icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml",
+          "purpose": "any maskable"
+        }
+      ]
+    }
+  ],
   "icons": [
     {
       "src": "./szz-icon.svg",

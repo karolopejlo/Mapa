@@ -1045,6 +1045,9 @@ button,input,select,textarea{
   border-radius:10px;
   background:#fff;
 }
+.photo-folder-hint{
+  margin:7px 0 0;
+}
 @media(max-width:700px){
   .site-photo-inputs{
     grid-template-columns:1fr;
@@ -1150,16 +1153,36 @@ button,input,select,textarea{
   color:#475569;
   text-align:center;
 }
+.site-photo-folders{
+  display:grid;
+  gap:10px;
+}
+.site-photo-folder{
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  padding:8px;
+  background:#f8fafc;
+}
+.site-photo-folder-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:7px;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+}
+.site-photo-folder-head span:last-child{
+  color:#64748b;
+  font-weight:800;
+}
 .site-photo-thumbs{
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(52px,64px));
   gap:6px;
   overflow:auto;
   max-height:150px;
-  padding:6px;
-  border:1px solid #e2e8f0;
-  border-radius:12px;
-  background:#f8fafc;
 }
 .site-photo-thumb{
   border:2px solid transparent;
@@ -1747,6 +1770,7 @@ button,input,select,textarea{
     </div>
     <button class="primary" type="button" id="uploadSitePhotosBtn">Uložit fotografie</button>
   </div>
+  <p class="small photo-folder-hint">Fotografie se ukládají do složky podle data nahrání.</p>
   <div id="sitePhotoPreview" class="photo-preview"></div>
   <div id="sitePhotosList" class="history-photos"></div>
   <p id="sitePhotosStatus" class="small"></p>
@@ -6005,7 +6029,7 @@ function wordRun(value,options={}){
 function wordParagraphXml(runXml,options={}){
   const props=[];
   if(options.align) props.push(`<w:jc w:val="${options.align}"/>`);
-  props.push(`<w:spacing w:before="${options.before || 0}" w:after="${options.after ?? 0}" w:line="240" w:lineRule="auto"/>`);
+  props.push(`<w:spacing w:before="${options.before || 0}" w:after="${options.after ?? 0}" w:line="220" w:lineRule="auto"/>`);
   return `<w:p><w:pPr>${props.join("")}</w:pPr>${runXml || wordRun(" ")}</w:p>`;
 }
 
@@ -6021,7 +6045,7 @@ function wordCellXml(contentXml,width,options={}){
   const props=[
     `<w:tcW w:w="${width}" w:type="dxa"/>`,
     `<w:vAlign w:val="${options.vAlign || "center"}"/>`,
-    '<w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar>'
+    '<w:tcMar><w:top w:w="45" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="45" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tcMar>'
   ];
   if(options.colSpan && options.colSpan>1) props.push(`<w:gridSpan w:val="${options.colSpan}"/>`);
   if(options.fill) props.push(`<w:shd w:fill="${options.fill}"/>`);
@@ -6064,15 +6088,15 @@ function wordTable(rows,widths,options={}){
 function wordFormField(label,value,width=9630){
   return wordTable([
     [{text:label,bold:true,size:18,fill:"F2F2F2"}],
-    [{text:protocolExportValue(value) || " ",size:20,height:420}]
-  ],[width]) + wordBlank(55);
+    [{text:protocolExportValue(value) || " ",size:20,height:330}]
+  ],[width]) + wordBlank(20);
 }
 
 function wordFormGrid(labels,values,widths){
   return wordTable([
     labels.map(label=>({text:label,bold:true,size:18,fill:"F2F2F2"})),
-    values.map(value=>({text:protocolExportValue(value) || " ",size:20,height:420}))
-  ],widths) + wordBlank(55);
+    values.map(value=>({text:protocolExportValue(value) || " ",size:20,height:330}))
+  ],widths) + wordBlank(20);
 }
 
 function base64ToBytes(base64){
@@ -6111,7 +6135,7 @@ function wordSignatureGrid(protocol={}){
       {xml:wordClientSignatureCellXml(protocol),height:1050},
       {text:protocolExportValue(tech) || " ",size:20,height:1050}
     ]
-  ],[4815,4815]) + wordParagraph("(čitelně + podpis)",{size:16,after:80});
+  ],[4815,4815]) + wordParagraph("(čitelně + podpis)",{size:16,after:35});
 }
 
 function wordCheck(value){
@@ -6189,7 +6213,7 @@ function protocolConditionsText(protocol={}){
 function protocolMeasurementTable(protocol={}){
   const w=[1070,1070,1070,1070,1070,1070,1070,1070,1070];
   const label={bold:true,size:17,fill:"F2F2F2",align:"center"};
-  const value={size:18,align:"center",height:420};
+  const value={size:18,align:"center",height:330};
   return wordTable([
     [
       {...label,text:"Počet baterií: (ks)"},
@@ -6235,7 +6259,7 @@ function protocolMeasurementTable(protocol={}){
       {...value,text:protocol.unbalance1,colSpan:2},
       {...value,text:protocol.unbalance2,colSpan:2}
     ]
-  ],w) + wordBlank(70);
+  ],w) + wordBlank(25);
 }
 
 function protocolLegendXml(){
@@ -6263,8 +6287,8 @@ function buildProtocolWordDocumentXml(protocol={}){
   const deviceType=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || site.zdroj || "";
   const place=protocol.place || protocol.siteAddress || protocol.siteName || site.adresa || "";
   const blocks=[
-    wordParagraph("Potvrzení o provedené zkoušce provozuschopnosti",{align:"center",bold:true,size:28,after:120}),
-    wordParagraph("Tento formulář slouží zároveň jako objednávka zkoušky provozuschopnosti. Kontrolu záložního zdroje na PBZ dle Vyhl. 246/2001 Sb. §6, §7 provedl: Servis záložních zdrojů s.r.o., IČ: 09391126",{size:18,after:120}),
+    wordParagraph("Potvrzení o provedené zkoušce provozuschopnosti",{align:"center",bold:true,size:28,after:80}),
+    wordParagraph("Tento formulář slouží zároveň jako objednávka zkoušky provozuschopnosti. Kontrolu záložního zdroje na PBZ dle Vyhl. 246/2001 Sb. §6, §7 provedl: Servis záložních zdrojů s.r.o., IČ: 09391126",{size:18,after:80}),
     wordFormField("Datum provedení kontroly zdroje:",protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt)),
     wordFormGrid(["Kontrolované zařízení – Typ","Výrobní č.","Plomba"],[deviceType,protocol.serial,protocol.seal],[4300,2650,2680]),
     wordFormField("1) Místo kontroly:",place),
@@ -6281,8 +6305,7 @@ function buildProtocolWordDocumentXml(protocol={}){
     wordFormField("11) Perioda zkoušky provozuschopnosti:",protocolPeriodText(protocol)),
     wordFormField("12) Zařízení pracuje ve vyhovujících podmínkách (odůvodnění):",protocolConditionsText(protocol)),
     wordFormField("13) Poznámky:",protocol.notes || protocol.issues),
-    wordSignatureGrid(protocol),
-    protocolLegendXml()
+    wordSignatureGrid(protocol)
   ];
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">
@@ -7717,11 +7740,23 @@ let protocolPrefillSiteId="";
 
 function resetProtocolFormForSelectedSite(siteId){
   const key=String(siteId || "");
-  if(protocolPrefillSiteId===key) return;
   const form=document.getElementById("protocolForm");
   if(form) form.reset();
   clearProtocolClientSignature();
   protocolPrefillSiteId=key;
+}
+
+function closeProtocolFormAfterSave(){
+  const form=document.getElementById("protocolForm");
+  if(form){
+    form.reset();
+    form.style.display="none";
+  }
+  clearProtocolClientSignature();
+  protocolPrefillSiteId="";
+  updateProtocolSummary();
+  const btn=document.getElementById("toggleProtocolBtn");
+  if(btn) btn.textContent="Vyplnit protokol";
 }
 
 function fileBaseName(name){
@@ -7876,7 +7911,7 @@ async function prepareOfflinePhotoData(file){
   };
 }
 
-async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
+async function uploadPhotoToCloudinaryPreset(photoId,file,preset,folderName=""){
   if(!CLOUDINARY_PHOTOS.cloudName || !preset){
     throw new Error("Cloudinary není nastavené.");
   }
@@ -7884,7 +7919,8 @@ async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
   const form=new FormData();
   form.append("file",file,photoFileName({fileName:file?.name},0));
   form.append("upload_preset",preset);
-  if(CLOUDINARY_PHOTOS.folder) form.append("folder",CLOUDINARY_PHOTOS.folder);
+  const folderPath=cloudinaryPhotoFolderPath(folderName);
+  if(folderPath) form.append("folder",folderPath);
 
   const response=await fetch(endpoint,{method:"POST",body:form});
   const data=await response.json().catch(()=>({}));
@@ -7898,7 +7934,8 @@ async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
     displayUrl:cloudinaryTransformUrl(fullUrl,"f_auto,q_auto,w_1600,c_limit"),
     thumbUrl:cloudinaryTransformUrl(fullUrl,"f_auto,q_auto,w_360,c_limit"),
     fullUrl,
-    storagePath:"",
+    storagePath:folderPath,
+    cloudinaryFolder:folderPath,
     cloudinaryPublicId:data.public_id || "",
     cloudinaryAssetId:data.asset_id || "",
     cloudinaryVersion:data.version || "",
@@ -7907,13 +7944,13 @@ async function uploadPhotoToCloudinaryPreset(photoId,file,preset){
   };
 }
 
-async function uploadPhotoToCloudinary(photoId,file,site=selectedSite){
+async function uploadPhotoToCloudinary(photoId,file,site=selectedSite,folderName=""){
   const presets=cloudinaryUploadPresets();
   if(!presets.length) throw new Error("Cloudinary není nastavené.");
   const errors=[];
   for(const preset of presets){
     try{
-      return await uploadPhotoToCloudinaryPreset(photoId,file,preset);
+      return await uploadPhotoToCloudinaryPreset(photoId,file,preset,folderName);
     }catch(e){
       errors.push(e);
     }
@@ -8064,6 +8101,46 @@ function sitePhotoKeys(site=selectedSite){
   return siteRecordKeys(site);
 }
 
+function photoFolderNameForDate(value=new Date()){
+  let d=null;
+  if(value && typeof value.toDate==="function") d=value.toDate();
+  else if(value instanceof Date) d=value;
+  else d=parseDateValue(value);
+  if(!d || isNaN(d.getTime())) d=new Date();
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+function photoFolderName(item){
+  return safe(item && (item.photoFolder || item.folderName || item.folder || item.cloudinaryFolderDate))
+    || photoFolderNameForDate(item?.createdAt || item?.uploadedAt || item?.date || photoCloudinaryVersionDate(item));
+}
+
+function photoFolderLabel(folderName){
+  const folder=safe(folderName);
+  const d=parseDateValue(folder);
+  if(!d || isNaN(d.getTime())) return folder || "Bez data";
+  return `${folder} (${formatDateCz(d)})`;
+}
+
+function cloudinaryPhotoFolderPath(folderName){
+  const base=safe(CLOUDINARY_PHOTOS.folder);
+  const folder=safe(folderName);
+  return [base,folder].filter(Boolean).join("/");
+}
+
+function sitePhotoFolderGroups(items){
+  const groups=new Map();
+  (items || []).forEach((photo,idx)=>{
+    const folder=photoFolderName(photo);
+    if(!groups.has(folder)) groups.set(folder,[]);
+    groups.get(folder).push({photo,idx});
+  });
+  return Array.from(groups.entries()).map(([folder,photos])=>({folder,photos}));
+}
+
 function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   const list=document.getElementById("sitePhotosList");
   if(!list) return;
@@ -8086,8 +8163,10 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   const takenAt=photoTakenLabel(item) || "není uvedeno";
   const insertedAtFull=photoInsertedLabel(item) || "datum není uložené";
   const uploadedBy=safe(item.uploadedBy || item.createdBy || item.ownerEmail) || "není uvedeno";
+  const currentFolder=photoFolderName(item);
   const photoInfoRows=[
     ["Datum přidání", insertedAtFull],
+    ["Složka", photoFolderLabel(currentFolder)],
     ["Uložil", uploadedBy],
     ["Datum pořízení", takenAt],
     ["Úložiště", modeLabel],
@@ -8095,6 +8174,7 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
   ];
   const downloadName=photoFileName(item,sitePhotoIndex);
   const deleteAllowed=canDeleteSitePhoto(item);
+  const folderGroups=sitePhotoFolderGroups(sitePhotoItems);
   list.innerHTML=`
     <div class="site-photo-viewer">
       <div class="site-photo-stage">
@@ -8118,8 +8198,18 @@ function renderSitePhotos(items=sitePhotoItems,preserveIndex=false){
         <span>${sitePhotoIndex+1} / ${thumbCount}</span>
         <button class="secondary" type="button" id="sitePhotoNextBtn" ${thumbCount<=1 ? "disabled" : ""}>Další</button>
       </div>
-      <div class="site-photo-thumbs">
-        ${sitePhotoItems.map((photo,idx)=>`<button class="site-photo-thumb ${idx===sitePhotoIndex ? "active" : ""}" type="button" data-photo-idx="${idx}"><img src="${esc(photoThumbUrl(photo))}" alt="Náhled ${idx+1}"></button>`).join("")}
+      <div class="site-photo-folders">
+        ${folderGroups.map(group=>`
+          <section class="site-photo-folder">
+            <div class="site-photo-folder-head">
+              <span>${esc(photoFolderLabel(group.folder))}</span>
+              <span>${group.photos.length} fotek</span>
+            </div>
+            <div class="site-photo-thumbs">
+              ${group.photos.map(({photo,idx})=>`<button class="site-photo-thumb ${idx===sitePhotoIndex ? "active" : ""}" type="button" data-photo-idx="${idx}"><img src="${esc(photoThumbUrl(photo))}" alt="Náhled ${idx+1}"></button>`).join("")}
+            </div>
+          </section>
+        `).join("")}
       </div>
     </div>`;
   const prev=document.getElementById("sitePhotoPrevBtn");
@@ -8237,6 +8327,7 @@ async function uploadSitePhotos(){
     const siteKey=keys[0] || selectedSite.id || "bod";
     const siteId=selectedSite.id || siteKey;
     const onlineUploadAvailable=!!(firebaseReady && db && signedUser && navigator.onLine !== false);
+    const uploadFolderName=photoFolderNameForDate(new Date());
     let localOnlyCount=0;
     let offlineCount=0;
     let onlineCount=0;
@@ -8253,6 +8344,8 @@ async function uploadSitePhotos(){
       siteSource:selectedSite.zdroj || "",
       fileName:file.name || "",
       uploadedBy:userEmail || "nepřihlášený uživatel",
+      photoFolder:uploadFolderName,
+      cloudinaryFolder:cloudinaryPhotoFolderPath(uploadFolderName),
       createdAt,
       takenAt:file.lastModified ? new Date(file.lastModified).toISOString() : createdAt
     });
@@ -8295,7 +8388,7 @@ async function uploadSitePhotos(){
       try{
         uploadFile=await prepareCloudinaryUploadFile(file);
         st.textContent=`Nahrávám fotografii ${i+1}/${files.length} na Cloudinary...`;
-        cloudinaryResult=await uploadPhotoToCloudinary(photoId,uploadFile,selectedSite);
+        cloudinaryResult=await uploadPhotoToCloudinary(photoId,uploadFile,selectedSite,uploadFolderName);
       }catch(uploadError){
         console.warn("Online nahrání fotky selhalo, ukládám lokálně",uploadError);
         await saveOfflinePhoto(photoId,file,uploadError.message,i);
@@ -8317,6 +8410,7 @@ async function uploadSitePhotos(){
         cloudinaryAssetId:cloudinaryResult.cloudinaryAssetId,
         cloudinaryVersion:cloudinaryResult.cloudinaryVersion,
         cloudinaryUploadPreset:cloudinaryResult.cloudinaryUploadPreset,
+        cloudinaryFolder:cloudinaryResult.cloudinaryFolder || cloudinaryPhotoFolderPath(uploadFolderName),
         size:uploadFile.size || file.size,
         originalSize:file.size
       };
@@ -8332,16 +8426,16 @@ async function uploadSitePhotos(){
     }
 
     if(offlineCount && onlineCount){
-      st.textContent=`Uloženo fotografií: ${onlineCount} online, ${offlineCount} lokálně v tomto zařízení.`;
+      st.textContent=`Uloženo fotografií do složky ${uploadFolderName}: ${onlineCount} online, ${offlineCount} lokálně v tomto zařízení.`;
       showSaveConfirmation("Fotografie uloženy.");
     }else if(offlineCount){
-      st.textContent=`Fotografie uloženy lokálně v tomto zařízení: ${offlineCount}. Po připojení budou vidět v tomto prohlížeči.`;
+      st.textContent=`Fotografie uloženy lokálně do složky ${uploadFolderName}: ${offlineCount}. Po připojení budou vidět v tomto prohlížeči.`;
       showSaveConfirmation("Fotografie uloženy lokálně.");
     }else if(localOnlyCount){
-      st.textContent=`Fotografie nahrány na Cloudinary. ${localOnlyCount} odkazů Firebase nepovolil uložit k bodu, proto jsou uložené lokálně v tomto prohlížeči.`;
+      st.textContent=`Fotografie nahrány na Cloudinary do složky ${uploadFolderName}. ${localOnlyCount} odkazů Firebase nepovolil uložit k bodu, proto jsou uložené lokálně v tomto prohlížeči.`;
       showSaveConfirmation("Fotografie nahrány.");
     }else{
-      st.textContent=`Uloženo fotografií: ${onlineCount} (Cloudinary).`;
+      st.textContent=`Uloženo fotografií do složky ${uploadFolderName}: ${onlineCount} (Cloudinary).`;
       showSaveConfirmation("Fotografie uloženy.");
     }
     resetSitePhotoInput();
@@ -8426,7 +8520,8 @@ async function prefillProtocol(){
 
   resetProtocolFormForSelectedSite(selectedSite.id);
   const raw=selectedSite.raw || {};
-  const last=await getLastProtocol(selectedSite);
+  // Nový protokol má začínat čistě, bez hodnot z posledního uloženého protokolu.
+  const last=null;
 
   // základ z aktuálního místa
   populateProtocolDeviceSelect();
@@ -8688,6 +8783,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     st.textContent="Protokol uložen lokálně v tomto prohlížeči. Internet/Firebase teď není dostupný.";
     showSaveConfirmation("Protokol uložen lokálně.");
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
+    closeProtocolFormAfterSave();
     return offlinePayload;
   };
 
@@ -8723,6 +8819,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     showSaveConfirmation("Protokol uložen.");
     render();
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
+    closeProtocolFormAfterSave();
   }catch(err){
     saveOffline(err.message);
   }
