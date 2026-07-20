@@ -1014,6 +1014,8 @@ button,input,select,textarea{
 }
 .official-protocol-head h3{
   margin:2px 0 4px;
+  font-size:24px;
+  line-height:1.15;
 }
 .official-protocol-kicker{
   margin:0;
@@ -1047,8 +1049,9 @@ button,input,select,textarea{
   min-height:48px;
 }
 #officialProtocolOkBtn{
-  background:#166534;
-  border-color:#166534;
+  background:#dcfce7;
+  color:#14532d;
+  border-color:#86efac;
 }
 #officialProtocolStopBtn{
   background:#fee2e2;
@@ -1084,6 +1087,10 @@ button,input,select,textarea{
   min-height:72px;
   border-color:#cbd5e1;
   background:#fff;
+}
+.official-protocol-note::placeholder{
+  color:#94a3b8;
+  font-size:12px;
 }
 #officialProtocolStatus{
   min-height:18px;
@@ -1957,11 +1964,9 @@ Cena FZ: ..."></textarea>
 <div class="card official-protocol-card" id="officialProtocolCard">
   <div class="official-protocol-head">
     <div>
-      <p class="official-protocol-kicker">Doklad PBZ</p>
       <h3>Doklad provozuschopnosti</h3>
       <p class="small" id="officialProtocolSourceInfo">Použije se poslední uložený protokol.</p>
     </div>
-    <span class="official-protocol-badge">Word RTF</span>
   </div>
   <div class="official-protocol-actions">
     <button class="secondary" type="button" id="officialProtocolDataBtn">Doplnit data provozovatele</button>
@@ -1977,7 +1982,7 @@ Cena FZ: ..."></textarea>
   </div>
   <div class="official-protocol-note-wrap">
     <label class="official-protocol-note-label" for="officialProtocolNote">Poznámka do dokladu</label>
-    <textarea id="officialProtocolNote" class="official-protocol-note" placeholder="Poznámka se propíše do vygenerovaného dokladu."></textarea>
+    <textarea id="officialProtocolNote" class="official-protocol-note" placeholder="Poznámka se propíše do vygenerovaného protokolu."></textarea>
   </div>
   <p id="officialProtocolStatus" class="small"></p>
 </div>
@@ -6716,11 +6721,11 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordTable([
       [
         {text:"______________________________________",size:18,align:"center"},
-        {text:"______________________________________",size:18,align:"center"}
+        {xml:wordClientSignatureCellXml(protocol) + wordParagraph("______________________________________",{size:18,align:"center"})}
       ],
       [
         {text:`Servis záložních zdrojů s.r.o. – ${tech}`,size:18,align:"center"},
-        {text:"převzal za provozovatele",size:18,align:"center"}
+        {text:"převzal za objednavatele",size:18,align:"center"}
       ]
     ],[4815,4815],{noBorders:true})
   ];
@@ -6732,16 +6737,21 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
 function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok"){
   const now=new Date().toISOString();
   const title=`Doklad provozuschopnosti ${protocol.siteName || protocol.place || selectedSite?.adresa || ""}`.trim();
-  return [
-    {name:"[Content_Types].xml",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>'},
+  const signatureBytes=protocolSignatureImageBytes(protocol);
+  const imageContentType=signatureBytes ? '<Default Extension="png" ContentType="image/png"/>' : "";
+  const imageRel=signatureBytes ? '<Relationship Id="rIdSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/client-signature.png"/>' : "";
+  const entries=[
+    {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageContentType}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
     {name:"_rels/.rels",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>'},
-    {name:"word/_rels/document.xml.rels",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/></Relationships>'},
+    {name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>${imageRel}</Relationships>`},
     {name:"word/document.xml",data:buildOfficialProtocolWordDocumentXml(protocol,officialData,mode)},
     {name:"word/styles.xml",data:buildProtocolWordStylesXml()},
     {name:"word/settings.xml",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:zoom w:percent="100"/><w:defaultTabStop w:val="708"/><w:compat/></w:settings>'},
     {name:"docProps/core.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${wordXmlEscape(title)}</dc:title><dc:creator>${wordXmlEscape(protocol.createdBy || protocol.technicianEmail || currentUser?.email || "")}</dc:creator><cp:lastModifiedBy>${wordXmlEscape(currentUser?.email || "")}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`},
     {name:"docProps/app.xml",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Servis záložních zdrojů - mapa FZ</Application></Properties>'}
   ];
+  if(signatureBytes) entries.push({name:"word/media/client-signature.png",data:signatureBytes});
+  return entries;
 }
 
 const OFFICIAL_RTF_TEMPLATE_URL="official-template.rtf";
@@ -6816,6 +6826,41 @@ function officialRtfEscape(value){
   return out;
 }
 
+function bytesToHex(bytes){
+  return Array.from(bytes || [],byte=>byte.toString(16).padStart(2,"0")).join("");
+}
+
+function officialRtfSignatureImage(protocol={}){
+  const bytes=protocolSignatureImageBytes(protocol);
+  if(!bytes) return "";
+  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal2600\\pichgoal750 ${bytesToHex(bytes)}}`;
+}
+
+function officialRtfClientSignatureBlock(protocol={}){
+  const name=officialOneLine(protocol.clientSign || protocol.customer || "",80);
+  const signature=officialRtfSignatureImage(protocol);
+  if(!name && !signature) return "";
+  const parts=[];
+  if(name) parts.push(officialRtfEscape(name));
+  if(signature) parts.push(signature);
+  const reset="\\pard \\ltrpar\\ql \\li0\\ri0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
+  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sl240\\slmult1\\nowidctlpar\\wrapdefault ${parts.join("\\par ")}\\par ${reset}`;
+}
+
+function addOfficialRtfClientSignature(output,protocol={}){
+  const block=officialRtfClientSignatureBlock(protocol);
+  if(!block) return output;
+  const marker=/(\{\\\*\\bkmkstart _Hlk178752668\})______________________________________/;
+  if(marker.test(output)){
+    return output.replace(marker,`$1${block}______________________________________`);
+  }
+  return output.replace("______________________________________        ______________________________________",`${block}______________________________________        ______________________________________`);
+}
+
+function normalizeOfficialRtfClientLabel(output){
+  return output.replace(/p\\'f8\s*evzal za provozovatele/g,"p\\'f8evzal za objednavatele");
+}
+
 function officialProtocolConditionsTail(protocol={},mode="ok"){
   return `${officialProtocolConditionsValue(protocol,mode)} --`;
 }
@@ -6867,6 +6912,8 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   Object.entries(values).forEach(([placeholder,value])=>{
     output=output.replaceAll(placeholder,officialRtfEscape(value));
   });
+  output=addOfficialRtfClientSignature(output,protocol);
+  output=normalizeOfficialRtfClientLabel(output);
   return output;
 }
 
