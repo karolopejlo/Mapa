@@ -999,30 +999,102 @@ button,input,select,textarea{
   gap:8px;
   margin-top:8px;
 }
+.official-protocol-card{
+  border-color:#c7d2fe;
+  background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+  box-shadow:0 12px 28px rgba(15,23,42,.07);
+}
+.official-protocol-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  padding-bottom:10px;
+  border-bottom:1px solid #dbeafe;
+}
+.official-protocol-head h3{
+  margin:2px 0 4px;
+}
+.official-protocol-kicker{
+  margin:0;
+  color:#1d4ed8;
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:0;
+}
+.official-protocol-badge{
+  flex:0 0 auto;
+  border:1px solid #bfdbfe;
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:12px;
+  font-weight:900;
+}
 .official-protocol-actions{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:8px;
-  margin-top:10px;
-}
-.official-protocol-data{
-  display:grid;
-  gap:8px;
-  margin-top:10px;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:10px;
+  margin-top:12px;
   padding:10px;
-  border:1px solid #cbd5e1;
+  border:1px solid #e2e8f0;
   border-radius:12px;
   background:#f8fafc;
 }
+.official-protocol-actions button{
+  min-height:48px;
+}
+#officialProtocolOkBtn{
+  background:#166534;
+  border-color:#166534;
+}
+#officialProtocolStopBtn{
+  background:#fee2e2;
+  color:#991b1b;
+  border-color:#fecaca;
+}
+.official-protocol-data{
+  display:grid;
+  gap:10px;
+  margin-top:12px;
+  padding:12px;
+  border:1px solid #bfdbfe;
+  border-left:4px solid #2563eb;
+  border-radius:12px;
+  background:#f8fafc;
+}
+.official-protocol-data label,
+.official-protocol-note-label{
+  font-size:13px;
+  color:#334155;
+  font-weight:900;
+}
 .official-protocol-data textarea{
   min-height:88px;
+  background:#fff;
+}
+.official-protocol-note-wrap{
+  display:grid;
+  gap:6px;
+  margin-top:12px;
 }
 .official-protocol-note{
   min-height:72px;
+  border-color:#cbd5e1;
+  background:#fff;
+}
+#officialProtocolStatus{
+  min-height:18px;
+  margin:8px 0 0;
 }
 @media(max-width:700px){
   .official-protocol-actions{
     grid-template-columns:1fr;
+  }
+  .official-protocol-head{
+    display:grid;
   }
 }
 #sitePhotosList.history-photos{
@@ -1882,9 +1954,15 @@ Cena FZ: ..."></textarea>
 
 <div class="card"><h3>Historie záznamů</h3><div id="history" class="small">Zatím nenačteno.</div></div>
 
-<div class="card" id="officialProtocolCard">
-  <h3>Doklad provozuschopnosti</h3>
-  <p class="small" id="officialProtocolSourceInfo">Použije se poslední uložený protokol.</p>
+<div class="card official-protocol-card" id="officialProtocolCard">
+  <div class="official-protocol-head">
+    <div>
+      <p class="official-protocol-kicker">Doklad PBZ</p>
+      <h3>Doklad provozuschopnosti</h3>
+      <p class="small" id="officialProtocolSourceInfo">Použije se poslední uložený protokol.</p>
+    </div>
+    <span class="official-protocol-badge">Word RTF</span>
+  </div>
   <div class="official-protocol-actions">
     <button class="secondary" type="button" id="officialProtocolDataBtn">Doplnit data provozovatele</button>
     <button class="primary" type="button" id="officialProtocolOkBtn">Vygenerovat protokol funkční</button>
@@ -1897,8 +1975,10 @@ Cena FZ: ..."></textarea>
     <textarea id="officialObjectData" placeholder="Název objektu, ulice, město, PSČ..."></textarea>
     <button class="secondary" type="button" id="saveOfficialProtocolDataBtn">Uložit data provozovatele</button>
   </div>
-  <label>Poznámka do dokladu</label>
-  <textarea id="officialProtocolNote" class="official-protocol-note" placeholder="Poznámka se propíše do vygenerovaného dokladu."></textarea>
+  <div class="official-protocol-note-wrap">
+    <label class="official-protocol-note-label" for="officialProtocolNote">Poznámka do dokladu</label>
+    <textarea id="officialProtocolNote" class="official-protocol-note" placeholder="Poznámka se propíše do vygenerovaného dokladu."></textarea>
+  </div>
   <p id="officialProtocolStatus" class="small"></p>
 </div>
 </div>
@@ -6533,9 +6613,18 @@ function officialProtocolFunctionalText(mode){
   return mode==="stop" ? "--- ZAŘÍZENÍ NENÍ PROVOZUSCHOPNÉ ---" : "--zařízení je provozuschopné--";
 }
 
+function officialProtocolConditionsValue(protocol={},mode="ok"){
+  if(typeof protocol.conditions==="boolean") return protocol.conditions ? "ano" : "ne";
+  const normalized=simpleNorm(protocol.conditions);
+  if(normalized){
+    if(normalized==="ne" || normalized==="no" || normalized==="false" || normalized==="0" || normalized.includes("nevyhov")) return "ne";
+    if(normalized==="ano" || normalized==="yes" || normalized==="true" || normalized==="1" || normalized==="ok" || normalized.includes("vyhov")) return "ano";
+  }
+  return mode==="stop" ? "ne" : "ano";
+}
+
 function officialProtocolConditionsText(protocol={},mode="ok"){
-  if(mode==="stop") return "-- ne --";
-  return "-- ano --";
+  return `-- ${officialProtocolConditionsValue(protocol,mode)} --`;
 }
 
 function officialProtocolNextDate(protocol={},site=selectedSite){
@@ -6728,7 +6817,7 @@ function officialRtfEscape(value){
 }
 
 function officialProtocolConditionsTail(protocol={},mode="ok"){
-  return mode==="stop" ? "ne --" : "ano --";
+  return `${officialProtocolConditionsValue(protocol,mode)} --`;
 }
 
 function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
@@ -6803,7 +6892,11 @@ async function exportOfficialProtocol(mode="ok"){
     if(status) status.textContent="Není vybrané místo.";
     return;
   }
+  const noteInput=document.getElementById("officialProtocolNote");
+  const noteBefore=noteInput ? noteInput.value : "";
   const data=await saveOfficialProtocolData({silent:true});
+  if(data) data.note=noteBefore;
+  if(noteInput) noteInput.value=noteBefore;
   if(!safe(data?.operator) || !safe(data?.objectAddress)){
     const box=document.getElementById("officialProtocolDataBox");
     if(box) box.style.display="grid";
@@ -6827,6 +6920,7 @@ async function exportOfficialProtocol(mode="ok"){
     return;
   }
   downloadBlobFile(prepared.fileName,prepared.blob);
+  if(noteInput) noteInput.value=noteBefore;
   if(status) status.textContent=mode==="stop" ? "Doklad Stop Stav exportován." : "Doklad provozuschopnosti exportován.";
   showSaveConfirmation("Doklad exportován do Wordu.");
 }
@@ -9298,7 +9392,11 @@ if(officialProtocolDataBtn){
 }
 const saveOfficialProtocolDataBtn=document.getElementById("saveOfficialProtocolDataBtn");
 if(saveOfficialProtocolDataBtn){
-  saveOfficialProtocolDataBtn.addEventListener("click",()=>saveOfficialProtocolData());
+  saveOfficialProtocolDataBtn.addEventListener("click",async ()=>{
+    const data=await saveOfficialProtocolData();
+    const box=document.getElementById("officialProtocolDataBox");
+    if(data && box) box.style.display="none";
+  });
 }
 const officialProtocolOkBtn=document.getElementById("officialProtocolOkBtn");
 if(officialProtocolOkBtn){
