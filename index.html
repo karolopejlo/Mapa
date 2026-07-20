@@ -6261,14 +6261,20 @@ function protocolSignatureImageBytes(protocol={}){
   try{return base64ToBytes(match[1]);}catch(e){return null;}
 }
 
-function wordSignatureImageRun(relId="rIdSignature"){
-  return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="2600000" cy="760000"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="7" name="Podpis objednavatele"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="7" name="podpis-objednavatele.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="2600000" cy="760000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+function wordSignatureImageRun(relId="rIdSignature",options={}){
+  const cx=Number(options.cx) || 2600000;
+  const cy=Number(options.cy) || 760000;
+  return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="7" name="Podpis objednavatele"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="7" name="podpis-objednavatele.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
-function wordClientSignatureCellXml(protocol={}){
+function wordClientSignatureCellXml(protocol={},options={}){
+  const compact=!!options.compact;
   const parts=[];
-  if(safe(protocol.clientSign)) parts.push(wordParagraph(protocol.clientSign,{size:18,after:30}));
-  if(protocolSignatureImageBytes(protocol)) parts.push(wordParagraphXml(wordSignatureImageRun(),{after:0}));
+  if(safe(protocol.clientSign)) parts.push(wordParagraph(protocol.clientSign,{size:compact ? 14 : 18,after:compact ? 0 : 30}));
+  if(protocolSignatureImageBytes(protocol)){
+    const imageOptions=compact ? {cx:1550000,cy:430000} : {};
+    parts.push(wordParagraphXml(wordSignatureImageRun("rIdSignature",imageOptions),{after:0}));
+  }
   return parts.join("") || wordParagraph(" ",{size:18,after:0});
 }
 
@@ -6717,11 +6723,11 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordParagraph("Potvrzujeme, že jsme provedli funkční zkoušku a kontrolu provozuschopnosti výše uvedeného zařízení v souladu s platnými právními předpisy §6 a §7 vyhlášky MV246/2001 Sb., normativními požadavky, dokumentací a technickými podmínkami výrobce.",{size:20,after:70}),
     officialInlineParagraph("l) Zařízení pracuje ve vyhovujících podmínkách: ",officialProtocolConditionsText(protocol,mode)),
     wordParagraph("Poznámky:",{bold:true,size:20,after:35}),
-    wordParagraph(officialProtocolMeasurements(protocol,officialData.note),{size:20,after:230}),
+    wordParagraph(officialProtocolMeasurements(protocol,officialData.note),{size:20,after:protocolSignatureImageBytes(protocol) ? 90 : 230}),
     wordTable([
       [
         {text:"______________________________________",size:18,align:"center"},
-        {xml:wordClientSignatureCellXml(protocol) + wordParagraph("______________________________________",{size:18,align:"center"})}
+        {xml:wordClientSignatureCellXml(protocol,{compact:true}) + wordParagraph("______________________________________",{size:18,align:"center"})}
       ],
       [
         {text:`Servis záložních zdrojů s.r.o. – ${tech}`,size:18,align:"center"},
@@ -6833,7 +6839,7 @@ function bytesToHex(bytes){
 function officialRtfSignatureImage(protocol={}){
   const bytes=protocolSignatureImageBytes(protocol);
   if(!bytes) return "";
-  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal2600\\pichgoal750 ${bytesToHex(bytes)}}`;
+  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal1450\\pichgoal420 ${bytesToHex(bytes)}}`;
 }
 
 function officialRtfClientSignatureBlock(protocol={}){
@@ -6841,10 +6847,10 @@ function officialRtfClientSignatureBlock(protocol={}){
   const signature=officialRtfSignatureImage(protocol);
   if(!name && !signature) return "";
   const parts=[];
-  if(name) parts.push(officialRtfEscape(name));
+  if(name) parts.push(`{\\fs14 ${officialRtfEscape(name)}}`);
   if(signature) parts.push(signature);
   const reset="\\pard \\ltrpar\\ql \\li0\\ri0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
-  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sl240\\slmult1\\nowidctlpar\\wrapdefault ${parts.join("\\par ")}\\par ${reset}`;
+  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb0\\sa0\\sl160\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
 }
 
 function addOfficialRtfClientSignature(output,protocol={}){
@@ -6874,7 +6880,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
   const serial=protocol.serial || protocolSerialFromSite(site);
   const seal=protocol.seal || protocol.seal2 || "";
   const tech=protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || "Ing. Jan Soldán";
-  const note=officialOneLine(officialData.note,120);
+  const note=officialOneLine(officialData.note,protocolSignatureImageBytes(protocol) ? 80 : 120);
   return {
     "__SZZ_OPERATOR_1__":operator[0],
     "__SZZ_OPERATOR_2__":operator[1],
