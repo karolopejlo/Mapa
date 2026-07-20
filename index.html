@@ -6526,11 +6526,11 @@ async function protocolForOfficialDocument(){
 }
 
 function officialProtocolResultText(mode){
-  return mode==="stop" ? "--zjištěn Stop Stav--" : "--bez závad--";
+  return mode==="stop" ? "--- STOP STAV ---" : "--bez závad--";
 }
 
 function officialProtocolFunctionalText(mode){
-  return mode==="stop" ? "--zařízení není provozuschopné--" : "--zařízení je provozuschopné--";
+  return mode==="stop" ? "--- ZAŘÍZENÍ NENÍ PROVOZUSCHOPNÉ ---" : "--zařízení je provozuschopné--";
 }
 
 function officialProtocolConditionsText(protocol={},mode="ok"){
@@ -6547,6 +6547,14 @@ function officialProtocolNextDate(protocol={},site=selectedSite){
   const p=simpleNorm(protocol.period);
   const months=p.includes("12") ? 12 : (p.includes("6") ? 6 : periodMonths(site));
   return formatDateCz(addMonths(control,months));
+}
+
+function officialProtocolRemedyMonth(protocol={}){
+  const control=parseDateValue(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
+  if(!control) return "";
+  const remedy=addMonths(control,2);
+  const month=String(remedy.getMonth()+1).padStart(2,"0");
+  return `${month}/${remedy.getFullYear()}`;
 }
 
 function officialProtocolDeviceLine(protocol={},site=selectedSite){
@@ -6648,15 +6656,18 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
 }
 
 const OFFICIAL_RTF_TEMPLATE_URL="official-template.rtf";
-let officialRtfTemplateCache="";
+const OFFICIAL_STOP_RTF_TEMPLATE_URL="official-stop-template.rtf";
+const officialRtfTemplateCache={};
 
-async function loadOfficialRtfTemplate(){
-  if(officialRtfTemplateCache) return officialRtfTemplateCache;
-  const response=await fetch(OFFICIAL_RTF_TEMPLATE_URL,{cache:"no-store"});
-  if(!response.ok) throw new Error(`Šablonu official-template.rtf se nepodařilo načíst (${response.status}).`);
+async function loadOfficialRtfTemplate(mode="ok"){
+  const key=mode==="stop" ? "stop" : "ok";
+  if(officialRtfTemplateCache[key]) return officialRtfTemplateCache[key];
+  const url=key==="stop" ? OFFICIAL_STOP_RTF_TEMPLATE_URL : OFFICIAL_RTF_TEMPLATE_URL;
+  const response=await fetch(url,{cache:"no-store"});
+  if(!response.ok) throw new Error(`Šablonu ${url} se nepodařilo načíst (${response.status}).`);
   const template=await response.text();
   if(!template.includes("__SZZ_OPERATOR_1__")) throw new Error("Šablona dokladu nemá připravená vyplňovací pole.");
-  officialRtfTemplateCache=template;
+  officialRtfTemplateCache[key]=template;
   return template;
 }
 
@@ -6747,6 +6758,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
     "__SZZ_FUNCTIONAL__":` ${officialProtocolFunctionalText(mode)}`,
     "__SZZ_CONTROL_DATE__":controlDate,
     "__SZZ_NEXT_DATE__":officialProtocolNextDate(protocol,site),
+    "__SZZ_REMEDY_DATE__":officialProtocolRemedyMonth(protocol),
     "__SZZ_CONDITIONS__":officialProtocolConditionsTail(protocol,mode),
     "__SZZ_INPUT__":officialMeasurementValue(protocol.inputVac,"VAC"),
     "__SZZ_OUTPUT__":officialMeasurementValue(protocol.output1Vac || protocol.output2Vac,"VAC"),
@@ -6777,7 +6789,7 @@ async function preparedOfficialProtocolExport(protocol={},officialData={},mode="
   const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "doklad";
   const prefix=mode==="stop" ? "doklad-stop-stav" : "doklad-provozuschopnosti";
   const fileName=`${prefix}-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.rtf`;
-  const template=await loadOfficialRtfTemplate();
+  const template=await loadOfficialRtfTemplate(mode);
   return {
     filled,
     fileName,
