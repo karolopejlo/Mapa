@@ -6647,18 +6647,141 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
   ];
 }
 
-function preparedOfficialProtocolExport(protocol={},officialData={},mode="ok"){
+const OFFICIAL_RTF_TEMPLATE_URL="official-template.rtf";
+let officialRtfTemplateCache="";
+
+async function loadOfficialRtfTemplate(){
+  if(officialRtfTemplateCache) return officialRtfTemplateCache;
+  const response=await fetch(OFFICIAL_RTF_TEMPLATE_URL,{cache:"no-store"});
+  if(!response.ok) throw new Error(`Šablonu official-template.rtf se nepodařilo načíst (${response.status}).`);
+  const template=await response.text();
+  if(!template.includes("__SZZ_OPERATOR_1__")) throw new Error("Šablona dokladu nemá připravená vyplňovací pole.");
+  officialRtfTemplateCache=template;
+  return template;
+}
+
+function officialOneLine(value,maxLength=0){
+  const text=protocolExportValue(value).replace(/\u00a0/g," ").replace(/\s+/g," ").trim();
+  if(!maxLength || text.length<=maxLength) return text;
+  return `${text.slice(0,Math.max(0,maxLength-3)).trim()}...`;
+}
+
+function officialMultiline(value,maxLines=4){
+  const lines=protocolExportValue(value)
+    .replace(/\u00a0/g," ")
+    .replace(/\r\n/g,"\n")
+    .replace(/\r/g,"\n")
+    .split("\n")
+    .map(line=>officialOneLine(line))
+    .filter(Boolean);
+  while(lines.length<maxLines) lines.push("");
+  return lines.slice(0,maxLines);
+}
+
+function officialIcoValue(value){
+  return officialOneLine(value).replace(/^(i[čc]o|i[čc]|ico)\s*[:：]?\s*/i,"");
+}
+
+function officialMeasurementValue(value,unit){
+  let text=officialOneLine(value);
+  if(!text) return "";
+  if(unit==="VAC") text=text.replace(/\s*VAC\.?\s*$/i,"");
+  if(unit==="VDC") text=text.replace(/\s*VDC\.?\s*$/i,"");
+  if(unit==="TEMP") text=text.replace(/\s*(°C|C)\s*$/i,"");
+  return text.trim();
+}
+
+function officialCombinedMeasurement(...values){
+  return values.map(value=>officialMeasurementValue(value,"VDC")).filter(Boolean).join(" / ");
+}
+
+function officialRtfEscape(value){
+  const text=protocolExportValue(value);
+  let out="";
+  for(const ch of text){
+    if(ch==="\n"){
+      out+="\\line ";
+      continue;
+    }
+    if(ch==="\\") out+="\\\\";
+    else if(ch==="{") out+="\\{";
+    else if(ch==="}") out+="\\}";
+    else{
+      const code=ch.codePointAt(0);
+      if(code===160) out+="\\~";
+      else if(code<128) out+=ch;
+      else out+=`\\u${code>32767 ? code-65536 : code}?`;
+    }
+  }
+  return out;
+}
+
+function officialProtocolConditionsTail(protocol={},mode="ok"){
+  return mode==="stop" ? "ne --" : "ano --";
+}
+
+function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
+  const site=selectedSite || {};
+  const operator=officialMultiline(officialData.operator,4);
+  const object=officialMultiline(officialData.objectAddress,4);
+  const controlDate=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
+  const device=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || protocolDeviceTypeFromSite(site);
+  const serial=protocol.serial || protocolSerialFromSite(site);
+  const seal=protocol.seal || protocol.seal2 || "";
+  const tech=protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || "Ing. Jan Soldán";
+  const note=officialOneLine(officialData.note,120);
+  return {
+    "__SZZ_OPERATOR_1__":operator[0],
+    "__SZZ_OPERATOR_2__":operator[1],
+    "__SZZ_OPERATOR_3__":operator[2],
+    "__SZZ_OPERATOR_4__":officialIcoValue(operator[3]),
+    "__SZZ_OBJECT_1__":object[0],
+    "__SZZ_OBJECT_2__":object[1],
+    "__SZZ_OBJECT_3__":object[2],
+    "__SZZ_OBJECT_4__":object[3],
+    "__SZZ_LOCATION__":officialOneLine(protocol.pbzLocation || protocolSourceLocationFromSite(site) || ""),
+    "__SZZ_DEVICE__":officialOneLine(device),
+    "__SZZ_SERIAL__":officialOneLine(serial || "-"),
+    "__SZZ_SEAL__":officialOneLine(seal || "-"),
+    "__SZZ_RESULT__":` ${officialProtocolResultText(mode)}`,
+    "__SZZ_FUNCTIONAL__":` ${officialProtocolFunctionalText(mode)}`,
+    "__SZZ_CONTROL_DATE__":controlDate,
+    "__SZZ_NEXT_DATE__":officialProtocolNextDate(protocol,site),
+    "__SZZ_CONDITIONS__":officialProtocolConditionsTail(protocol,mode),
+    "__SZZ_INPUT__":officialMeasurementValue(protocol.inputVac,"VAC"),
+    "__SZZ_OUTPUT__":officialMeasurementValue(protocol.output1Vac || protocol.output2Vac,"VAC"),
+    "__SZZ_BACKUP__":officialMeasurementValue(protocol.backup1Vac || protocol.backup2Vac,"VAC"),
+    "__SZZ_AUX__":officialMeasurementValue(protocol.auxBatVdc,"VDC"),
+    "__SZZ_MAIN__":officialMeasurementValue(protocol.mainBatVdc,"VDC"),
+    "__SZZ_UNBALANCE__":officialOneLine(officialCombinedMeasurement(protocol.unbalance1,protocol.unbalance2) || protocol.resetDiagnostics || ""),
+    "__SZZ_TEMP__":officialMeasurementValue(protocol.temperature,"TEMP"),
+    "__SZZ_NOTE__":note ? `Poznámka: ${note}` : "",
+    "__SZZ_TECH__":officialOneLine(tech)
+  };
+}
+
+function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
+  let output=template;
+  const values=officialProtocolTemplateValues(protocol,officialData,mode);
+  Object.entries(values).forEach(([placeholder,value])=>{
+    output=output.replaceAll(placeholder,officialRtfEscape(value));
+  });
+  return output;
+}
+
+async function preparedOfficialProtocolExport(protocol={},officialData={},mode="ok"){
   const filled={
     ...protocol,
     createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
   };
   const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "doklad";
   const prefix=mode==="stop" ? "doklad-stop-stav" : "doklad-provozuschopnosti";
-  const fileName=`${prefix}-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.docx`;
+  const fileName=`${prefix}-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.rtf`;
+  const template=await loadOfficialRtfTemplate();
   return {
     filled,
     fileName,
-    blob:new Blob([buildStoredZip(buildOfficialProtocolWordEntries(filled,officialData,mode))],{type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"})
+    blob:new Blob([fillOfficialRtfTemplate(template,filled,officialData,mode)],{type:"application/rtf;charset=utf-8"})
   };
 }
 
@@ -6682,7 +6805,15 @@ async function exportOfficialProtocol(mode="ok"){
     showSaveConfirmation("Nejdřív ulož protokol kontroly.");
     return;
   }
-  const prepared=preparedOfficialProtocolExport(protocol,data,mode);
+  let prepared;
+  try{
+    prepared=await preparedOfficialProtocolExport(protocol,data,mode);
+  }catch(e){
+    console.warn("Export dokladu z RTF šablony selhal",e);
+    if(status) status.textContent=e.message || "Doklad se nepodařilo připravit.";
+    showSaveConfirmation("Doklad se nepodařilo připravit.");
+    return;
+  }
   downloadBlobFile(prepared.fileName,prepared.blob);
   if(status) status.textContent=mode==="stop" ? "Doklad Stop Stav exportován." : "Doklad provozuschopnosti exportován.";
   showSaveConfirmation("Doklad exportován do Wordu.");
