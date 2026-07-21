@@ -1690,12 +1690,8 @@ button,input,select,textarea{
       </select>
     </div>
 
-    <label>Plomba</label>
-    <select id="protoSeal">
-      <option value="">Vyber</option>
-      <option value="v pořádku">v pořádku</option>
-      <option value="porušena">porušena</option>
-    </select>
+    <label>Číslo plomby</label>
+    <input id="protoSeal">
 
     <h4>Místo a provozní údaje</h4>
 
@@ -6017,7 +6013,7 @@ function setProtocolFieldValue(id,value){
   if(!el) return;
   let next=safe(value);
   if(el.tagName==="SELECT"){
-    if(id==="protoSeal" || id==="protoSeal2") next=normalizeSealValue(next);
+    if(id==="protoSeal2") next=normalizeSealValue(next);
     if(next && !Array.from(el.options).some(option=>option.value===next)){
       const option=document.createElement("option");
       option.value=next;
@@ -6914,11 +6910,12 @@ function officialBlockXml(label,value){
   return wordParagraph(label,{bold:true,size:20,after:35}) + wordParagraph(value || " ",{size:20,after:0});
 }
 
-function officialTwoColumnXml(leftLabel,leftValue,rightLabel,rightValue){
+function officialTwoColumnXml(leftLabel,leftValue,rightLabel,rightValue,options={}){
+  const after=Number.isFinite(options.after) ? options.after : 25;
   return wordTable([[
     {xml:officialBlockXml(leftLabel,leftValue),vAlign:"top"},
     {xml:officialBlockXml(rightLabel,rightValue),vAlign:"top"}
-  ]],[4815,4815],{noBorders:true}) + wordBlank(25);
+  ]],[4815,4815],{noBorders:true}) + wordBlank(after);
 }
 
 function officialInlineParagraph(label,value){
@@ -6939,10 +6936,10 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordParagraph("Doklad o servisní kontrole a zkoušce provozuschopnosti PBZ",{align:"center",bold:true,size:26,after:30}),
     wordParagraph("dle zákona č. 133/1985 a vyhlášky 246/2001 Sb.",{align:"center",size:20,after:20}),
     wordParagraph("Doklad byl sestaven dle vyhl. 246/2001 Sb. §7, odst.8, písm. a – f.",{align:"center",size:20,after:120}),
-    officialTwoColumnXml("a) Provozovatel PBZ:",operator,"b) Adresa objektu kde je PBZ umístěno:",objectAddress),
+    officialTwoColumnXml("a) Provozovatel PBZ:",operator,"b) Adresa objektu kde je PBZ umístěno:",objectAddress,{after:0}),
     officialInlineParagraph("c) Umístění PBZ: ",place),
     officialInlineParagraph("d) Typ záložního zdroje, Výrobní číslo, plomba: ",officialProtocolDeviceLine(protocol,site)),
-    officialTwoColumnXml("e) Kontrolní subjekt:",controlSubject,"f) Výrobce PBZ:",manufacturer),
+    officialTwoColumnXml("e) Kontrolní subjekt:",controlSubject,"f) Výrobce PBZ:",manufacturer,{after:70}),
     officialInlineParagraph("g) Výsledek kontroly provozuschopnosti: ",officialProtocolResultText(mode)),
     officialInlineParagraph("h) Výsledek funkčních zkoušek: ",officialProtocolFunctionalText(mode)),
     officialInlineParagraph("i) Datum provedení kontroly: ",controlDate),
@@ -6951,7 +6948,8 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordParagraph("Potvrzujeme, že jsme provedli funkční zkoušku a kontrolu provozuschopnosti výše uvedeného zařízení v souladu s platnými právními předpisy §6 a §7 vyhlášky MV246/2001 Sb., normativními požadavky, dokumentací a technickými podmínkami výrobce.",{size:20,after:70}),
     officialInlineParagraph("l) Zařízení pracuje ve vyhovujících podmínkách: ",officialProtocolConditionsText(protocol,mode)),
     wordParagraph("Poznámky:",{bold:true,size:20,after:35}),
-    officialProtocolMeasurementNotesXml(protocol,officialData.note,protocolSignatureImageBytes(protocol) ? 25 : 110),
+    officialProtocolMeasurementNotesXml(protocol,officialData.note,25),
+    wordBlank(180),
     wordTable([
       [
         {text:"______________________________________",size:18,align:"center"},
@@ -7092,7 +7090,8 @@ function officialRtfSubjectBlock(officialData={}){
   const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
   const heading=`${paragraph}${officialRtfRun("e) Kontrolní subjekt:",{bold:true,underline:true})}\\tab ${officialRtfRun("f) Výrobce PBZ:",{bold:true,underline:true})}\\par`;
   const rows=left.map((line,idx)=>`${paragraph}${officialRtfRun(line || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
-  return `${heading}\n${rows}\n`;
+  const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
+  return `${heading}\n${rows}\n${blank}\n`;
 }
 
 function replaceOfficialRtfSubjectBlock(output,officialData={}){
@@ -7104,6 +7103,26 @@ function replaceOfficialRtfSubjectBlock(output,officialData={}){
   const start=output.lastIndexOf("\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962",labelIndex);
   if(start<0 || resultStart<0 || resultStart<=start) return output;
   return `${output.slice(0,start)}${officialRtfSubjectBlock(officialData)}${output.slice(resultStart)}`;
+}
+
+function rtfVisibleText(segment){
+  return safe(segment)
+    .replace(/\\'[0-9a-fA-F]{2}/g,"x")
+    .replace(/\\[a-zA-Z]+-?\d* ?/g,"")
+    .replace(/[{}]/g,"")
+    .trim();
+}
+
+function removeOfficialRtfBlankBeforeLocation(output){
+  const labelIndex=output.indexOf("Um\\'edst\\'ecn\\'ed PBZ:");
+  if(labelIndex<0) return output;
+  const locationStart=output.lastIndexOf("{\\rtlch",labelIndex);
+  const blankEnd=output.lastIndexOf("\\par }",locationStart);
+  const blankStart=output.lastIndexOf("{\\rtlch",blankEnd);
+  if(blankStart<0 || blankEnd<0 || blankEnd<=blankStart) return output;
+  const segment=output.slice(blankStart,blankEnd+"\\par }".length);
+  if(segment.length>900 || rtfVisibleText(segment)) return output;
+  return `${output.slice(0,blankStart)}${output.slice(blankEnd+"\\par }".length)}`;
 }
 
 function bytesToHex(bytes){
@@ -7146,17 +7165,15 @@ function officialRtfSignatureImage(protocol={}){
 function officialRtfClientSignatureBlock(protocol={}){
   const name=officialOneLine(protocol.clientSign || protocol.customer || "",80);
   const signature=officialRtfSignatureImage(protocol);
-  if(!name && !signature) return "";
   const parts=[];
-  if(name) parts.push(`{\\fs18 ${officialRtfEscape(name)}}`);
-  if(signature) parts.push(signature);
+  parts.push(name ? `{\\fs18 ${officialRtfEscape(name)}}` : "{\\fs18 \\~}");
+  parts.push(signature || "{\\fs18 \\~\\line \\~\\line \\~}");
   const reset="\\pard \\ltrpar\\ql \\li0\\ri0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
-  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb0\\sa0\\sl205\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
+  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb180\\sa0\\sl205\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
 }
 
 function addOfficialRtfClientSignature(output,protocol={}){
   const block=officialRtfClientSignatureBlock(protocol);
-  if(!block) return output;
   const marker=/(\{\\\*\\bkmkstart _Hlk178752668\})______________________________________/;
   if(marker.test(output)){
     return output.replace(marker,`$1${block}______________________________________`);
@@ -7227,6 +7244,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
 
 function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
   let output=removeOfficialRtfOperatorIcoLabel(template);
+  output=removeOfficialRtfBlankBeforeLocation(output);
   output=replaceOfficialRtfSubjectBlock(output,officialData);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
   Object.entries(values).forEach(([placeholder,value])=>{
