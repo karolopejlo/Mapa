@@ -6272,7 +6272,7 @@ function wordClientSignatureCellXml(protocol={},options={}){
   const parts=[];
   if(safe(protocol.clientSign)) parts.push(wordParagraph(protocol.clientSign,{size:compact ? 16 : 18,after:compact ? 0 : 30}));
   if(protocolSignatureImageBytes(protocol)){
-    const imageOptions=compact ? {cx:2250000,cy:620000} : {};
+    const imageOptions=compact ? {cx:3800000,cy:1100000} : {};
     parts.push(wordParagraphXml(wordSignatureImageRun("rIdSignature",imageOptions),{after:0}));
   }
   return parts.join("") || wordParagraph(" ",{size:18,after:0});
@@ -6677,6 +6677,34 @@ function officialProtocolMeasurements(protocol={},extraNote=""){
   return notes.join("\n");
 }
 
+function officialRtfMeasurementLine(label,value,unit){
+  const measured=officialMeasurementValue(value,unit);
+  const text=measured ? `${label} – ${measured} ${unit}` : `${label} –`;
+  return `{\\rtlch\\fcs1 \\af0\\afs20 \\ltrch\\fcs0 \\fs20 ${officialRtfEscape(text)}\\par }`;
+}
+
+function officialRtfCompactMeasurements(protocol={}){
+  const rows=[
+    ["Vstup",protocol.inputVac,"VAC"],
+    ["Výstup",protocol.output1Vac || protocol.output2Vac,"VAC"],
+    ["Výstup při záloze",protocol.backup1Vac || protocol.backup2Vac,"VAC"],
+    ["Pomocná baterie",protocol.auxBatVdc,"VDC"]
+  ].map(([label,value,unit])=>officialRtfMeasurementLine(label,value,unit)).join("");
+  return `\\pard\\plain \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl210\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 \\rtlch\\fcs1 \\af24\\afs20\\alang1081 \\ltrch\\fcs0 \\fs20\\lang1029\\langfe2052\\kerning3\\cgrid\\langnp1029\\langfenp2052 ${rows}`;
+}
+
+function compactOfficialRtfMeasurementSection(output,protocol={}){
+  const compact=`${officialRtfCompactMeasurements(protocol)}{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\sect }`;
+  const patterns=[
+    /\{\\rtlch\\fcs1 [^{}]*?\\sect \}\\sectd \\ltrsect\\sbknone\\linex0\\headery708\\footery708\\cols2\\colsx2[\s\S]*?Pomocn\\'e1 baterie \\endash[\s\S]*?\{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\insrsid3878691\\charrsid536511 \\sect \}/,
+    /\{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 [^{}]*Vstup \\endash[\s\S]*?Pomocn\\'e1 baterie \\endash[\s\S]*?\{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\insrsid3878691\\charrsid536511 \\sect \}/
+  ];
+  for(const pattern of patterns){
+    if(pattern.test(output)) return output.replace(pattern,compact);
+  }
+  return output;
+}
+
 function officialBlockXml(label,value){
   return wordParagraph(label,{bold:true,size:20,after:35}) + wordParagraph(value || " ",{size:20,after:0});
 }
@@ -6848,7 +6876,7 @@ function officialRtfWatermark(){
   const bytes=dataUrlImageBytes(szzLogoDataUrl());
   if(!bytes) return "";
   const hex=bytesToHex(bytes);
-  return `{\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright6377\\shpbottom3167\\shpfhdr1\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr3\\shpwrk0\\shpfblwtxt1\\shpz2\\shplid20260721{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn fFlipH}{\\sv 0}}{\\sp{\\sn fFlipV}{\\sv 0}}{\\sp{\\sn pib}{\\sv {\\pict\\picscalex40\\picscaley40\\piccropl0\\piccropr0\\piccropt0\\piccropb0\\picw28122\\pich13968\\picwgoal15943\\pichgoal7919\\pngblip ${hex}}}}{\\sp{\\sn pibFlags}{\\sv 2}}{\\sp{\\sn pictureContrast}{\\sv 19661}}{\\sp{\\sn pictureBrightness}{\\sv 22938}}{\\sp{\\sn fLine}{\\sv 0}}{\\sp{\\sn wzName}{\\sv WordPictureWatermarkSZZ}}{\\sp{\\sn posh}{\\sv 2}}{\\sp{\\sn posrelh}{\\sv 0}}{\\sp{\\sn posv}{\\sv 2}}{\\sp{\\sn posrelv}{\\sv 0}}{\\sp{\\sn dhgt}{\\sv 251660288}}{\\sp{\\sn fLayoutInCell}{\\sv 0}}{\\sp{\\sn fBehindDocument}{\\sv 1}}}}{\\shprslt\\par\\pard\\ql \\li0\\ri0\\widctlpar\\phmrg\\posxc\\posyc\\dxfrtext180\\dfrmtxtx180\\dfrmtxty0\\wraparound\\aspalpha\\aspnum\\faauto\\adjustright\\rin0\\lin0\\itap0}\\par `;
+  return `{\\shp{\\*\\shpinst\\shpleft1200\\shptop2450\\shpright9200\\shpbottom10450\\shpfhdr1\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr3\\shpwrk0\\shpfblwtxt1\\shpz2\\shplid20260721{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn fLockAspectRatio}{\\sv 1}}{\\sp{\\sn fFlipH}{\\sv 0}}{\\sp{\\sn fFlipV}{\\sv 0}}{\\sp{\\sn pib}{\\sv {\\pict\\picscalex40\\picscaley40\\piccropl0\\piccropr0\\piccropt0\\piccropb0\\picw1063\\pich1063\\picwgoal8000\\pichgoal8000\\pngblip ${hex}}}}{\\sp{\\sn pibFlags}{\\sv 2}}{\\sp{\\sn pictureContrast}{\\sv 19661}}{\\sp{\\sn pictureBrightness}{\\sv 22938}}{\\sp{\\sn fLine}{\\sv 0}}{\\sp{\\sn wzName}{\\sv WordPictureWatermarkSZZ}}{\\sp{\\sn posh}{\\sv 2}}{\\sp{\\sn posrelh}{\\sv 0}}{\\sp{\\sn posv}{\\sv 2}}{\\sp{\\sn posrelv}{\\sv 0}}{\\sp{\\sn dhgt}{\\sv 251660288}}{\\sp{\\sn fLayoutInCell}{\\sv 0}}{\\sp{\\sn fBehindDocument}{\\sv 1}}}}{\\shprslt\\par\\pard\\ql \\li0\\ri0\\widctlpar\\phmrg\\posxc\\posyc\\dxfrtext180\\dfrmtxtx180\\dfrmtxty0\\wraparound\\aspalpha\\aspnum\\faauto\\adjustright\\rin0\\lin0\\itap0}\\par `;
 }
 
 function addOfficialRtfWatermark(output){
@@ -6863,7 +6891,7 @@ function addOfficialRtfWatermark(output){
 function officialRtfSignatureImage(protocol={}){
   const bytes=protocolSignatureImageBytes(protocol);
   if(!bytes) return "";
-  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal2200\\pichgoal640 ${bytesToHex(bytes)}}`;
+  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal3800\\pichgoal1100 ${bytesToHex(bytes)}}`;
 }
 
 function officialRtfClientSignatureBlock(protocol={}){
@@ -6871,10 +6899,10 @@ function officialRtfClientSignatureBlock(protocol={}){
   const signature=officialRtfSignatureImage(protocol);
   if(!name && !signature) return "";
   const parts=[];
-  if(name) parts.push(`{\\fs16 ${officialRtfEscape(name)}}`);
+  if(name) parts.push(`{\\fs18 ${officialRtfEscape(name)}}`);
   if(signature) parts.push(signature);
   const reset="\\pard \\ltrpar\\ql \\li0\\ri0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
-  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb0\\sa0\\sl185\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
+  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb0\\sa0\\sl205\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
 }
 
 function addOfficialRtfClientSignature(output,protocol={}){
@@ -6942,6 +6970,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   Object.entries(values).forEach(([placeholder,value])=>{
     output=output.replaceAll(placeholder,officialRtfEscape(value));
   });
+  output=compactOfficialRtfMeasurementSection(output,protocol);
   output=addOfficialRtfWatermark(output);
   output=addOfficialRtfClientSignature(output,protocol);
   output=normalizeOfficialRtfClientLabel(output);
