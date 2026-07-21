@@ -6672,15 +6672,21 @@ function officialProtocolMeasurements(protocol={},extraNote=""){
     ["Pomocná baterie",protocol.auxBatVdc,"VDC"]
   ].map(([label,value,unit])=>`${label} – ${safe(value) ? `${safe(value)} ${unit}` : ""}`.trim());
   const notes=[...lines];
+  const extraValues=officialAdditionalMeasurementSummary(protocol);
+  if(extraValues) notes.push(extraValues);
   if(safe(protocol.notes || protocol.issues)) notes.push(`Poznámka z protokolu – ${safe(protocol.notes || protocol.issues)}`);
   if(safe(extraNote)) notes.push(`Poznámka do dokladu – ${safe(extraNote)}`);
   return notes.join("\n");
 }
 
+function officialRtfMeasurementTextLine(text){
+  return `{\\rtlch\\fcs1 \\af0\\afs22 \\ltrch\\fcs0 \\fs22 ${officialRtfEscape(text)}\\par }`;
+}
+
 function officialRtfMeasurementLine(label,value,unit){
   const measured=officialMeasurementValue(value,unit);
   const text=measured ? `${label} – ${measured} ${unit}` : `${label} –`;
-  return `{\\rtlch\\fcs1 \\af0\\afs20 \\ltrch\\fcs0 \\fs20 ${officialRtfEscape(text)}\\par }`;
+  return officialRtfMeasurementTextLine(text);
 }
 
 function officialRtfCompactMeasurements(protocol={}){
@@ -6689,8 +6695,10 @@ function officialRtfCompactMeasurements(protocol={}){
     ["Výstup",protocol.output1Vac || protocol.output2Vac,"VAC"],
     ["Výstup při záloze",protocol.backup1Vac || protocol.backup2Vac,"VAC"],
     ["Pomocná baterie",protocol.auxBatVdc,"VDC"]
-  ].map(([label,value,unit])=>officialRtfMeasurementLine(label,value,unit)).join("");
-  return `\\pard\\plain \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl210\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 \\rtlch\\fcs1 \\af24\\afs20\\alang1081 \\ltrch\\fcs0 \\fs20\\lang1029\\langfe2052\\kerning3\\cgrid\\langnp1029\\langfenp2052 ${rows}`;
+  ].map(([label,value,unit])=>officialRtfMeasurementLine(label,value,unit));
+  const extraValues=officialAdditionalMeasurementSummary(protocol);
+  if(extraValues) rows.push(officialRtfMeasurementTextLine(extraValues));
+  return `\\pard\\plain \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl240\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 \\rtlch\\fcs1 \\af24\\afs22\\alang1081 \\ltrch\\fcs0 \\fs22\\lang1029\\langfe2052\\kerning3\\cgrid\\langnp1029\\langfenp2052 ${rows.join("")}`;
 }
 
 function compactOfficialRtfMeasurementSection(output,protocol={}){
@@ -6834,6 +6842,19 @@ function officialMeasurementValue(value,unit){
 
 function officialCombinedMeasurement(...values){
   return values.map(value=>officialMeasurementValue(value,"VDC")).filter(Boolean).join(" / ");
+}
+
+function officialAdditionalMeasurementSummary(protocol={}){
+  const parts=[];
+  const main=officialMeasurementValue(protocol.mainBatVdc,"VDC");
+  const reset=officialOneLine(protocol.resetDiagnostics);
+  const unbalance=officialCombinedMeasurement(protocol.unbalance1,protocol.unbalance2);
+  const temp=officialMeasurementValue(protocol.temperature,"TEMP");
+  if(main) parts.push(`Hlavní baterie: ${main} VDC`);
+  if(reset) parts.push(`Reset diagnostiky: ${reset}`);
+  if(unbalance) parts.push(`Rozvážení: ${unbalance} VDC`);
+  if(temp) parts.push(`Teplota okolí: ${temp} °C`);
+  return parts.join("; ");
 }
 
 function officialRtfEscape(value){
