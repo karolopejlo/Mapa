@@ -1986,9 +1986,11 @@ Cena FZ: ..."></textarea>
   </div>
   <div class="official-protocol-data" id="officialProtocolDataBox" style="display:none">
     <label>a) Provozovatel PBZ</label>
-    <textarea id="officialOperatorData" placeholder="Název, adresa, PSČ..."></textarea>
+    <textarea id="officialOperatorData" placeholder="Název, adresa, PSČ, IČO, DIČ..."></textarea>
     <label>b) Adresa objektu kde je PBZ umístěno</label>
     <textarea id="officialObjectData" placeholder="Název objektu, ulice, město, PSČ..."></textarea>
+    <label>f) Výrobce PBZ</label>
+    <textarea id="officialManufacturerData" placeholder="Výrobce PBZ pro bod f) ve vygenerovaném dokladu."></textarea>
     <button class="secondary" type="button" id="saveOfficialProtocolDataBtn">Uložit data provozovatele</button>
   </div>
   <div class="official-protocol-note-wrap">
@@ -6673,10 +6675,14 @@ function officialProtocolDataForSite(site=selectedSite){
   return localTime>remoteTime ? {...remote,...local} : {...local,...remote};
 }
 
+const OFFICIAL_CONTROL_SUBJECT_TEXT="Servis záložních zdrojů s.r.o.\nBožetěchova 3003/133\n612 00, Brno\nIČO: 09391126, DIČ: CZ09391126";
+const OFFICIAL_DEFAULT_MANUFACTURER_TEXT="Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČO: 09391126, DIČ: CZ09391126";
+
 function officialProtocolInputData(){
   return {
     operator:val("officialOperatorData"),
     objectAddress:val("officialObjectData"),
+    manufacturer:val("officialManufacturerData"),
     note:val("officialProtocolNote"),
     updatedAt:new Date().toISOString(),
     updatedBy:currentUser?.email || ""
@@ -6688,6 +6694,7 @@ function fillOfficialProtocolInputs(site=selectedSite){
   const raw=site?.raw || {};
   setInputValue("officialOperatorData",data.operator || pickRawValue(raw,["Provozovatel","Provozovatel zařízení"]) || "");
   setInputValue("officialObjectData",data.objectAddress || site?.adresa || pickRawValue(raw,["Adresa / umístění","Adresa_GPS","Umístění"]) || "");
+  setInputValue("officialManufacturerData",data.manufacturer || OFFICIAL_DEFAULT_MANUFACTURER_TEXT);
   setInputValue("officialProtocolNote",data.note || "");
 }
 
@@ -6876,6 +6883,10 @@ function officialProtocolMeasurementNotesXml(protocol={},extraNote="",after=80){
   ]],[4815,4815],{noBorders:true}) + (notesXml ? wordBlank(10) + notesXml : "") + wordBlank(after);
 }
 
+function officialManufacturerText(officialData={}){
+  return protocolExportValue(officialData.manufacturer).trim() || OFFICIAL_DEFAULT_MANUFACTURER_TEXT;
+}
+
 function officialRtfMeasurementTextLine(text){
   return `{\\rtlch\\fcs1 \\af0\\afs24 \\ltrch\\fcs0 \\fs24 ${officialRtfEscape(text)}\\par }`;
 }
@@ -6921,10 +6932,8 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
   const place=protocol.pbzLocation || protocolSourceLocationFromSite(site) || "";
   const controlDate=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
   const nextDate=officialProtocolNextDate(protocol,site);
-  const subject=[
-    "Servis záložních zdrojů s.r.o.\nBožetěchova 3003/133\n612 00, Brno\nIČO: 09391126, DIČ: 09391126",
-    "Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČ: 09391126, DIČ: CZ09391126"
-  ];
+  const controlSubject=OFFICIAL_CONTROL_SUBJECT_TEXT;
+  const manufacturer=officialManufacturerText(officialData);
   const tech="Ing. Michal Tipek";
   const blocks=[
     wordParagraph("Doklad o servisní kontrole a zkoušce provozuschopnosti PBZ",{align:"center",bold:true,size:26,after:30}),
@@ -6933,7 +6942,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     officialTwoColumnXml("a) Provozovatel PBZ:",operator,"b) Adresa objektu kde je PBZ umístěno:",objectAddress),
     officialInlineParagraph("c) Umístění PBZ: ",place),
     officialInlineParagraph("d) Typ záložního zdroje, Výrobní číslo, plomba: ",officialProtocolDeviceLine(protocol,site)),
-    officialTwoColumnXml("e) Kontrolní subjekt:",subject[0],"f) Výrobce PBZ:",subject[1]),
+    officialTwoColumnXml("e) Kontrolní subjekt:",controlSubject,"f) Výrobce PBZ:",manufacturer),
     officialInlineParagraph("g) Výsledek kontroly provozuschopnosti: ",officialProtocolResultText(mode)),
     officialInlineParagraph("h) Výsledek funkčních zkoušek: ",officialProtocolFunctionalText(mode)),
     officialInlineParagraph("i) Datum provedení kontroly: ",controlDate),
@@ -7009,24 +7018,17 @@ function officialMultiline(value,maxLines=4){
     .split("\n")
     .map(line=>officialOneLine(line))
     .filter(Boolean);
+  if(maxLines>1 && lines.length>maxLines){
+    const head=lines.slice(0,maxLines-1);
+    const tail=lines.slice(maxLines-1).join(", ");
+    return head.concat([officialOneLine(tail)]).slice(0,maxLines);
+  }
   while(lines.length<maxLines) lines.push("");
   return lines.slice(0,maxLines);
 }
 
 function officialOperatorLines(value,maxLines=4){
-  const lines=protocolExportValue(value)
-    .replace(/\u00a0/g," ")
-    .replace(/\r\n/g,"\n")
-    .replace(/\r/g,"\n")
-    .split("\n")
-    .map(line=>officialOneLine(line)
-      .replace(/\b(i\s*č\s*o|ičo|ic|i\.?\s*č\.?|dič|dic)\s*[:：]?\s*[A-Z]{0,3}\s*[0-9\s.-]+/gi,"")
-      .replace(/\s{2,}/g," ")
-      .replace(/^[,;]\s*|\s*[,;]$/g,"")
-      .trim())
-    .filter(line=>line && !/^[A-Z]{0,3}\s*\d[\d\s.-]{5,}$/.test(line));
-  while(lines.length<maxLines) lines.push("");
-  return lines.slice(0,maxLines);
+  return officialMultiline(value,maxLines);
 }
 
 function officialOperatorText(value){
@@ -7069,6 +7071,39 @@ function officialRtfEscape(value){
     }
   }
   return out;
+}
+
+function officialRtfRun(text,{bold=false,underline=false}={}){
+  const styles=[
+    "\\rtlch\\fcs1",
+    bold ? "\\ab" : "",
+    "\\af0\\afs22",
+    "\\ltrch\\fcs0",
+    bold ? "\\b" : "",
+    "\\fs22",
+    underline ? "\\ul" : ""
+  ].filter(Boolean).join(" ");
+  return `{${styles} ${officialRtfEscape(text)}}`;
+}
+
+function officialRtfSubjectBlock(officialData={}){
+  const left=officialMultiline(OFFICIAL_CONTROL_SUBJECT_TEXT,4);
+  const right=officialMultiline(officialManufacturerText(officialData),4);
+  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
+  const heading=`${paragraph}${officialRtfRun("e) Kontrolní subjekt:",{bold:true,underline:true})}\\tab ${officialRtfRun("f) Výrobce PBZ:",{bold:true,underline:true})}\\par`;
+  const rows=left.map((line,idx)=>`${paragraph}${officialRtfRun(line || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
+  return `${heading}\n${rows}\n`;
+}
+
+function replaceOfficialRtfSubjectBlock(output,officialData={}){
+  const manufacturerLabel="V\\'fdrobce PBZ:";
+  const labelIndex=output.indexOf(manufacturerLabel);
+  if(labelIndex<0) return output;
+  const resultIndex=output.indexOf("{\\*\\bkmkstart _Hlk56757522}",labelIndex);
+  const resultStart=output.lastIndexOf("{\\rtlch\\fcs1",resultIndex);
+  const start=output.lastIndexOf("\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962",labelIndex);
+  if(start<0 || resultStart<0 || resultStart<=start) return output;
+  return `${output.slice(0,start)}${officialRtfSubjectBlock(officialData)}${output.slice(resultStart)}`;
 }
 
 function bytesToHex(bytes){
@@ -7130,10 +7165,15 @@ function addOfficialRtfClientSignature(output,protocol={}){
 }
 
 function removeOfficialRtfOperatorIcoLabel(output){
-  return output
-    .replaceAll("I\\'c8O:","     ")
-    .replace(/,\s*DI\\'c8:\s*09391126/g,"")
-    .replace(/09391126/g,"");
+  const marker="__SZZ_OPERATOR_4__";
+  const idx=output.indexOf(marker);
+  if(idx<0) return output;
+  const label="I\\'c8O:";
+  const start=output.lastIndexOf(label,idx);
+  if(start>=0 && idx-start<260){
+    return `${output.slice(0,start)}     ${output.slice(start+label.length)}`;
+  }
+  return output;
 }
 
 function normalizeOfficialRtfClientLabel(output){
@@ -7187,6 +7227,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
 
 function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
   let output=removeOfficialRtfOperatorIcoLabel(template);
+  output=replaceOfficialRtfSubjectBlock(output,officialData);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
   Object.entries(values).forEach(([placeholder,value])=>{
     output=output.replaceAll(placeholder,officialRtfEscape(value));
