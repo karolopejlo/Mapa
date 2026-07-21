@@ -1690,7 +1690,12 @@ button,input,select,textarea{
       </select>
     </div>
 
-    <label>Plomba</label><input id="protoSeal">
+    <label>Plomba</label>
+    <select id="protoSeal">
+      <option value="">Vyber</option>
+      <option value="v pořádku">v pořádku</option>
+      <option value="porušena">porušena</option>
+    </select>
 
     <h4>Místo a provozní údaje</h4>
 
@@ -1712,7 +1717,13 @@ button,input,select,textarea{
       <div><label>Počet sad (ks)</label><input id="protoSetCount"></div>
       <div><label>Pom. Bat (Ah)</label><input id="protoAuxBatteryAh"></div>
       <div><label>Teplota okolí (°C)</label><input id="protoTemp"></div>
-      <div><label>Plomba</label><input id="protoSeal2"></div>
+      <div><label>Plomba</label>
+        <select id="protoSeal2">
+          <option value="">Vyber</option>
+          <option value="v pořádku">v pořádku</option>
+          <option value="porušena">porušena</option>
+        </select>
+      </div>
     </div>
 
     <h4>Měření AC</h4>
@@ -1833,7 +1844,7 @@ button,input,select,textarea{
     </div>
 
     <div class="row" style="margin-top:10px">
-      <button class="primary" type="submit">Uložit protokol</button>
+      <button class="primary" type="submit" id="saveProtocolBtn">Uložit protokol</button>
       <button class="secondary" type="button" id="exportProtocolFormBtn">Exportovat do Wordu</button>
       <button class="secondary" type="button" id="mailProtocolFormBtn">Poslat na mail</button>
     </div>
@@ -1975,7 +1986,7 @@ Cena FZ: ..."></textarea>
   </div>
   <div class="official-protocol-data" id="officialProtocolDataBox" style="display:none">
     <label>a) Provozovatel PBZ</label>
-    <textarea id="officialOperatorData" placeholder="Název, adresa, PSČ, IČO..."></textarea>
+    <textarea id="officialOperatorData" placeholder="Název, adresa, PSČ..."></textarea>
     <label>b) Adresa objektu kde je PBZ umístěno</label>
     <textarea id="officialObjectData" placeholder="Název objektu, ulice, město, PSČ..."></textarea>
     <button class="secondary" type="button" id="saveOfficialProtocolDataBtn">Uložit data provozovatele</button>
@@ -5959,6 +5970,7 @@ window.openDetail=function(i){
   }
   const addDataRowBtn=document.getElementById("addDataRowBtn");
   if(addDataRowBtn) addDataRowBtn.onclick=addNewDataRowToTable;
+  clearProtocolEditState();
   const pf=document.getElementById("protocolForm"); if(pf){ pf.style.display="none"; } const tb=document.getElementById("toggleProtocolBtn"); if(tb) tb.textContent="Vyplnit protokol";;
   try{
     setInputValue("editName",r.adresa||"");
@@ -5979,6 +5991,7 @@ window.openDetail=function(i){
 }
 let detailHistoryItems=[];
 let detailHistoryIndex=0;
+let protocolEditState=null;
 
 function setInputValue(id,value){
   const el=document.getElementById(id);
@@ -5987,6 +6000,164 @@ function setInputValue(id,value){
 function setInputChecked(id,value){
   const el=document.getElementById(id);
   if(el) el.checked=!!value;
+}
+
+function normalizeSealValue(value){
+  const n=dataNormFixed(value);
+  if(!n) return "";
+  if(n.includes("porus") || n.includes("poskoz") || n.includes("spat")) return "porušena";
+  if(n.includes("porad") || n==="ok" || n==="ano" || n.includes("neporus")) return "v pořádku";
+  return safe(value);
+}
+
+function setProtocolFieldValue(id,value){
+  const el=document.getElementById(id);
+  if(!el) return;
+  let next=safe(value);
+  if(el.tagName==="SELECT"){
+    if(id==="protoSeal" || id==="protoSeal2") next=normalizeSealValue(next);
+    if(next && !Array.from(el.options).some(option=>option.value===next)){
+      const option=document.createElement("option");
+      option.value=next;
+      option.textContent=next;
+      el.appendChild(option);
+    }
+  }
+  el.value=next;
+}
+
+function updateProtocolSaveButtonText(){
+  const btn=document.getElementById("saveProtocolBtn");
+  if(btn) btn.textContent=protocolEditState ? "Uložit změny protokolu" : "Uložit protokol";
+}
+
+function clearProtocolEditState(){
+  protocolEditState=null;
+  updateProtocolSaveButtonText();
+}
+
+function protocolEditId(){
+  return safe(protocolEditState && protocolEditState.id);
+}
+
+function drawSavedProtocolSignature(dataUrl){
+  const canvas=protocolSignatureCanvas();
+  const ctx=protocolSignatureContext();
+  if(!canvas || !ctx || !safe(dataUrl)) return;
+  const img=new Image();
+  img.onload=()=>{
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const scale=Math.min(canvas.width/img.width, canvas.height/img.height);
+    const w=img.width*scale;
+    const h=img.height*scale;
+    ctx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
+    protoClientSignatureDirty=false;
+  };
+  img.src=dataUrl;
+}
+
+function fillProtocolFormFromHistory(protocol={}){
+  const form=document.getElementById("protocolForm");
+  if(form) form.reset();
+  clearProtocolClientSignature();
+  populateProtocolDeviceSelect();
+  setProtocolFieldValue("protoDate",dateInputValueFromAny(protocol.date || protocol.checkDate || protocol.createdAt));
+  setProtocolFieldValue("protoPlace",protocol.place || protocol.siteAddress || protocol.siteName || selectedSite?.adresa || "");
+  setProtocolFieldValue("protoDeviceType",protocol.deviceType || protocol.selectedDevice || protocol.siteSource || "");
+  setProtocolFieldValue("protoDeviceTypeSelect",protocol.selectedDevice || protocol.deviceType || "");
+  setProtocolFieldValue("protoDeviceSelect",protocol.selectedDevice || protocol.deviceType || "");
+  setProtocolFieldValue("protoSerial",protocol.serial || "");
+  setProtocolFieldValue("protoSeal",protocol.seal || "");
+  setProtocolFieldValue("protoOperator",protocol.operator || "");
+  setProtocolFieldValue("protoCustomer",protocol.customer || "");
+  setProtocolFieldValue("protoPbzLocation",protocol.pbzLocation || "");
+  setProtocolFieldValue("protoBatteryCount",protocol.batteryCount || "");
+  setProtocolFieldValue("protoCapacity",protocol.capacityAh || "");
+  setProtocolFieldValue("protoSetCount",protocol.setCount || "");
+  setProtocolFieldValue("protoAuxBatteryAh",protocol.auxBatteryAh || "");
+  setProtocolFieldValue("protoTemp",protocol.temperature || "");
+  setProtocolFieldValue("protoSeal2",protocol.seal2 || "");
+  setProtocolFieldValue("protoInputVac",protocol.inputVac || "");
+  setProtocolFieldValue("protoOutput1Vac",protocol.output1Vac || "");
+  setProtocolFieldValue("protoOutput2Vac",protocol.output2Vac || "");
+  setProtocolFieldValue("protoBackup1Vac",protocol.backup1Vac || "");
+  setProtocolFieldValue("protoBackup2Vac",protocol.backup2Vac || "");
+  setProtocolFieldValue("protoMainBatVdc",protocol.mainBatVdc || "");
+  setProtocolFieldValue("protoResetDiag",protocol.resetDiagnostics || "");
+  setProtocolFieldValue("protoAuxBatVdc",protocol.auxBatVdc || "");
+  setProtocolFieldValue("protoUnbalance1",protocol.unbalance1 || "");
+  setProtocolFieldValue("protoUnbalance2",protocol.unbalance2 || "");
+  setProtocolFieldValue("protoBreakersLocation",protocol.breakersLocation || "");
+  setProtocolFieldValue("protoControlLocation",protocol.controlLocation || "");
+  setProtocolFieldValue("protoContacts",protocol.contacts || "");
+  setProtocolFieldValue("protoOtherDevice",protocol.backedDevices?.other || "");
+  setProtocolFieldValue("protoOtherAccess",protocol.access?.other || "");
+  setProtocolFieldValue("protoOtherAvailability",protocol.availability?.other || "");
+  setProtocolFieldValue("protoPeriod",protocol.period || "");
+  setProtocolFieldValue("protoConditions",protocol.conditions || protocol.result || "");
+  setProtocolFieldValue("protoConditionsReason",protocol.conditionsReason || "");
+  setProtocolFieldValue("protoNotes",protocol.notes || protocol.issues || "");
+  setProtocolFieldValue("protoClientSign",protocol.clientSign || protocol.customer || "");
+  setProtocolFieldValue("protoTechSign",protocol.techSign || protocol.technician || protocol.createdBy || protocol.technicianEmail || currentUser?.email || "");
+
+  const backed=protocol.backedDevices || {};
+  setInputChecked("protoLift",backed.lift);
+  setInputChecked("protoVent",backed.vent);
+  setInputChecked("protoMachineLight",backed.machineLight);
+  setInputChecked("protoChuc",backed.chuc);
+  setInputChecked("protoDamper",backed.damper);
+  setInputChecked("protoSkylight",backed.skylight);
+  setInputChecked("protoGate",backed.gate);
+  setInputChecked("protoAts",backed.ats);
+  setInputChecked("protoRpo",backed.rpo);
+  setInputChecked("protoNo",backed.no);
+  setInputChecked("protoSprinkler",backed.sprinkler);
+  setInputChecked("protoCsTs",backed.csTs);
+
+  const access=protocol.access || {};
+  setInputChecked("protoBlue",access.blue);
+  setInputChecked("protoB",access.b);
+  setInputChecked("protoC",access.c);
+  setInputChecked("protoGarage",access.garage);
+  setInputChecked("protoCarLift",access.carLift);
+  setInputChecked("protoBarrier",access.barrier);
+  setInputChecked("protoParkingHouse",access.parkingHouse);
+  setInputChecked("protoPermit",access.permit);
+  setInputChecked("protoTraining",access.training);
+  setInputChecked("protoShoes",access.shoes);
+  setInputChecked("protoVest",access.vest);
+  setInputChecked("protoHelmet",access.helmet);
+
+  const availability=protocol.availability || {};
+  setInputChecked("protoWcOk",availability.wcOk);
+  setInputChecked("protoWcNok",availability.wcNok);
+  setInputChecked("protoLightOk",availability.lightOk);
+  setInputChecked("protoLightNok",availability.lightNok);
+  setInputChecked("protoLadder",availability.ladder);
+  setInputChecked("protoStairs",availability.stairs);
+  setInputChecked("protoLowCeiling",availability.lowCeiling);
+  setInputChecked("protoExtremeTemp",availability.extremeTemp);
+  drawSavedProtocolSignature(protocol.clientSignatureDataUrl || "");
+  updateProtocolSummary();
+}
+
+function editCurrentHistoryProtocol(){
+  const protocol=selectedHistoryProtocol();
+  const st=document.getElementById("protocolStatus");
+  if(!protocol){
+    if(st) st.textContent="Není vybraný protokol k úpravě.";
+    return;
+  }
+  const form=document.getElementById("protocolForm");
+  if(form) form.style.display="block";
+  const toggle=document.getElementById("toggleProtocolBtn");
+  if(toggle) toggle.textContent="Skrýt protokol";
+  initProtocolClientSignaturePad();
+  fillProtocolFormFromHistory(protocol);
+  protocolEditState={id:safe(protocol._id), item:{...protocol}, collection:protocol._collection || ""};
+  updateProtocolSaveButtonText();
+  if(st) st.textContent="Upravuješ uložený protokol. Po uložení se přepíše stejný záznam.";
+  form?.scrollIntoView({behavior:"smooth",block:"start"});
 }
 
 function startDetailAsyncLoads(site){
@@ -6745,7 +6916,7 @@ function officialInlineParagraph(label,value){
 
 function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="ok"){
   const site=selectedSite || {};
-  const operator=safe(officialData.operator);
+  const operator=officialOperatorText(officialData.operator);
   const objectAddress=safe(officialData.objectAddress);
   const place=protocol.pbzLocation || protocolSourceLocationFromSite(site) || "";
   const controlDate=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
@@ -6840,6 +7011,26 @@ function officialMultiline(value,maxLines=4){
     .filter(Boolean);
   while(lines.length<maxLines) lines.push("");
   return lines.slice(0,maxLines);
+}
+
+function officialOperatorLines(value,maxLines=4){
+  const lines=protocolExportValue(value)
+    .replace(/\u00a0/g," ")
+    .replace(/\r\n/g,"\n")
+    .replace(/\r/g,"\n")
+    .split("\n")
+    .map(line=>officialOneLine(line)
+      .replace(/\b(i\s*č\s*o|ičo|ic|i\.?\s*č\.?|dič|dic)\s*[:：]?\s*[A-Z]{0,3}\s*[0-9\s.-]+/gi,"")
+      .replace(/\s{2,}/g," ")
+      .replace(/^[,;]\s*|\s*[,;]$/g,"")
+      .trim())
+    .filter(line=>line && !/^[A-Z]{0,3}\s*\d[\d\s.-]{5,}$/.test(line));
+  while(lines.length<maxLines) lines.push("");
+  return lines.slice(0,maxLines);
+}
+
+function officialOperatorText(value){
+  return officialOperatorLines(value,4).filter(Boolean).join("\n");
 }
 
 function officialIcoValue(value){
@@ -6938,6 +7129,13 @@ function addOfficialRtfClientSignature(output,protocol={}){
   return output.replace("______________________________________        ______________________________________",`${block}______________________________________        ______________________________________`);
 }
 
+function removeOfficialRtfOperatorIcoLabel(output){
+  return output
+    .replaceAll("I\\'c8O:","     ")
+    .replace(/,\s*DI\\'c8:\s*09391126/g,"")
+    .replace(/09391126/g,"");
+}
+
 function normalizeOfficialRtfClientLabel(output){
   return output.replace(/p\\'f8\s*evzal za provozovatele/g,"p\\'f8evzal za objednavatele");
 }
@@ -6948,7 +7146,7 @@ function officialProtocolConditionsTail(protocol={},mode="ok"){
 
 function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
   const site=selectedSite || {};
-  const operator=officialMultiline(officialData.operator,4);
+  const operator=officialOperatorLines(officialData.operator,4);
   const object=officialMultiline(officialData.objectAddress,4);
   const controlDate=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
   const device=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || protocolDeviceTypeFromSite(site);
@@ -6960,7 +7158,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
     "__SZZ_OPERATOR_1__":operator[0],
     "__SZZ_OPERATOR_2__":operator[1],
     "__SZZ_OPERATOR_3__":operator[2],
-    "__SZZ_OPERATOR_4__":officialIcoValue(operator[3]),
+    "__SZZ_OPERATOR_4__":operator[3],
     "__SZZ_OBJECT_1__":object[0],
     "__SZZ_OBJECT_2__":object[1],
     "__SZZ_OBJECT_3__":object[2],
@@ -6988,7 +7186,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
 }
 
 function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
-  let output=template;
+  let output=removeOfficialRtfOperatorIcoLabel(template);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
   Object.entries(values).forEach(([placeholder,value])=>{
     output=output.replaceAll(placeholder,officialRtfEscape(value));
@@ -7572,6 +7770,59 @@ function applyLatestProtocolToSite(protocol,site=selectedSite){
   if(selectedSite && detailKey(selectedSite)===detailKey(site)) selectedSite=site;
 }
 
+function applyProtocolFieldsToRaw(raw,protocol={}){
+  const out=raw || {};
+  const device=safe(protocol.deviceType || protocol.selectedDevice);
+  const serial=safe(protocol.serial);
+  const location=safe(protocol.pbzLocation);
+  const breakers=safe(protocol.breakersLocation);
+  if(device){
+    out["Popis_zdroje"]=device;
+    out["Kontrolované zařízení"]=device;
+    out["Typ zařízení"]=device;
+  }
+  if(serial){
+    out["Zdroj"]=serial;
+    out["Výrobní číslo"]=serial;
+    out["Výrobní_číslo"]=serial;
+  }
+  if(location){
+    out["Umístění zdroje"]=location;
+    out["Umístění"]=location;
+  }
+  if(breakers){
+    out["Jistič UPS"]=breakers;
+    out["Jističe UPS"]=breakers;
+    out["Umístění jističů"]=breakers;
+  }
+  return out;
+}
+
+function applyProtocolFieldsToSite(protocol,site=selectedSite){
+  if(!protocol || !site) return;
+  const raw=applyProtocolFieldsToRaw({...(site.raw || {})},protocol);
+  site.raw=raw;
+  const refreshed=normalize([raw])[0];
+  Object.assign(site, refreshed, {
+    id:site.id,
+    i:site.i,
+    firebaseDocId:site.firebaseDocId || raw["Firebase_doc_id"] || "",
+    firebaseData:{...(site.firebaseData || {}), raw}
+  });
+  if(selectedSite && detailKey(selectedSite)===detailKey(site)) selectedSite=site;
+}
+
+function refreshSelectedDetailDataView(){
+  if(!selectedSite) return;
+  const table=document.getElementById("detailTable");
+  if(table && !table.classList.contains("data-edit-table")){
+    table.innerHTML=detailTable(selectedSite);
+  }
+  showControlDateDisplay(selectedSite);
+  const sub=document.getElementById("detailSub");
+  if(sub) sub.textContent=siteSourceLabel(selectedSite) || "";
+}
+
 async function refreshSiteDataFromFirebase(site=selectedSite){
   const docId=selectedSiteDocId(site);
   if(!docId || !firebaseReady || !db || !fb.fsMod) return null;
@@ -7605,19 +7856,22 @@ async function refreshSiteDataFromFirebase(site=selectedSite){
 async function updateSiteControlDateFromProtocol(protocol,site=selectedSite){
   const docId=selectedSiteDocId(site);
   const latest=protocolDateIso(protocol);
-  if(!docId || !latest || !firebaseReady || !db) return false;
-  const raw=applyLatestProtocolDateToRaw({...(site?.raw || {})},{protocolHistory:[protocol]});
+  if(!docId || !firebaseReady || !db) return false;
+  const baseRaw={...(site?.raw || {})};
+  const raw=latest ? applyLatestProtocolDateToRaw(baseRaw,{protocolHistory:[protocol]}) : baseRaw;
+  applyProtocolFieldsToRaw(raw,protocol);
   raw["Firebase_doc_id"]=docId;
   if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
   try{
     const {doc,setDoc,serverTimestamp}=fb.fsMod;
-    await setDoc(doc(db,"sitesUnified",docId),{
+    const updatePayload={
       raw,
       dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(raw) : [],
-      latestProtocolDate:latest,
       updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString(),
       updatedBy:currentUser?.email || ""
-    },{merge:true});
+    };
+    if(latest) updatePayload.latestProtocolDate=latest;
+    await setDoc(doc(db,"sitesUnified",docId),updatePayload,{merge:true});
     if(site){
       site.raw=raw;
       const refreshed=normalize([raw])[0];
@@ -7625,7 +7879,11 @@ async function updateSiteControlDateFromProtocol(protocol,site=selectedSite){
         id:site.id,
         i:site.i,
         firebaseDocId:docId,
-        firebaseData:{...(site.firebaseData || {}), raw, latestProtocolDate:latest}
+        firebaseData:{
+          ...(site.firebaseData || {}),
+          raw,
+          ...(latest ? {latestProtocolDate:latest} : {})
+        }
       });
     }
     return true;
@@ -7689,6 +7947,7 @@ function renderHistory(){
   const canExportProtocol=isProtocolHistoryItem(d);
   const canDeleteProtocol=isHistoryAdmin() && canExportProtocol;
   const historyActionButtons=[
+    canExportProtocol ? '<button class="secondary" type="button" id="editHistoryProtocolBtn">Upravit protokol</button>' : "",
     canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat do Wordu</button>' : "",
     canExportProtocol ? '<button class="secondary" type="button" id="mailHistoryProtocolBtn">Poslat na mail</button>' : "",
     canDeleteProtocol ? '<button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button>' : ""
@@ -7745,6 +8004,8 @@ function renderHistory(){
   }
   const del=document.getElementById("deleteHistoryProtocolBtn");
   if(del) del.onclick=deleteCurrentHistoryProtocol;
+  const edit=document.getElementById("editHistoryProtocolBtn");
+  if(edit) edit.onclick=editCurrentHistoryProtocol;
   const exp=document.getElementById("exportHistoryProtocolBtn");
   if(exp) exp.onclick=()=>exportProtocolToWord(detailHistoryItems[detailHistoryIndex]);
   const mail=document.getElementById("mailHistoryProtocolBtn");
@@ -8536,6 +8797,7 @@ let protocolPrefillSiteId="";
 
 function resetProtocolFormForSelectedSite(siteId){
   const key=String(siteId || "");
+  clearProtocolEditState();
   const form=document.getElementById("protocolForm");
   if(form) form.reset();
   clearProtocolClientSignature();
@@ -8548,6 +8810,7 @@ function closeProtocolFormAfterSave(){
     form.reset();
     form.style.display="none";
   }
+  clearProtocolEditState();
   clearProtocolClientSignature();
   protocolPrefillSiteId="";
   updateProtocolSummary();
@@ -9346,7 +9609,7 @@ async function prefillProtocol(){
 
   setIfEmpty("protoOperator", pickRawValue(raw,["Provozovatel","Provozovatel zařízení"]));
   setIfEmpty("protoCustomer", pickRawValue(raw,["Objednatel","Faktura na","Protokol na","Objednatel zkoušky provozuschopnosti"]));
-  setIfEmpty("protoBreakersLocation", pickRawValue(raw,["Umístění jističů","Jističe UPS","Jističe"]));
+  setIfEmpty("protoBreakersLocation", pickRawValue(raw,["Jistič UPS","Jistic UPS","Umístění jističů","Jističe UPS","Jističe"]));
   setIfEmpty("protoControlLocation", pickRawValue(raw,["Umístění ovládání","Ovládání zálohovaných zařízení"]));
 
 
@@ -9432,7 +9695,12 @@ async function prefillProtocol(){
 }
 
 function protocolPayload(){
+  const original=protocolEditState?.item || {};
+  const signature=protocolClientSignatureDataUrl() || original.clientSignatureDataUrl || "";
+  const nowIso=new Date().toISOString();
+  const originalCreatedAt=original.createdAt && typeof original.createdAt.toDate==="function" ? original.createdAt.toDate().toISOString() : (safe(original.createdAt) || nowIso);
   return {
+    _id:protocolEditId() || "",
     siteId:selectedSite?.id || "",
     siteKey:siteRecordKeys(selectedSite)[0] || selectedSite?.id || "",
     siteKeys:siteRecordKeys(selectedSite),
@@ -9516,10 +9784,11 @@ function protocolPayload(){
     conditionsReason:val("protoConditionsReason"),
     notes:val("protoNotes"),
     clientSign:val("protoClientSign"),
-    clientSignatureDataUrl:protocolClientSignatureDataUrl(),
+    clientSignatureDataUrl:signature,
     techSign:val("protoTechSign") || (currentUser?.displayName || currentUser?.email || ""),
-    savedAt:new Date().toISOString(),
-    createdAt:new Date().toISOString()
+    savedAt:nowIso,
+    createdAt:originalCreatedAt,
+    updatedAt:protocolEditId() ? nowIso : ""
   };
 }
 
@@ -9597,11 +9866,16 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   }
 
   const payload=protocolPayload();
-  payload.createdAt=new Date().toISOString();
-  payload.createdBy=currentUser?.email || "";
+  const editingId=protocolEditId();
+  const editing=!!editingId;
+  payload.createdBy=protocolEditState?.item?.createdBy || currentUser?.email || "";
+  payload.updatedBy=currentUser?.email || "";
   const onlineSaveAvailable=!!(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine !== false);
   const saveOffline=reason=>{
     const offlinePayload=saveProtocolLocally(payload,selectedSite,reason);
+    applyProtocolFieldsToSite(offlinePayload,selectedSite);
+    refreshSelectedDetailDataView();
+    render();
     st.textContent="Protokol uložen lokálně v tomto prohlížeči. Internet/Firebase teď není dostupný.";
     showSaveConfirmation("Protokol uložen lokálně.");
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
@@ -9616,7 +9890,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
 
   try{
     const {collection,doc,setDoc,serverTimestamp}=fb.fsMod;
-    const ref=doc(collection(db,"protocols"));
+    const ref=editing ? doc(db,"protocols",editingId) : doc(collection(db,"protocols"));
     payload._id=ref.id;
     payload.createdBy=currentUser.email || payload.createdBy;
     const childOk=await saveSiteChildItem("protocols",ref.id,payload,selectedSite);
@@ -9631,14 +9905,20 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
       createdAt:payload.createdAt
     },selectedSite);
     try{
-      await setDoc(ref,{...payload,createdAt:serverTimestamp()});
+      const standalonePayload={
+        ...payload,
+        updatedAt:serverTimestamp ? serverTimestamp() : (payload.updatedAt || new Date().toISOString())
+      };
+      if(!editing) standalonePayload.createdAt=serverTimestamp ? serverTimestamp() : payload.createdAt;
+      await setDoc(ref,standalonePayload,{merge:true});
     }catch(e){
       console.warn("Samostatný protokol se neuložil, používám kopii pod bodem",e);
       if(!embeddedOk) throw e;
     }
     await updateSiteControlDateFromProtocol(payload,selectedSite);
-    st.textContent="Protokol uložen.";
-    showSaveConfirmation("Protokol uložen.");
+    refreshSelectedDetailDataView();
+    st.textContent=editing ? "Protokol upraven." : "Protokol uložen.";
+    showSaveConfirmation(editing ? "Protokol upraven." : "Protokol uložen.");
     render();
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
     closeProtocolFormAfterSave();
