@@ -6270,9 +6270,9 @@ function wordSignatureImageRun(relId="rIdSignature",options={}){
 function wordClientSignatureCellXml(protocol={},options={}){
   const compact=!!options.compact;
   const parts=[];
-  if(safe(protocol.clientSign)) parts.push(wordParagraph(protocol.clientSign,{size:compact ? 14 : 18,after:compact ? 0 : 30}));
+  if(safe(protocol.clientSign)) parts.push(wordParagraph(protocol.clientSign,{size:compact ? 16 : 18,after:compact ? 0 : 30}));
   if(protocolSignatureImageBytes(protocol)){
-    const imageOptions=compact ? {cx:1550000,cy:430000} : {};
+    const imageOptions=compact ? {cx:2250000,cy:620000} : {};
     parts.push(wordParagraphXml(wordSignatureImageRun("rIdSignature",imageOptions),{after:0}));
   }
   return parts.join("") || wordParagraph(" ",{size:18,after:0});
@@ -6669,10 +6669,7 @@ function officialProtocolMeasurements(protocol={},extraNote=""){
     ["Vstup",protocol.inputVac,"VAC"],
     ["Výstup",protocol.output1Vac || protocol.output2Vac,"VAC"],
     ["Výstup při záloze",protocol.backup1Vac || protocol.backup2Vac,"VAC"],
-    ["Pomocná baterie",protocol.auxBatVdc,"VDC"],
-    ["Hlavní baterie",protocol.mainBatVdc,"VDC"],
-    ["Rozvážení baterií",protocol.unbalance1 || protocol.unbalance2,"VDC"],
-    ["Teplota v okolí",protocol.temperature,"°C"]
+    ["Pomocná baterie",protocol.auxBatVdc,"VDC"]
   ].map(([label,value,unit])=>`${label} – ${safe(value) ? `${safe(value)} ${unit}` : ""}`.trim());
   const notes=[...lines];
   if(safe(protocol.notes || protocol.issues)) notes.push(`Poznámka z protokolu – ${safe(protocol.notes || protocol.issues)}`);
@@ -6706,7 +6703,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     "Servis záložních zdrojů s.r.o.\nBožetěchova 3003/133\n612 00, Brno\nIČO: 09391126, DIČ: 09391126",
     "Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČ: 09391126, DIČ: CZ09391126"
   ];
-  const tech=protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || "Ing. Jan Soldán";
+  const tech="Ing. Michal Tipek";
   const blocks=[
     wordParagraph("Doklad o servisní kontrole a zkoušce provozuschopnosti PBZ",{align:"center",bold:true,size:26,after:30}),
     wordParagraph("dle zákona č. 133/1985 a vyhlášky 246/2001 Sb.",{align:"center",size:20,after:20}),
@@ -6723,7 +6720,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordParagraph("Potvrzujeme, že jsme provedli funkční zkoušku a kontrolu provozuschopnosti výše uvedeného zařízení v souladu s platnými právními předpisy §6 a §7 vyhlášky MV246/2001 Sb., normativními požadavky, dokumentací a technickými podmínkami výrobce.",{size:20,after:70}),
     officialInlineParagraph("l) Zařízení pracuje ve vyhovujících podmínkách: ",officialProtocolConditionsText(protocol,mode)),
     wordParagraph("Poznámky:",{bold:true,size:20,after:35}),
-    wordParagraph(officialProtocolMeasurements(protocol,officialData.note),{size:20,after:protocolSignatureImageBytes(protocol) ? 90 : 230}),
+    wordParagraph(officialProtocolMeasurements(protocol,officialData.note),{size:20,after:protocolSignatureImageBytes(protocol) ? 25 : 110}),
     wordTable([
       [
         {text:"______________________________________",size:18,align:"center"},
@@ -6836,10 +6833,37 @@ function bytesToHex(bytes){
   return Array.from(bytes || [],byte=>byte.toString(16).padStart(2,"0")).join("");
 }
 
+function szzLogoDataUrl(){
+  const logo=document.querySelector("[data-szz-logo-copy]") || document.querySelector(".logo-img");
+  return safe(logo?.getAttribute("src") || logo?.src || "");
+}
+
+function dataUrlImageBytes(dataUrl){
+  const match=safe(dataUrl).match(/^data:image\/(?:png|jpe?g);base64,(.+)$/i);
+  if(!match) return null;
+  try{return base64ToBytes(match[1]);}catch(e){return null;}
+}
+
+function officialRtfWatermark(){
+  const bytes=dataUrlImageBytes(szzLogoDataUrl());
+  if(!bytes) return "";
+  const hex=bytesToHex(bytes);
+  return `{\\shp{\\*\\shpinst\\shpleft0\\shptop0\\shpright6377\\shpbottom3167\\shpfhdr1\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr3\\shpwrk0\\shpfblwtxt1\\shpz2\\shplid20260721{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn fFlipH}{\\sv 0}}{\\sp{\\sn fFlipV}{\\sv 0}}{\\sp{\\sn pib}{\\sv {\\pict\\picscalex40\\picscaley40\\piccropl0\\piccropr0\\piccropt0\\piccropb0\\picw28122\\pich13968\\picwgoal15943\\pichgoal7919\\pngblip ${hex}}}}{\\sp{\\sn pibFlags}{\\sv 2}}{\\sp{\\sn pictureContrast}{\\sv 19661}}{\\sp{\\sn pictureBrightness}{\\sv 22938}}{\\sp{\\sn fLine}{\\sv 0}}{\\sp{\\sn wzName}{\\sv WordPictureWatermarkSZZ}}{\\sp{\\sn posh}{\\sv 2}}{\\sp{\\sn posrelh}{\\sv 0}}{\\sp{\\sn posv}{\\sv 2}}{\\sp{\\sn posrelv}{\\sv 0}}{\\sp{\\sn dhgt}{\\sv 251660288}}{\\sp{\\sn fLayoutInCell}{\\sv 0}}{\\sp{\\sn fBehindDocument}{\\sv 1}}}}{\\shprslt\\par\\pard\\ql \\li0\\ri0\\widctlpar\\phmrg\\posxc\\posyc\\dxfrtext180\\dfrmtxtx180\\dfrmtxty0\\wraparound\\aspalpha\\aspnum\\faauto\\adjustright\\rin0\\lin0\\itap0}\\par `;
+}
+
+function addOfficialRtfWatermark(output){
+  if(output.includes("WordPictureWatermarkSZZ") || output.includes("WordPictureWatermark415820")) return output;
+  const watermark=officialRtfWatermark();
+  if(!watermark) return output;
+  const shapeIndex=output.indexOf("{\\shp{\\*\\shpinst");
+  if(shapeIndex<0) return output;
+  return `${output.slice(0,shapeIndex)}${watermark}${output.slice(shapeIndex)}`;
+}
+
 function officialRtfSignatureImage(protocol={}){
   const bytes=protocolSignatureImageBytes(protocol);
   if(!bytes) return "";
-  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal1450\\pichgoal420 ${bytesToHex(bytes)}}`;
+  return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal2200\\pichgoal640 ${bytesToHex(bytes)}}`;
 }
 
 function officialRtfClientSignatureBlock(protocol={}){
@@ -6847,10 +6871,10 @@ function officialRtfClientSignatureBlock(protocol={}){
   const signature=officialRtfSignatureImage(protocol);
   if(!name && !signature) return "";
   const parts=[];
-  if(name) parts.push(`{\\fs14 ${officialRtfEscape(name)}}`);
+  if(name) parts.push(`{\\fs16 ${officialRtfEscape(name)}}`);
   if(signature) parts.push(signature);
   const reset="\\pard \\ltrpar\\ql \\li0\\ri0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
-  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb0\\sa0\\sl160\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
+  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb0\\sa0\\sl185\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
 }
 
 function addOfficialRtfClientSignature(output,protocol={}){
@@ -6879,7 +6903,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
   const device=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || protocolDeviceTypeFromSite(site);
   const serial=protocol.serial || protocolSerialFromSite(site);
   const seal=protocol.seal || protocol.seal2 || "";
-  const tech=protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || "Ing. Jan Soldán";
+  const tech="Ing. Michal Tipek";
   const note=officialOneLine(officialData.note,protocolSignatureImageBytes(protocol) ? 80 : 120);
   return {
     "__SZZ_OPERATOR_1__":operator[0],
@@ -6918,9 +6942,58 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   Object.entries(values).forEach(([placeholder,value])=>{
     output=output.replaceAll(placeholder,officialRtfEscape(value));
   });
+  output=addOfficialRtfWatermark(output);
   output=addOfficialRtfClientSignature(output,protocol);
   output=normalizeOfficialRtfClientLabel(output);
   return output;
+}
+
+function protocolWordFileNameJoin(parts,fallback="protokol"){
+  const name=parts
+    .map(part=>safe(part))
+    .filter(Boolean)
+    .map(part=>protocolWordFileNamePart(part))
+    .filter(Boolean)
+    .join("-")
+    .replace(/-+/g,"-")
+    .replace(/^-+|-+$/g,"");
+  return name.slice(0,140) || fallback;
+}
+
+function officialProtocolAddressFileName(protocol={},site=selectedSite){
+  const raw=site?.raw || {};
+  const address=officialOneLine(
+    protocol.siteAddress ||
+    protocol.siteName ||
+    protocol.place ||
+    site?.adresa ||
+    pickRawValue(raw,["Adresa / umístění","Adresa_GPS","Umístění"]) ||
+    "",
+    140
+  );
+  if(!address) return "";
+  const parts=address.split(",").map(part=>part.trim()).filter(Boolean);
+  let city="";
+  let street="";
+  if(parts.length>=2){
+    const first=parts[0];
+    const second=parts.slice(1).join(", ");
+    const firstHasNumber=/\d/.test(first);
+    const secondHasNumber=/\d/.test(second);
+    if(firstHasNumber && !secondHasNumber){
+      street=first;
+      city=second;
+    }else if(!firstHasNumber && secondHasNumber){
+      city=first;
+      street=second;
+    }else{
+      street=first;
+      city=second;
+    }
+  }else{
+    street=address;
+  }
+  return protocolWordFileNameJoin([city,street,protocolExportDatePart(protocol)],"doklad");
 }
 
 async function preparedOfficialProtocolExport(protocol={},officialData={},mode="ok"){
@@ -6928,9 +7001,9 @@ async function preparedOfficialProtocolExport(protocol={},officialData={},mode="
     ...protocol,
     createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
   };
-  const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "doklad";
   const prefix=mode==="stop" ? "doklad-stop-stav" : "doklad-provozuschopnosti";
-  const fileName=`${prefix}-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.rtf`;
+  const fileBase=officialProtocolAddressFileName(filled,selectedSite) || `${prefix}-${protocolExportDatePart(filled)}`;
+  const fileName=`${fileBase}.rtf`;
   const template=await loadOfficialRtfTemplate(mode);
   return {
     filled,
