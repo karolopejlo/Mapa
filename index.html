@@ -6834,7 +6834,7 @@ function officialProtocolRemedyMonth(protocol={}){
 function officialProtocolDeviceLine(protocol={},site=selectedSite){
   const device=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || protocolDeviceTypeFromSite(site);
   const serial=protocol.serial || protocolSerialFromSite(site);
-  const seal=protocol.seal || protocol.seal2 || "";
+  const seal=protocol.seal || "";
   return [device,serial,seal].map(safe).filter(Boolean).join(", ");
 }
 
@@ -7213,7 +7213,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
   const controlDate=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
   const device=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || protocolDeviceTypeFromSite(site);
   const serial=protocol.serial || protocolSerialFromSite(site);
-  const seal=protocol.seal || protocol.seal2 || "";
+  const seal=protocol.seal || "";
   const tech="Ing. Michal Tipek";
   const note=officialOneLine(officialData.note,protocolSignatureImageBytes(protocol) ? 80 : 120);
   return {
