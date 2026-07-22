@@ -7091,7 +7091,7 @@ function officialRtfSubjectBlock(officialData={}){
   const heading=`${paragraph}${officialRtfRun("e) Kontrolní subjekt:",{bold:true,underline:true})}\\tab ${officialRtfRun("f) Výrobce PBZ:",{bold:true,underline:true})}\\par`;
   const rows=left.map((line,idx)=>`${paragraph}${officialRtfRun(line || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
   const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
-  return `${heading}\n${rows}\n${blank}\n`;
+  return `${heading}\n${blank}\n${rows}\n${blank}\n`;
 }
 
 function replaceOfficialRtfSubjectBlock(output,officialData={}){
@@ -7116,13 +7116,18 @@ function rtfVisibleText(segment){
 function removeOfficialRtfBlankBeforeLocation(output){
   const labelIndex=output.indexOf("Um\\'edst\\'ecn\\'ed PBZ:");
   if(labelIndex<0) return output;
-  const locationStart=output.lastIndexOf("{\\rtlch",labelIndex);
-  const blankEnd=output.lastIndexOf("\\par }",locationStart);
-  const blankStart=output.lastIndexOf("{\\rtlch",blankEnd);
-  if(blankStart<0 || blankEnd<0 || blankEnd<=blankStart) return output;
-  const segment=output.slice(blankStart,blankEnd+"\\par }".length);
-  if(segment.length>900 || rtfVisibleText(segment)) return output;
-  return `${output.slice(0,blankStart)}${output.slice(blankEnd+"\\par }".length)}`;
+  const locationLabelRunStart=output.lastIndexOf("{\\rtlch",labelIndex);
+  const locationMarkerRunStart=output.lastIndexOf("{\\rtlch",locationLabelRunStart-1);
+  const locationRunStart=locationMarkerRunStart>=0 ? locationMarkerRunStart : locationLabelRunStart;
+  const sectionStart=output.lastIndexOf("\\sectdefaultcl",locationRunStart);
+  const paragraphStart=output.indexOf("\\pard\\plain",sectionStart);
+  const firstRunStart=output.indexOf("{\\rtlch",paragraphStart);
+  const blankEnd=output.lastIndexOf("\\par }",locationRunStart);
+  if(sectionStart<0 || paragraphStart<0 || firstRunStart<0 || blankEnd<firstRunStart) return output;
+  const blankParagraph=output.slice(firstRunStart,blankEnd+"\\par }".length);
+  if(blankParagraph.length>1800 || rtfVisibleText(blankParagraph)) return output;
+  const paragraphPrefix=output.slice(paragraphStart,firstRunStart);
+  return `${output.slice(0,paragraphStart)}${paragraphPrefix}${output.slice(locationRunStart)}`;
 }
 
 function bytesToHex(bytes){
