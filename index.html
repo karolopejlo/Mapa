@@ -6938,7 +6938,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordParagraph("Doklad o servisní kontrole a zkoušce provozuschopnosti PBZ",{align:"center",bold:true,size:26,after:30}),
     wordParagraph("dle zákona č. 133/1985 a vyhlášky 246/2001 Sb.",{align:"center",size:20,after:20}),
     wordParagraph("Doklad byl sestaven dle vyhl. 246/2001 Sb. §7, odst.8, písm. a – f.",{align:"center",size:20,after:120}),
-    officialTwoColumnXml("a) Provozovatel PBZ:",operator,"b) Adresa objektu kde je PBZ umístěno:",objectAddress,{after:0}),
+    officialTwoColumnXml("a) Provozovatel PBZ:",operator,"b) Adresa objektu kde je PBZ umístěno:",objectAddress,{after:30}),
     officialInlineParagraph("c) Umístění PBZ: ",place),
     officialInlineParagraph("d) Typ záložního zdroje, Výrobní číslo, plomba: ",officialProtocolDeviceLine(protocol,site)),
     officialTwoColumnXml("e) Kontrolní subjekt:",controlSubject,"f) Výrobce PBZ:",manufacturer,{after:70,labelAfter:85}),
@@ -7102,39 +7102,15 @@ function officialRtfTrimLines(lines){
   return next;
 }
 
-function officialRtfWrapLine(line,maxLength=46){
-  const text=officialOneLine(line);
-  if(!text) return [""];
-  const parts=[];
-  let rest=text;
-  while(rest.length>maxLength){
-    let cut=rest.lastIndexOf(" ",maxLength);
-    if(cut<Math.floor(maxLength*0.55)) cut=maxLength;
-    parts.push(rest.slice(0,cut).trim());
-    rest=rest.slice(cut).trim();
-  }
-  if(rest) parts.push(rest);
-  return parts.length ? parts : [""];
-}
-
-function officialRtfTwoColumnRows(leftLines,rightLines,maxLength=46){
+function officialRtfTwoColumnRows(leftLines,rightLines){
   const left=officialRtfTrimLines(leftLines);
   const right=officialRtfTrimLines(rightLines);
   const pairCount=Math.max(left.length,right.length,1);
-  const rows=[];
-  for(let idx=0; idx<pairCount; idx++){
-    const leftParts=officialRtfWrapLine(left[idx] || "",maxLength);
-    const rightParts=officialRtfWrapLine(right[idx] || "",maxLength);
-    const lineCount=Math.max(leftParts.length,rightParts.length,1);
-    for(let partIdx=0; partIdx<lineCount; partIdx++){
-      rows.push([leftParts[partIdx] || "",rightParts[partIdx] || ""]);
-    }
-  }
-  return rows;
+  return Array.from({length:pairCount},(_,idx)=>[left[idx] || "",right[idx] || ""]);
 }
 
 function officialRtfTwoColumnBlock(leftLabel,leftLines,rightLabel,rightLines,{blankAfterHeading=true,blankAfterRows=false}={}){
-  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
+  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl276\\slmult1\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
   const heading=`${paragraph}${officialRtfRun(leftLabel,{bold:true,underline:true})}\\tab ${officialRtfRun(rightLabel,{bold:true,underline:true})}\\par`;
   const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
   const rows=officialRtfTwoColumnRows(leftLines,rightLines)
@@ -7146,6 +7122,10 @@ function officialRtfTwoColumnBlock(leftLabel,leftLines,rightLabel,rightLines,{bl
     rows,
     blankAfterRows ? blank : ""
   ].filter(Boolean).join("\n") + "\n";
+}
+
+function officialRtfLocationParagraphPrefix(){
+  return "\\pard \\ltrpar\\ql \\li0\\ri0\\sb120\\sa0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
 }
 
 function replaceOfficialRtfOperatorObjectBlock(output,officialData={}){
@@ -7168,7 +7148,7 @@ function replaceOfficialRtfOperatorObjectBlock(output,officialData={}){
     officialMultiline(officialData.objectAddress,4),
     {blankAfterHeading:true,blankAfterRows:false}
   );
-  return `${output.slice(0,start)}${block}${output.slice(locationMarkerRunStart)}`;
+  return `${output.slice(0,start)}${block}${officialRtfLocationParagraphPrefix()}${output.slice(locationMarkerRunStart)}`;
 }
 
 function replaceOfficialRtfSubjectBlock(output,officialData={}){
@@ -7345,7 +7325,6 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   let output=replaceOfficialRtfOperatorObjectBlock(template,officialData);
   output=removeOfficialRtfOperatorIcoLabel(output);
   output=alignOfficialRtfOperatorLines(output);
-  output=removeOfficialRtfBlankBeforeLocation(output);
   output=replaceOfficialRtfSubjectBlock(output,officialData);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
   Object.entries(values).forEach(([placeholder,value])=>{
