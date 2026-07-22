@@ -7096,14 +7096,50 @@ function officialRtfSubjectBlock(officialData={}){
   return `${heading}\n${blank}\n${rows}\n${blank}\n`;
 }
 
+function officialRtfTrimLines(lines){
+  const next=[...(lines || [])].map(line=>officialOneLine(line));
+  while(next.length && !safe(next[next.length-1])) next.pop();
+  return next;
+}
+
+function officialRtfWrapLine(line,maxLength=46){
+  const text=officialOneLine(line);
+  if(!text) return [""];
+  const parts=[];
+  let rest=text;
+  while(rest.length>maxLength){
+    let cut=rest.lastIndexOf(" ",maxLength);
+    if(cut<Math.floor(maxLength*0.55)) cut=maxLength;
+    parts.push(rest.slice(0,cut).trim());
+    rest=rest.slice(cut).trim();
+  }
+  if(rest) parts.push(rest);
+  return parts.length ? parts : [""];
+}
+
+function officialRtfTwoColumnRows(leftLines,rightLines,maxLength=46){
+  const left=officialRtfTrimLines(leftLines);
+  const right=officialRtfTrimLines(rightLines);
+  const pairCount=Math.max(left.length,right.length,1);
+  const rows=[];
+  for(let idx=0; idx<pairCount; idx++){
+    const leftParts=officialRtfWrapLine(left[idx] || "",maxLength);
+    const rightParts=officialRtfWrapLine(right[idx] || "",maxLength);
+    const lineCount=Math.max(leftParts.length,rightParts.length,1);
+    for(let partIdx=0; partIdx<lineCount; partIdx++){
+      rows.push([leftParts[partIdx] || "",rightParts[partIdx] || ""]);
+    }
+  }
+  return rows;
+}
+
 function officialRtfTwoColumnBlock(leftLabel,leftLines,rightLabel,rightLines,{blankAfterHeading=true,blankAfterRows=false}={}){
-  const left=leftLines.length ? leftLines : [""];
-  const right=rightLines.length ? rightLines : [""];
-  const rowCount=Math.max(left.length,right.length);
   const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
   const heading=`${paragraph}${officialRtfRun(leftLabel,{bold:true,underline:true})}\\tab ${officialRtfRun(rightLabel,{bold:true,underline:true})}\\par`;
   const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
-  const rows=Array.from({length:rowCount},(_,idx)=>`${paragraph}${officialRtfRun(left[idx] || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
+  const rows=officialRtfTwoColumnRows(leftLines,rightLines)
+    .map(([left,right])=>`${paragraph}${officialRtfRun(left || " ")}\\tab ${officialRtfRun(right || " ")}\\par`)
+    .join("\n");
   return [
     heading,
     blankAfterHeading ? blank : "",
@@ -7130,7 +7166,7 @@ function replaceOfficialRtfOperatorObjectBlock(output,officialData={}){
     officialOperatorLines(officialData.operator,4),
     "b) Adresa objektu kde je PBZ umístěno:",
     officialMultiline(officialData.objectAddress,4),
-    {blankAfterHeading:true,blankAfterRows:true}
+    {blankAfterHeading:true,blankAfterRows:false}
   );
   return `${output.slice(0,start)}${block}${output.slice(locationMarkerRunStart)}`;
 }
