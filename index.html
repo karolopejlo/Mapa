@@ -6906,15 +6906,17 @@ function compactOfficialRtfMeasurementSection(output,protocol={}){
   return output;
 }
 
-function officialBlockXml(label,value){
-  return wordParagraph(label,{bold:true,size:20,after:35}) + wordParagraph(value || " ",{size:20,after:0});
+function officialBlockXml(label,value,options={}){
+  const labelAfter=Number.isFinite(options.labelAfter) ? options.labelAfter : 35;
+  return wordParagraph(label,{bold:true,size:20,after:labelAfter}) + wordParagraph(value || " ",{size:20,after:0});
 }
 
 function officialTwoColumnXml(leftLabel,leftValue,rightLabel,rightValue,options={}){
   const after=Number.isFinite(options.after) ? options.after : 25;
+  const blockOptions={labelAfter:options.labelAfter};
   return wordTable([[
-    {xml:officialBlockXml(leftLabel,leftValue),vAlign:"top"},
-    {xml:officialBlockXml(rightLabel,rightValue),vAlign:"top"}
+    {xml:officialBlockXml(leftLabel,leftValue,blockOptions),vAlign:"top"},
+    {xml:officialBlockXml(rightLabel,rightValue,blockOptions),vAlign:"top"}
   ]],[4815,4815],{noBorders:true}) + wordBlank(after);
 }
 
@@ -6939,7 +6941,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     officialTwoColumnXml("a) Provozovatel PBZ:",operator,"b) Adresa objektu kde je PBZ umístěno:",objectAddress,{after:0}),
     officialInlineParagraph("c) Umístění PBZ: ",place),
     officialInlineParagraph("d) Typ záložního zdroje, Výrobní číslo, plomba: ",officialProtocolDeviceLine(protocol,site)),
-    officialTwoColumnXml("e) Kontrolní subjekt:",controlSubject,"f) Výrobce PBZ:",manufacturer,{after:70}),
+    officialTwoColumnXml("e) Kontrolní subjekt:",controlSubject,"f) Výrobce PBZ:",manufacturer,{after:70,labelAfter:85}),
     officialInlineParagraph("g) Výsledek kontroly provozuschopnosti: ",officialProtocolResultText(mode)),
     officialInlineParagraph("h) Výsledek funkčních zkoušek: ",officialProtocolFunctionalText(mode)),
     officialInlineParagraph("i) Datum provedení kontroly: ",controlDate),
@@ -7091,7 +7093,46 @@ function officialRtfSubjectBlock(officialData={}){
   const heading=`${paragraph}${officialRtfRun("e) Kontrolní subjekt:",{bold:true,underline:true})}\\tab ${officialRtfRun("f) Výrobce PBZ:",{bold:true,underline:true})}\\par`;
   const rows=left.map((line,idx)=>`${paragraph}${officialRtfRun(line || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
   const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
-  return `${heading}\n${rows}\n${blank}\n`;
+  return `${heading}\n${blank}\n${rows}\n${blank}\n`;
+}
+
+function officialRtfTwoColumnBlock(leftLabel,leftLines,rightLabel,rightLines,{blankAfterHeading=true,blankAfterRows=false}={}){
+  const left=leftLines.length ? leftLines : [""];
+  const right=rightLines.length ? rightLines : [""];
+  const rowCount=Math.max(left.length,right.length);
+  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
+  const heading=`${paragraph}${officialRtfRun(leftLabel,{bold:true,underline:true})}\\tab ${officialRtfRun(rightLabel,{bold:true,underline:true})}\\par`;
+  const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
+  const rows=Array.from({length:rowCount},(_,idx)=>`${paragraph}${officialRtfRun(left[idx] || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
+  return [
+    heading,
+    blankAfterHeading ? blank : "",
+    rows,
+    blankAfterRows ? blank : ""
+  ].filter(Boolean).join("\n") + "\n";
+}
+
+function replaceOfficialRtfOperatorObjectBlock(output,officialData={}){
+  const operatorLabel="Provozovatel PBZ:";
+  const locationLabel="Um\\'edst\\'ecn\\'ed PBZ:";
+  const labelIndex=output.indexOf(operatorLabel);
+  const locationIndex=output.indexOf(locationLabel,labelIndex);
+  if(labelIndex<0 || locationIndex<0) return output;
+  const operatorLabelRunStart=output.lastIndexOf("{\\rtlch",labelIndex);
+  const operatorSpacerRunStart=output.lastIndexOf("{\\rtlch",operatorLabelRunStart-1);
+  const operatorMarkerRunStart=output.lastIndexOf("{\\rtlch",operatorSpacerRunStart-1);
+  const locationLabelRunStart=output.lastIndexOf("{\\rtlch",locationIndex);
+  const locationMarkerRunStart=output.lastIndexOf("{\\rtlch",locationLabelRunStart-1);
+  const start=operatorMarkerRunStart;
+  if(start<0 || locationMarkerRunStart<0 || locationMarkerRunStart<=start) return output;
+  const block=officialRtfTwoColumnBlock(
+    "a) Provozovatel PBZ:",
+    officialOperatorLines(officialData.operator,4),
+    "b) Adresa objektu kde je PBZ umístěno:",
+    officialMultiline(officialData.objectAddress,4),
+    {blankAfterHeading:true,blankAfterRows:true}
+  );
+  return `${output.slice(0,start)}${block}${output.slice(locationMarkerRunStart)}`;
 }
 
 function replaceOfficialRtfSubjectBlock(output,officialData={}){
@@ -7116,13 +7157,35 @@ function rtfVisibleText(segment){
 function removeOfficialRtfBlankBeforeLocation(output){
   const labelIndex=output.indexOf("Um\\'edst\\'ecn\\'ed PBZ:");
   if(labelIndex<0) return output;
-  const locationStart=output.lastIndexOf("{\\rtlch",labelIndex);
-  const blankEnd=output.lastIndexOf("\\par }",locationStart);
-  const blankStart=output.lastIndexOf("{\\rtlch",blankEnd);
-  if(blankStart<0 || blankEnd<0 || blankEnd<=blankStart) return output;
-  const segment=output.slice(blankStart,blankEnd+"\\par }".length);
-  if(segment.length>900 || rtfVisibleText(segment)) return output;
-  return `${output.slice(0,blankStart)}${output.slice(blankEnd+"\\par }".length)}`;
+  const locationLabelRunStart=output.lastIndexOf("{\\rtlch",labelIndex);
+  const locationMarkerRunStart=output.lastIndexOf("{\\rtlch",locationLabelRunStart-1);
+  const locationRunStart=locationMarkerRunStart>=0 ? locationMarkerRunStart : locationLabelRunStart;
+  const sectionStart=output.lastIndexOf("\\sectdefaultcl",locationRunStart);
+  const paragraphStart=output.indexOf("\\pard\\plain",sectionStart);
+  const firstRunStart=output.indexOf("{\\rtlch",paragraphStart);
+  const blankEnd=output.lastIndexOf("\\par }",locationRunStart);
+  if(sectionStart<0 || paragraphStart<0 || firstRunStart<0 || blankEnd<firstRunStart) return output;
+  const blankParagraph=output.slice(firstRunStart,blankEnd+"\\par }".length);
+  if(blankParagraph.length>1800 || rtfVisibleText(blankParagraph)) return output;
+  const paragraphPrefix=output.slice(paragraphStart,firstRunStart);
+  return `${output.slice(0,paragraphStart)}${paragraphPrefix}${output.slice(locationRunStart)}`;
+}
+
+function removeOfficialRtfSpacerBeforePlaceholder(output,placeholder){
+  const placeholderIndex=output.indexOf(placeholder);
+  if(placeholderIndex<0) return output;
+  const runStart=output.lastIndexOf("{\\rtlch",placeholderIndex);
+  const lineStart=output.lastIndexOf("\\par }",runStart);
+  if(runStart<0 || lineStart<0) return output;
+  const spacerStart=lineStart+"\\par }".length;
+  const spacer=output.slice(spacerStart,runStart);
+  if(spacer.length>700 || rtfVisibleText(spacer)) return output;
+  return `${output.slice(0,spacerStart)}${output.slice(runStart)}`;
+}
+
+function alignOfficialRtfOperatorLines(output){
+  return ["__SZZ_OPERATOR_2__","__SZZ_OPERATOR_3__","__SZZ_OPERATOR_4__"]
+    .reduce((next,placeholder)=>removeOfficialRtfSpacerBeforePlaceholder(next,placeholder),output);
 }
 
 function bytesToHex(bytes){
@@ -7243,7 +7306,9 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
 }
 
 function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
-  let output=removeOfficialRtfOperatorIcoLabel(template);
+  let output=replaceOfficialRtfOperatorObjectBlock(template,officialData);
+  output=removeOfficialRtfOperatorIcoLabel(output);
+  output=alignOfficialRtfOperatorLines(output);
   output=removeOfficialRtfBlankBeforeLocation(output);
   output=replaceOfficialRtfSubjectBlock(output,officialData);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
