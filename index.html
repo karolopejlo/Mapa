@@ -999,6 +999,36 @@ button,input,select,textarea{
   gap:8px;
   margin-top:8px;
 }
+.main-history-list{
+  display:grid;
+  gap:8px;
+}
+.main-history-row{
+  border:1px solid #dbe4ef;
+  border-radius:12px;
+  background:#f8fafc;
+  padding:10px 12px;
+  text-align:left;
+}
+.main-history-row button{
+  display:block;
+  width:100%;
+  padding:0;
+  min-height:0;
+  border:0;
+  background:transparent;
+  color:#0f172a;
+  text-align:left;
+  font-weight:900;
+  cursor:pointer;
+}
+.main-history-row small{
+  display:block;
+  margin-top:3px;
+  color:#64748b;
+  font-weight:700;
+  line-height:1.35;
+}
 .official-protocol-card{
   border-color:#c7d2fe;
   background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
@@ -1633,6 +1663,7 @@ button,input,select,textarea{
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
+<button class="secondary" id="mainProtocolHistoryBtn" style="margin-top:8px">Historie protokolů</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
 <div class="legend">
@@ -1767,8 +1798,11 @@ button,input,select,textarea{
     </div>
 <label>Jiné zařízení</label><input id="protoOtherDevice">
 
-    <label class="protocol-point">7) Umístění ovládání zálohovaných zařízení a jejich režim</label>
+    <label class="protocol-point">7) Umístění zálohovaných zařízení</label>
     <textarea id="protoControlLocation"></textarea>
+
+    <label class="protocol-point">Postup testování</label>
+    <textarea id="protoTestProcedure"></textarea>
 
     <label class="protocol-point">8) Parkování a vstup do objektu, předepsané OOPP</label>
     <div class="checkgrid2" id="protoAccessGrid">
@@ -1953,7 +1987,6 @@ button,input,select,textarea{
     <textarea id="newAllData" placeholder="Sem můžeš doplnit libovolná další data. Např.:
 Rok výroby: 2024
 Serviska: ano
-Faktura na: ...
 Protokol na: ...
 Cena FZ: ..."></textarea>
   </div>
@@ -3038,6 +3071,7 @@ function shouldSkipNewSiteField(k){
   if(n.includes("gps") && n!=="adresa gps") return true;
   if(n==="firebase doc id" || n==="id mista" || n==="klic adresy") return true;
   if(n==="barva bodu" || n==="dni do kontroly" || n==="stav pro mapu" || n==="stav kontroly") return true;
+  if(n==="faktura na") return true;
   if(n==="pristi kontrola" || n==="posledni kontrola" || n==="pristi planovana kontrola" || n==="posledni probehla kontrola") return true;
   if(n==="zdrojovy soubor" || n==="zdrojovy radek" || n==="pocet terminu" || n==="vsechny terminy") return true;
   if(/^mesic\s*\d*$/.test(n) || /^month\s*\d*$/.test(n) || /^\d{1,2}$/.test(n)) return true;
@@ -5153,7 +5187,6 @@ const USER_SITE_DATA_FIELDS = [
   {label:"Hlídáme sami termín", key:"Hlídáme sami termín", keys:["Hlídáme sami termín","Hlídáme termín sami","Hlídat termín sami","Hlidat termin sami","Hlídáme kontroly sami","Hlidame kontroly sami","Jezdit hlídáme termín sami","Bez objednávky"], type:"yesno"},
   {label:"Smlouva", key:"Smlouva ano/ne", keys:["Smlouva ano/ne","Smlouva (ano/ne)","Smlouva ano ne","Smlouva ano","Smlouva"], type:"yesno"},
   {label:"Cena FZ", key:"Cena FZ", keys:["Cena FZ","Cena FZ v Kč"]},
-  {label:"Faktura na", key:"Faktura na", keys:["Faktura na"]},
   {label:"Důležité poznámky", key:"Důležitá poznámka", keys:["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky"], type:"textarea", important:true}
 ];
 window.userSiteDataFields = USER_SITE_DATA_FIELDS.map(f=>({label:f.label,key:f.key,type:f.type||"text"}));
@@ -6087,6 +6120,7 @@ function fillProtocolFormFromHistory(protocol={}){
   setProtocolFieldValue("protoUnbalance2",protocol.unbalance2 || "");
   setProtocolFieldValue("protoBreakersLocation",protocol.breakersLocation || "");
   setProtocolFieldValue("protoControlLocation",protocol.controlLocation || "");
+  setProtocolFieldValue("protoTestProcedure",protocol.testProcedure || "");
   setProtocolFieldValue("protoContacts",protocol.contacts || "");
   setProtocolFieldValue("protoOtherDevice",protocol.backedDevices?.other || "");
   setProtocolFieldValue("protoOtherAccess",protocol.access?.other || "");
@@ -6208,13 +6242,20 @@ function protocolSavedTimeValue(item){
   return timeValueFromAny(item?.savedAt || item?.createdAt || item?.updatedAt || item?.offlineSavedAt || 0);
 }
 
+function dateOnlyTextFallback(value){
+  return safe(value)
+    .replace(/T\d{1,2}:\d{2}(:\d{2})?.*$/,"")
+    .replace(/\s+\d{1,2}:\d{2}(:\d{2})?.*$/,"")
+    .trim();
+}
+
 function historySavedDateLabel(item){
   const raw=item?.savedAt || item?.createdAt || item?.updatedAt || item?.offlineSavedAt || "";
   const time=protocolExportValue(raw);
   if(!time) return "";
-  if(raw && typeof raw.toDate==="function") return formatDateTimeCz(raw.toDate());
+  if(raw && typeof raw.toDate==="function") return isAppAdmin() ? formatDateTimeCz(raw.toDate()) : formatDateCz(raw.toDate());
   const d=new Date(raw || 0);
-  return isNaN(d.getTime()) ? time : formatDateTimeCz(d);
+  return isNaN(d.getTime()) ? (isAppAdmin() ? time : dateOnlyTextFallback(time)) : (isAppAdmin() ? formatDateTimeCz(d) : formatDateCz(d));
 }
 
 function historyDateLabel(item){
@@ -6234,9 +6275,9 @@ function photoDateLabel(item){
 }
 
 function photoDateTimeLabel(raw){
-  if(raw && typeof raw.toDate==="function") return formatDateTimeCz(raw.toDate());
+  if(raw && typeof raw.toDate==="function") return isAppAdmin() ? formatDateTimeCz(raw.toDate()) : formatDateCz(raw.toDate());
   const d=new Date(raw || 0);
-  return isNaN(d.getTime()) ? "" : formatDateTimeCz(d);
+  return isNaN(d.getTime()) ? "" : (isAppAdmin() ? formatDateTimeCz(d) : formatDateCz(d));
 }
 
 function photoCloudinaryVersionDate(item){
@@ -6593,7 +6634,8 @@ function protocolLegendXml(){
     ["Umístění PBZ v objektu","co nejpřesnější popis zahrnuje patro a lokaci oproti vchodu do objektu, rozlišení jako např.: chodba, sklepní koje, garáže, pod schodištěm apd."],
     ["Umístění jističů UPS a zál. zařízení v objektu","poloha jističe přívodu do UPS a poloha jističů za UPS, případně poznámka, zda lze bezpečně použít odpínač uvnitř UPS."],
     ["Typ a umístění zálohovaných zařízení v objektu","např.: výtah, ventilátor, klapky, světlíky, čerpadlo, CS a TS, EPS, nouzové osvětlení, závora, vrata, sprinklery, RPO."],
-    ["Umístění ovládání zálohovaných zařízení a jejich režim","např. umístění tlačítka odvětrání, informace zda vyvolá ostrý poplach a zda lze chod vypnout/resetovat."],
+    ["Umístění zálohovaných zařízení","přesná poloha zálohovaných zařízení v objektu."],
+    ["Postup testování","stručný postup zkoušky, který se použije pro opakovanou kontrolu stejného zdroje."],
     ["Parkování a vstup do objektu, předepsané OOPP","informace o parkování, vjezdu, klíčích a povinných ochranných pomůckách."],
     ["Kontakty","správce za developera, správce za SVJ, firma, telefon a email."],
     ["Dostupnost","žebříky, stropy, osvětlení, WC a vše, co je anomální a ztěžuje provedení prací."],
@@ -6621,7 +6663,8 @@ function buildProtocolWordDocumentXml(protocol={}){
     protocolMeasurementTable(protocol),
     wordFormField("5) Umístění jističů UPS a zál. zařízení v objektu:",protocol.breakersLocation),
     wordFormField("6) Typ a umístění zálohovaných zařízení v objektu:",protocolBackedDevicesText(protocol)),
-    wordFormField("7) Umístění ovládání zálohovaných zařízení a jejich režim:",protocol.controlLocation),
+    wordFormField("7) Umístění zálohovaných zařízení:",protocol.controlLocation),
+    wordFormField("Postup testování:",protocol.testProcedure),
     wordFormField("8) Parkování a vstup do objektu, předepsané OOPP:",protocolAccessText(protocol)),
     wordFormField("9) Kontakty:",protocol.contacts),
     wordFormField("10) Dostupnost:",protocolAvailabilityText(protocol)),
@@ -7030,7 +7073,7 @@ function officialOperatorLines(value,maxLines=4){
 }
 
 function officialOperatorText(value){
-  return officialOperatorLines(value,4).filter(Boolean).join("\n");
+  return officialOperatorLines(value,5).filter(Boolean).join("\n");
 }
 
 function officialIcoValue(value){
@@ -7208,8 +7251,9 @@ function officialProtocolConditionsTail(protocol={},mode="ok"){
 
 function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
   const site=selectedSite || {};
-  const operator=officialOperatorLines(officialData.operator,4);
+  const operator=officialOperatorLines(officialData.operator,5);
   const object=officialMultiline(officialData.objectAddress,4);
+  const operatorFourthLine=[operator[3],operator[4]].filter(Boolean).join("\n");
   const controlDate=protocolDisplayDate(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
   const device=protocol.deviceType || protocol.selectedDevice || protocol.siteSource || protocolDeviceTypeFromSite(site);
   const serial=protocol.serial || protocolSerialFromSite(site);
@@ -7220,7 +7264,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
     "__SZZ_OPERATOR_1__":operator[0],
     "__SZZ_OPERATOR_2__":operator[1],
     "__SZZ_OPERATOR_3__":operator[2],
-    "__SZZ_OPERATOR_4__":operator[3],
+    "__SZZ_OPERATOR_4__":operatorFourthLine,
     "__SZZ_OBJECT_1__":object[0],
     "__SZZ_OBJECT_2__":object[1],
     "__SZZ_OBJECT_3__":object[2],
@@ -7670,6 +7714,62 @@ function saveProtocolLocally(payload,site=selectedSite,reason=""){
   return offlinePayload;
 }
 
+let offlineProtocolSyncRunning=false;
+
+async function syncOfflineProtocolsForSite(site=selectedSite,options={}){
+  if(offlineProtocolSyncRunning) return 0;
+  if(!site || !firebaseReady || !db || !fb.fsMod || !currentUser || navigator.onLine===false) return 0;
+  const offlineItems=readSiteLocalArray("protocolHistory",site)
+    .filter(item=>item && item._offline && item._syncStatus!=="online" && recordMatchesSite(item,site));
+  if(!offlineItems.length) return 0;
+  offlineProtocolSyncRunning=true;
+  let synced=0;
+  try{
+    const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    for(const item of offlineItems){
+      const id=safe(item._id) || makeLocalRecordId("protocol");
+      const payload={
+        ...item,
+        _id:id,
+        _offline:false,
+        _syncStatus:"online",
+        syncedAt:new Date().toISOString(),
+        syncedBy:currentUser.email || "",
+        updatedBy:currentUser.email || item.updatedBy || "",
+        createdBy:item.createdBy || currentUser.email || "",
+        savedAt:item.savedAt || item.offlineSavedAt || new Date().toISOString()
+      };
+      const childOk=await saveSiteChildItem("protocols",id,payload,site);
+      if(!childOk) await appendEmbeddedSiteItem("protocolHistory",payload,site);
+      await appendEmbeddedSiteItem("protocolRefs",{
+        _id:id,
+        siteId:payload.siteId,
+        siteKey:payload.siteKey,
+        firebaseDocId:payload.firebaseDocId,
+        date:payload.date,
+        createdAt:payload.createdAt || payload.savedAt
+      },site);
+      await setDoc(doc(db,"protocols",id),{
+        ...payload,
+        updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+      },{merge:true});
+      await updateSiteControlDateFromProtocol(payload,site);
+      removeSiteLocalItem("protocolHistory",id,site);
+      appendSiteLocalArray("protocolHistory",payload,site,120);
+      synced++;
+    }
+  }catch(e){
+    console.warn("Synchronizace offline protokolů selhala",e);
+  }finally{
+    offlineProtocolSyncRunning=false;
+  }
+  if(synced && !options.silent){
+    showSaveConfirmation(synced===1 ? "Offline protokol uložen online." : `Offline protokoly uloženy online: ${synced}.`);
+  }
+  return synced;
+}
+window.syncOfflineProtocolsForSite=syncOfflineProtocolsForSite;
+
 async function saveSiteChildItem(kind,id,item,site=selectedSite){
   const docId=selectedSiteDocId(site);
   const cleanId=safe(id || item?._id);
@@ -7840,6 +7940,7 @@ function applyProtocolFieldsToRaw(raw,protocol={}){
   const serial=safe(protocol.serial);
   const location=safe(protocol.pbzLocation);
   const breakers=safe(protocol.breakersLocation);
+  const testProcedure=safe(protocol.testProcedure);
   if(device){
     out["Popis_zdroje"]=device;
     out["Kontrolované zařízení"]=device;
@@ -7858,6 +7959,10 @@ function applyProtocolFieldsToRaw(raw,protocol={}){
     out["Jistič UPS"]=breakers;
     out["Jističe UPS"]=breakers;
     out["Umístění jističů"]=breakers;
+  }
+  if(testProcedure){
+    out["Postup testování"]=testProcedure;
+    out["Postup testovani"]=testProcedure;
   }
   return out;
 }
@@ -8033,7 +8138,8 @@ function renderHistory(){
     ["Měření DC", [d.mainBatVdc&&`hl. bat. ${d.mainBatVdc} Vdc`, d.auxBatVdc&&`pom. bat. ${d.auxBatVdc} Vdc`].filter(Boolean).join(", ")],
     ["Jističe", d.breakersLocation || ""],
     ["Zálohovaná zařízení", historyObjectSummary(d.backedDevices)],
-    ["Ovládání", d.controlLocation || ""],
+    ["Umístění zálohovaných zařízení", d.controlLocation || ""],
+    ["Postup testování", d.testProcedure || ""],
     ["Vstup / OOPP", historyObjectSummary(d.access)],
     ["Kontakty", d.contacts || ""],
     ["Dostupnost", historyObjectSummary(d.availability)],
@@ -8123,6 +8229,7 @@ async function loadHistory(siteId){
     showLocalHistoryOnly("Čekám na přihlášení, historie se načte po přihlášení.");
     return;
   }
+  await syncOfflineProtocolsForSite(selectedSite,{silent:true});
 
   try{
     await refreshSiteDataFromFirebase(selectedSite);
@@ -8259,6 +8366,13 @@ async function loadHistory(siteId){
 
 window.loadHistory=loadHistory;
 
+window.addEventListener("online",()=>{
+  if(!selectedSite || typeof syncOfflineProtocolsForSite!=="function") return;
+  syncOfflineProtocolsForSite(selectedSite).then(count=>{
+    if(count && typeof loadHistory==="function") loadHistory(selectedSite.id);
+  });
+});
+
 
 
 function fixMapView(){
@@ -8338,6 +8452,115 @@ function showSaveConfirmation(message="Uloženo."){
 }
 window.showSaveConfirmation=showSaveConfirmation;
 
+function protocolGlobalHistoryTitle(item={}){
+  const title=safe(item.siteName || item.place || item.siteAddress || item.siteKey || item.firebaseDocId || "Protokol");
+  const device=safe(item.deviceType || item.selectedDevice || item.siteSource || "");
+  const serial=safe(item.serial || "");
+  return [title, device, serial].filter(Boolean).join(" | ");
+}
+
+function readAllLocalProtocolHistoryItems(){
+  const items=[];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key || !key.startsWith("astipMap:protocolHistory:")) continue;
+      const arr=JSON.parse(localStorage.getItem(key) || "[]");
+      if(!Array.isArray(arr)) continue;
+      arr.forEach((item,idx)=>{
+        if(item) items.push({...item,_type:"Protokol",_collection:"localProtocols",_id:item._id || `local_protocol_${idx}`});
+      });
+    }
+  }catch(e){
+    console.warn("Lokální historie protokolů nejde načíst",e);
+  }
+  return items;
+}
+
+async function loadMainProtocolHistoryItems(){
+  const items=[];
+  const addItem=item=>{
+    if(!item) return;
+    const id=safe(item._id);
+    if(id && items.some(existing=>safe(existing._id)===id)) return;
+    items.push(item);
+  };
+  readAllLocalProtocolHistoryItems().forEach(addItem);
+  if(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine !== false){
+    try{
+      const {collection,getDocs,query,orderBy,limit:queryLimit}=fb.fsMod;
+      let snap=null;
+      if(query && orderBy && queryLimit){
+        try{
+          snap=await getDocs(query(collection(db,"protocols"),orderBy("savedAt","desc"),queryLimit(80)));
+        }catch(e){
+          console.warn("Seřazené načtení hlavní historie selhalo, načítám bez řazení",e);
+        }
+      }
+      if(!snap) snap=await getDocs(collection(db,"protocols"));
+      snap.forEach(docSnap=>addItem({...docSnap.data(),_type:"Protokol",_collection:"protocols",_id:docSnap.id}));
+    }catch(e){
+      console.warn("Hlavní historie protokolů nejde načíst",e);
+    }
+  }
+  return items
+    .filter(isProtocolHistoryItem)
+    .sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a))
+    .slice(0,80);
+}
+
+async function openMainProtocolHistoryPanel(){
+  const drawer=document.getElementById("drawer");
+  if(!drawer) return;
+  if(!window.__normalDrawerTemplate || !window.__normalDrawerTemplate.includes('id="detailTable"')){
+    window.__normalDrawerTemplate=drawer.innerHTML;
+  }
+  drawer.classList.add("open");
+  drawer.classList.remove("adding-new-site");
+  drawer.scrollTop=0;
+  drawer.innerHTML=`
+    <div class="drawer-head">
+      <div>
+        <h2>Historie protokolů</h2>
+        <p class="small">Poslední uložené protokoly napříč mapou.</p>
+      </div>
+      <button class="secondary x" type="button" id="closeDrawer">Zavřít</button>
+    </div>
+    <div class="card" id="mainProtocolHistoryCard">
+      <h3>Poslední protokoly</h3>
+      <div id="mainProtocolHistoryList" class="main-history-list small">Načítám historii...</div>
+    </div>`;
+  const close=document.getElementById("closeDrawer");
+  if(close) close.onclick=()=>drawer.classList.remove("open");
+  const list=document.getElementById("mainProtocolHistoryList");
+  const items=await loadMainProtocolHistoryItems();
+  if(!list) return;
+  if(!items.length){
+    list.textContent="Zatím není uložený žádný protokol.";
+    return;
+  }
+  list.innerHTML=items.map(item=>{
+    const title=protocolGlobalHistoryTitle(item);
+    const key=safe(item.siteKey || item.firebaseDocId || item.siteId || (Array.isArray(item.siteKeys) ? item.siteKeys[0] : ""));
+    const meta=isAppAdmin() ? [
+      historySavedDateLabel(item) ? `uloženo ${historySavedDateLabel(item)}` : "",
+      historyDateLabel(item) ? `kontrola ${historyDateLabel(item)}` : "",
+      safe(item.createdBy || item.technicianEmail || item.updatedBy)
+    ].filter(Boolean).join(" | ") : "";
+    return `<div class="main-history-row">
+      <button type="button" data-history-site-key="${esc(key)}">${esc(title)}</button>
+      ${meta ? `<small>${esc(meta)}</small>` : ""}
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-history-site-key]").forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.getAttribute("data-history-site-key");
+      if(key && typeof window.openDetailById==="function") window.openDetailById(key);
+    };
+  });
+}
+window.openMainProtocolHistoryPanel=openMainProtocolHistoryPanel;
+
 if(typeof window.bindLoginButtons==="function"){
   window.bindLoginButtons();
 }
@@ -8352,6 +8575,8 @@ document.getElementById("regionFilter").addEventListener("change",render);
 document.getElementById("fitBtn").addEventListener("click",fit);
 const mapBackBtn=document.getElementById("mapBackBtn");
 if(mapBackBtn) mapBackBtn.onclick=returnFromMapFocus;
+const mainProtocolHistoryBtn=document.getElementById("mainProtocolHistoryBtn");
+if(mainProtocolHistoryBtn) mainProtocolHistoryBtn.addEventListener("click",openMainProtocolHistoryPanel);
 document.getElementById("reloadEditBtn").onclick=async()=>{
   await loadEdits();
   await loadDeletedSites();
@@ -9675,6 +9900,7 @@ async function prefillProtocol(){
   setIfEmpty("protoCustomer", pickRawValue(raw,["Objednatel","Faktura na","Protokol na","Objednatel zkoušky provozuschopnosti"]));
   setIfEmpty("protoBreakersLocation", pickRawValue(raw,["Jistič UPS","Jistic UPS","Umístění jističů","Jističe UPS","Jističe"]));
   setIfEmpty("protoControlLocation", pickRawValue(raw,["Umístění ovládání","Ovládání zálohovaných zařízení"]));
+  setIfEmpty("protoTestProcedure", pickRawValue(raw,["Postup testování","Postup testovani","Postup testu"]));
 
 
   // pokud existuje předchozí protokol, má prioritu pro technické hodnoty
@@ -9702,6 +9928,7 @@ async function prefillProtocol(){
 
     setIfEmpty("protoBreakersLocation", last.breakersLocation);
     setIfEmpty("protoControlLocation", last.controlLocation);
+    setIfEmpty("protoTestProcedure", last.testProcedure);
     setIfEmpty("protoContacts", last.contacts);
     setIfEmpty("protoConditions", last.conditions);
     setIfEmpty("protoConditionsReason", last.conditionsReason);
@@ -9816,6 +10043,7 @@ function protocolPayload(){
       other:val("protoOtherDevice")
     },
     controlLocation:val("protoControlLocation"),
+    testProcedure:val("protoTestProcedure"),
     access:{
       blue:checkbox("protoBlue"),
       b:checkbox("protoB"),
@@ -10897,10 +11125,12 @@ setTimeout(()=>{
     const d = drawer();
     if(!d) return false;
 
-    const isAddForm = !!d.querySelector("#newSiteOnlyCard");
-    if(isAddForm && window.__normalDrawerTemplate){
+    const isTemporaryForm = !!d.querySelector("#newSiteOnlyCard") || !!d.querySelector("#mainProtocolHistoryCard");
+    if(isTemporaryForm && window.__normalDrawerTemplate){
       d.innerHTML = window.__normalDrawerTemplate;
       d.classList.remove("adding-new-site");
+      const close=d.querySelector("#closeDrawer");
+      if(close) close.onclick=()=>d.classList.remove("open");
       return true;
     }
     return false;
@@ -11017,7 +11247,6 @@ setTimeout(()=>{
     {label:"Hlídáme sami termín", key:"Hlídáme sami termín", type:"yesno"},
     {label:"Smlouva", key:"Smlouva ano/ne", type:"yesno"},
     {label:"Cena FZ", key:"Cena FZ"},
-    {label:"Faktura na", key:"Faktura na"},
     {label:"Důležité poznámky", key:"Důležitá poznámka", type:"textarea", full:true, important:true}
   ];
   const FB_HIDDEN_KEYS = ["GPS_lat", "GPS_lon"];
@@ -11085,7 +11314,6 @@ setTimeout(()=>{
     "smlouva ano ne":"Smlouva ano/ne",
     "cena fz":"Cena FZ",
     "cena fz v kc":"Cena FZ",
-    "faktura na":"Faktura na",
     "dulezita poznamka":"Důležitá poznámka",
     "dulezite poznamky":"Důležitá poznámka",
     "gps lat":"GPS_lat",
@@ -12204,7 +12432,6 @@ setTimeout(()=>{
           <div><label>Serviska</label><select data-new-key="Serviska"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
           <div><label>Smlouva</label><select data-new-key="Smlouva ano/ne"><option value=""></option><option value="ano">ano</option><option value="ne">ne</option></select></div>
           <div><label>Cena FZ</label><input data-new-key="Cena FZ"></div>
-          <div class="full"><label>Faktura na</label><input data-new-key="Faktura na"></div>
           <div class="full"><label>Poznámky</label><textarea data-new-key="Poznámky"></textarea></div>
           <div class="full only-red"><label>Důležité poznámky</label><textarea data-new-key="Důležitá poznámka"></textarea></div>
         </div>
