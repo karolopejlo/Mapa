@@ -7215,9 +7215,9 @@ function officialRtfClientSignatureBlock(protocol={}){
   const signature=officialRtfSignatureImage(protocol);
   const parts=[];
   parts.push(name ? `{\\fs18 ${officialRtfEscape(name)}}` : "{\\fs18 \\~}");
-  parts.push(signature || "{\\fs18 \\~\\line \\~\\line \\~}");
+  parts.push(signature || "{\\fs18 \\~\\line \\~}");
   const reset="\\pard \\ltrpar\\ql \\li0\\ri0\\sl276\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
-  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb180\\sa0\\sl205\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
+  return `\\pard \\ltrpar\\qr \\li0\\ri0\\sb20\\sa0\\sl205\\slmult0\\nowidctlpar\\wrapdefault ${parts.join(" ")}\\par ${reset}`;
 }
 
 function addOfficialRtfClientSignature(output,protocol={}){
@@ -7237,6 +7237,49 @@ function removeOfficialRtfOperatorIcoLabel(output){
   const start=output.lastIndexOf(label,idx);
   if(start>=0 && idx-start<260){
     return `${output.slice(0,start)}     ${output.slice(start+label.length)}`;
+  }
+  return output;
+}
+
+function removeOfficialSpacerRunBeforeMarker(block,marker){
+  const idx=block.indexOf(marker);
+  if(idx<0) return block;
+  const before=block.slice(0,idx);
+  const after=block.slice(idx);
+  const cleaned=before.replace(/(\{\\rtlch\\fcs1[^{}]*(?:I\\'c8O:\s*|\s+)\})\s*(\{\\rtlch\\fcs1[^{}]*\s*)$/,"$2");
+  return `${cleaned}${after}`;
+}
+
+function normalizeOfficialRtfOperatorBlock(output){
+  const first=output.indexOf("__SZZ_OPERATOR_1__");
+  const object=output.indexOf("__SZZ_OBJECT_1__",first);
+  if(first<0 || object<0) return output;
+  const start=output.lastIndexOf("\\pard\\plain",first);
+  const blockStart=start>=0 ? start : first;
+  let block=output.slice(blockStart,object);
+  block=block.replace(/\\li142/g,"\\li0").replace(/\\lin142/g,"\\lin0");
+  [
+    "__SZZ_OPERATOR_1__",
+    "__SZZ_OPERATOR_2__",
+    "__SZZ_OPERATOR_3__",
+    "__SZZ_OPERATOR_4__"
+  ].forEach(marker=>{
+    block=removeOfficialSpacerRunBeforeMarker(block,marker);
+  });
+  return `${output.slice(0,blockStart)}${block}${output.slice(object)}`;
+}
+
+function compactOfficialRtfSignatureGap(output){
+  const marker="{\\*\\bkmkstart _Hlk178752668}";
+  const idx=output.indexOf(marker);
+  if(idx<0) return output;
+  const markerRunStart=output.lastIndexOf("{\\rtlch\\fcs1",idx);
+  const previousRunStart=output.lastIndexOf("{\\rtlch\\fcs1",markerRunStart-1);
+  if(markerRunStart>=0 && previousRunStart>=0){
+    const previousRun=output.slice(previousRunStart,markerRunStart);
+    if(previousRun.includes("\\par") && !rtfVisibleText(previousRun)){
+      return `${output.slice(0,previousRunStart)}${output.slice(markerRunStart)}`;
+    }
   }
   return output;
 }
@@ -7293,6 +7336,7 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
 
 function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
   let output=removeOfficialRtfOperatorIcoLabel(template);
+  output=normalizeOfficialRtfOperatorBlock(output);
   output=removeOfficialRtfBlankBeforeLocation(output);
   output=replaceOfficialRtfSubjectBlock(output,officialData);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
@@ -7302,6 +7346,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   output=compactOfficialRtfMeasurementSection(output,protocol);
   output=addOfficialRtfWatermark(output);
   output=addOfficialRtfClientSignature(output,protocol);
+  output=compactOfficialRtfSignatureGap(output);
   output=normalizeOfficialRtfClientLabel(output);
   return output;
 }
