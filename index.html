@@ -6715,7 +6715,7 @@ function officialProtocolDataForSite(site=selectedSite){
 }
 
 const OFFICIAL_CONTROL_SUBJECT_TEXT="Servis záložních zdrojů s.r.o.\nBožetěchova 3003/133\n612 00, Brno\nIČO: 09391126, DIČ: CZ09391126";
-const OFFICIAL_DEFAULT_MANUFACTURER_TEXT="Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČO: 09391126, DIČ: CZ09391126, C 118823/KSBR Krajský soud v Brně";
+const OFFICIAL_DEFAULT_MANUFACTURER_TEXT="Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČO: 09391126, DIČ: CZ09391126\nC 118823/KSBR Krajský soud v Brně";
 
 function officialProtocolInputData(){
   return {
@@ -6926,11 +6926,17 @@ function officialManufacturerText(officialData={}){
   const text=protocolExportValue(officialData.manufacturer).trim();
   if(!text) return OFFICIAL_DEFAULT_MANUFACTURER_TEXT;
   const normalized=simpleNorm(text);
+  if(normalized.includes("servis zaloznich zdroju") && normalized.includes("118823")){
+    return text
+      .replace(/,\s*C\s*118823\/KSBR\s*Krajský\s+soud\s+v\s+Brně/i,"\nC 118823/KSBR Krajský soud v Brně")
+      .replace(/\n\s*C\s*118823\/KSBR\s*Krajský\s+soud\s+v\s+Brně/i,"\nC 118823/KSBR Krajský soud v Brně");
+  }
   if(normalized.includes("servis zaloznich zdroju") && normalized.includes("09391126") && !normalized.includes("118823")){
     const lines=text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n");
     const lineIndex=lines.findIndex(line=>/I[ČC]O|I[ČC]|ICO/i.test(line));
     if(lineIndex>=0){
-      lines[lineIndex]=`${lines[lineIndex].replace(/\s+$/,"")}, C 118823/KSBR Krajský soud v Brně`;
+      lines[lineIndex]=lines[lineIndex].replace(/\s+$/,"");
+      lines.splice(lineIndex+1,0,"C 118823/KSBR Krajský soud v Brně");
       return lines.join("\n");
     }
     return OFFICIAL_DEFAULT_MANUFACTURER_TEXT;
@@ -7140,13 +7146,37 @@ function officialRtfRun(text,{bold=false,underline=false}={}){
 }
 
 function officialRtfSubjectBlock(officialData={}){
-  const left=officialMultiline(OFFICIAL_CONTROL_SUBJECT_TEXT,4);
-  const right=officialMultiline(officialManufacturerText(officialData),4);
-  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
+  const left=officialMultiline(OFFICIAL_CONTROL_SUBJECT_TEXT,5);
+  const right=officialMultiline(officialManufacturerText(officialData),5);
+  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\sl250\\slmult1\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
   const heading=`${paragraph}${officialRtfRun("e) Kontrolní subjekt:",{bold:true,underline:true})}\\tab ${officialRtfRun("f) Výrobce PBZ:",{bold:true,underline:true})}\\par`;
   const rows=left.map((line,idx)=>`${paragraph}${officialRtfRun(line || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
   const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
   return `${heading}\n${blank}\n${rows}\n${blank}\n`;
+}
+
+function officialRtfOperatorObjectBlock(officialData={}){
+  const left=officialOperatorLines(officialData.operator,5).filter(Boolean);
+  const right=officialMultiline(officialData.objectAddress,5).filter(Boolean);
+  const rowCount=Math.max(left.length,right.length,1);
+  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\sl250\\slmult1\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
+  const heading=`${paragraph}${officialRtfRun("a) Provozovatel PBZ:",{bold:true,underline:true})}\\tab ${officialRtfRun("b) Adresa objektu kde je PBZ umístěno:",{bold:true,underline:true})}\\par`;
+  const rows=Array.from({length:rowCount},(_,idx)=>`${paragraph}${officialRtfRun(left[idx] || " ")}\\tab ${officialRtfRun(right[idx] || " ")}\\par`).join("\n");
+  const blank=`${paragraph}${officialRtfRun(" ")}\\tab ${officialRtfRun(" ")}\\par`;
+  return `${heading}\n${rows}\n${blank}\n`;
+}
+
+function replaceOfficialRtfOperatorObjectBlock(output,officialData={}){
+  const operatorLabel="Provozovatel PBZ:";
+  const locationLabel="Um\\'edst\\'ecn\\'ed PBZ:";
+  const labelIndex=output.indexOf(operatorLabel);
+  const locationIndex=output.indexOf(locationLabel,labelIndex);
+  if(labelIndex<0 || locationIndex<0) return output;
+  const aMarker=output.lastIndexOf(" a)}",labelIndex);
+  const start=aMarker>=0 ? output.lastIndexOf("{\\rtlch",aMarker) : output.lastIndexOf("{\\rtlch",labelIndex);
+  const end=output.lastIndexOf("\\pard\\plain",locationIndex);
+  if(start<0 || end<0 || end<=start) return output;
+  return `${output.slice(0,start)}${officialRtfOperatorObjectBlock(officialData)}${output.slice(end)}`;
 }
 
 function replaceOfficialRtfSubjectBlock(output,officialData={}){
@@ -7183,6 +7213,42 @@ function removeOfficialRtfBlankBeforeLocation(output){
   if(blankParagraph.length>1800 || rtfVisibleText(blankParagraph)) return output;
   const paragraphPrefix=output.slice(paragraphStart,firstRunStart);
   return `${output.slice(0,paragraphStart)}${paragraphPrefix}${output.slice(locationRunStart)}`;
+}
+
+function removeOfficialSpacerRunBeforeMarker(block,marker){
+  const idx=block.indexOf(marker);
+  if(idx<0) return block;
+  const before=block.slice(0,idx);
+  const after=block.slice(idx);
+  const cleaned=before.replace(/(\{\\rtlch\\fcs1[^{}]*(?:I\\'c8O:\s*|\s+)\})\s*(\{\\rtlch\\fcs1[^{}]*\s*)$/,"$2");
+  return `${cleaned}${after}`;
+}
+
+function normalizeOfficialRtfOperatorBlock(output){
+  const first=output.indexOf("__SZZ_OPERATOR_1__");
+  const object=output.indexOf("__SZZ_OBJECT_1__",first);
+  if(first<0 || object<0) return output;
+  const start=output.lastIndexOf("\\pard\\plain",first);
+  const blockStart=start>=0 ? start : first;
+  let block=output.slice(blockStart,object);
+  block=block.replace(/\\li142/g,"\\li0").replace(/\\lin142/g,"\\lin0");
+  [
+    "__SZZ_OPERATOR_1__",
+    "__SZZ_OPERATOR_2__",
+    "__SZZ_OPERATOR_3__",
+    "__SZZ_OPERATOR_4__"
+  ].forEach(marker=>{
+    block=removeOfficialSpacerRunBeforeMarker(block,marker);
+  });
+  return `${output.slice(0,blockStart)}${block}${output.slice(object)}`;
+}
+
+function shrinkOfficialRtfTextSize(output){
+  return output.replace(/\\(a?fs)(\d+)/g,(match,prefix,sizeText)=>{
+    const size=Number(sizeText);
+    if(!Number.isFinite(size) || size<=10) return match;
+    return `\\${prefix}${Math.max(10,size-2)}`;
+  });
 }
 
 function bytesToHex(bytes){
@@ -7305,7 +7371,8 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
 
 function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok"){
   let output=removeOfficialRtfOperatorIcoLabel(template);
-  output=removeOfficialRtfBlankBeforeLocation(output);
+  output=replaceOfficialRtfOperatorObjectBlock(output,officialData);
+  output=normalizeOfficialRtfOperatorBlock(output);
   output=replaceOfficialRtfSubjectBlock(output,officialData);
   const values=officialProtocolTemplateValues(protocol,officialData,mode);
   Object.entries(values).forEach(([placeholder,value])=>{
@@ -7315,6 +7382,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   output=addOfficialRtfWatermark(output);
   output=addOfficialRtfClientSignature(output,protocol);
   output=normalizeOfficialRtfClientLabel(output);
+  output=shrinkOfficialRtfTextSize(output);
   return output;
 }
 
