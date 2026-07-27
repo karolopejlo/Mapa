@@ -2138,10 +2138,14 @@ window.cloudinaryPhotoConfig = CLOUDINARY_PHOTOS;
 window.rows = rows;
 const AUTH_KNOWN_SIGNED_IN_KEY="astipFirebaseKnownSignedIn";
 const AUTH_EXPLICIT_SIGN_OUT_KEY="astipFirebaseExplicitSignOut";
+const AUTH_LAST_EMAIL_KEY="astipFirebaseLastEmail";
 const AUTH_RESTORE_GRACE_MS=7000;
 const authBootStartedAt=Date.now();
 function knownSignedIn(){
   try{return localStorage.getItem(AUTH_KNOWN_SIGNED_IN_KEY)==="1";}catch(e){return false;}
+}
+function lastKnownUserEmail(){
+  try{return safe(localStorage.getItem(AUTH_LAST_EMAIL_KEY)).toLowerCase();}catch(e){return "";}
 }
 function explicitSignOutPending(){
   try{return sessionStorage.getItem(AUTH_EXPLICIT_SIGN_OUT_KEY)==="1";}catch(e){return false;}
@@ -2152,13 +2156,16 @@ function markExplicitSignOut(){
 function clearExplicitSignOut(){
   try{sessionStorage.removeItem(AUTH_EXPLICIT_SIGN_OUT_KEY);}catch(e){}
 }
-function rememberKnownSignedIn(){
+function rememberKnownSignedIn(user=null){
   try{localStorage.setItem(AUTH_KNOWN_SIGNED_IN_KEY,"1");}catch(e){}
+  const email=safe(user && user.email).toLowerCase();
+  if(email) try{localStorage.setItem(AUTH_LAST_EMAIL_KEY,email);}catch(e){}
   clearExplicitSignOut();
   try{document.documentElement.classList.add("auth-resume");}catch(e){}
 }
 function forgetKnownSignedIn(){
   try{localStorage.removeItem(AUTH_KNOWN_SIGNED_IN_KEY);}catch(e){}
+  try{localStorage.removeItem(AUTH_LAST_EMAIL_KEY);}catch(e){}
   try{document.documentElement.classList.remove("auth-resume");}catch(e){}
 }
 function setStartupAuthChecking(checking){
@@ -2171,6 +2178,7 @@ function setStartupAuthChecking(checking){
 }
 window.rememberKnownSignedIn=rememberKnownSignedIn;
 window.forgetKnownSignedIn=forgetKnownSignedIn;
+window.lastKnownUserEmail=lastKnownUserEmail;
 window.setStartupAuthChecking=setStartupAuthChecking;
 window.knownSignedIn=knownSignedIn;
 const ORIGINAL_PINK_PLACES = ["bedřichov 290, hotel", "benešov, máchova 400, nemocnice rudolfa a stefanie", "borek u rokycan, policie", "bratislava, františka kubu 2,3,5,6 -rinok rača", "bratislava, trnavská cesta 8a, 6b, 19123 - nová cvernovka", "bratislava, volvo, lamač-bory", "brno, hrázní 1", "brno, jakubská 126,11,  kostel sv jakuba", "brno, kabátníkova 2, bd", "brno, kotlářská 3, bd", "brno, metodějova 3120/6", "brno, oblá 79", "brno, rotalova 80,82,84, bd", "brno, sokolova 1e", "brno, spolková 8a", "brno, svážná 1", "brno, česká 11, škola charbulova", "bruntál, zahradní 48, strojmetal - pozor info ve složce", "choceň, běstovice, de heus", "chotěboř, severní 1911, bd", "dek trade", "dobřichovice, anežky české 1119", "frýdek místek, revoluční 1282, dps", "frýdek-místek, 17.listopadu 147", "havlíčkův brod, nuselská 3240, zš", "hradec králové, jana koziny 1237, biskupské gymnázium", "humpolec, okružní 1296, cobap", "jablonec nad nisou, v. nezvala 87/14, dps", "karviná, lázeňská, darkov", "klatovy, podhůrecká 815/3, dps", "kralupy nad vltavou, palackého nám. 1, mú", "kroměříž, erbenovo nábř. 4262", "kyjov, strážovská, centrumpro seniory", "kyjovice, domov na zámku", "luhačovice, zatloukalova 1144", "milovice, armádní 882,883", "milovice, dětské centrum, dětská 361", "mnichovice, bezručova 346, zš", "neslovice, lesní 368, bd", "nupaky, komerční 528, auto opat", "nymburk, soudní, penzion panorama", "olomouc, eduarda hamburgera 9, 11", "olomouc, loudova 7 + 11, 15", "olomouc, tř. j. pelikána 5,7,9,11,13", "opatovice nad labem, siko koupelny", "opava, císařského pluku 3078/1", "opava, nákladní 2", "opava, olomoucká 88, psychiatrická léčebna", "opava, rolnická 24", "osoblaha, klášterní 34 - dps", "ostrava, 28. října, red house", "pacov, malovcova 1080", "pec pod sněžkou, velká úpa 360, bd", "pelhřimov, habrová 2523 + 2524, bd", "pelhřimov, habrová 2525, 2526, bd", "plesná, spojovací 80, kodus, okres cheb", "plzeň, nemocniční 6 a stehlíkova 5,7,9", "plzeň, průmyslová 2a, škoda electric", "plzeň, rybářská 26, bd", "poprad, slovenského odboja, karpatská rezidence", "poříčí nad sázavou, parc. č. 190-71, hala h1 + h2", "praha 10, bd u hranic", "praha 10, ramonova 3466, bd hagibor", "praha, budínova 2, protialkoholní záchytka, bulovka", "praha, choceradská 2, bd", "praha, dobratická 525, zš tupolevova", "praha, dopraváků 749/3, stiebel eltron", "praha, hloubětín 837-2, bd, kbelská 1152", "praha, holečkova 13, hotel", "praha, horolezecká 1a", "praha, hradešínská 52, bd", "praha, ke kříži 1653-8 -vivus 4. etapa", "praha, ke kříži 1672, vivus -5. etapa", "praha, konviktská 14, cloister inn", "praha, koubkova 12", "praha, libocká 643, domov sv. rodiny", "praha, lucemburská 9, ubytovna", "praha, maltézské náměstí 8, bd s ubytovnou", "praha, na bělidle 23", "praha, na chvalské tvrzi", "praha, na poříčí, mb 48 - opletal", "praha, na vackově -os vackov", "praha, nad kazankou 19", "praha, novovysočanská 8, dps", "praha, opletalova 40, hotel gold bank", "praha, oty bubeníčka 1654-4, vivus 4. etapa", "praha, parmská 390, dps", "praha, plzeňská 56, hotel", "praha, polyfunkční objekt dlouhá", "praha, sazovická 508", "praha, spálená 12, městská poliklinika", "praha, starokošířská 13, bd", "praha, v podhájí 20, bd braník residences", "praha, vivus uhřiněves ke kříži -1636, oty bubeníčka -1637, 1638, 1639", "praha, vladivostocká 1530/12, slavia hotel", "praha, řešovská 852-10, bohnice -rezidence jasmín", "prostějov, průmyslová 20", "slatinice, ld balnea", "slavkov u brna, slovanská 758, destila", "slušovice, dostihová 725, kodus", "sobotka, libošovice 39, charita", "sokolovská uhelná, vintířov, vřesová, suas zpracování odpadů", "střelice, tetčická 31169", "teplice, nám. svobody 3316, oc teplice", "trnava, včelárska 2", "uherský brod, vlčnovská 2512, sklad ptáček", "vamberk, smetanovo nábřeží 334, vaspo", "vejprty, nerudova1221_14, dzr krakonoš", "velké meziříčí, u světlé 9, dps", "vrchlabí - herlíkovice, horská 547, apartmány mlýn herlíkovice", "vrchlabí, horská 179", "český těšín, střelniční 257/3, gerontocentrum", "čimelice, siko koupelny"];
@@ -2470,13 +2478,16 @@ if(firebaseReady){
       showLogin();
       return;
     }
-    rememberKnownSignedIn();
+    rememberKnownSignedIn(user);
     setStartupAuthChecking(false);
     const topLogoutBtn=document.getElementById("topLogoutBtn");
     if(topLogoutBtn) topLogoutBtn.style.display="block";
     showApp();
     setProgressStatus("Přihlášení potvrzeno. Načítám body...");
     await loadFirebaseRowsAfterAuth("login");
+    if(typeof window.syncOfflineChanges==="function"){
+      setTimeout(()=>window.syncOfflineChanges({reason:"login",silent:true}),1200);
+    }
     if(selectedSite){
       setTimeout(()=>{
         try{ loadHistory(selectedSite.id); }catch(e){}
@@ -2485,7 +2496,19 @@ if(firebaseReady){
     }
   }
   function handleSignedOut(){
-    const restoringKnownSession=knownSignedIn() && !explicitSignOutPending() && Date.now()-authBootStartedAt<AUTH_RESTORE_GRACE_MS;
+    const knownSession=knownSignedIn() && !explicitSignOutPending();
+    if(knownSession && navigator.onLine===false){
+      setStartupAuthChecking(false);
+      showApp();
+      setProgressStatus("Offline režim. Používám lokálně uložené body, protokoly a fotky.");
+      setTimeout(()=>{
+        try{
+          if(typeof window.loadFirebaseSitesUnified==="function") window.loadFirebaseSitesUnified(null,{offlineCacheOnly:true});
+        }catch(e){}
+      },300);
+      return;
+    }
+    const restoringKnownSession=knownSession && Date.now()-authBootStartedAt<AUTH_RESTORE_GRACE_MS;
     if(restoringKnownSession){
       setStartupAuthChecking(true);
       try{document.documentElement.classList.add("auth-resume");}catch(e){}
@@ -2721,7 +2744,7 @@ function syncCurrentUserFromCompat(){
 }
 function currentUserEmail(){
   const u=currentUser || window.currentUser || window.__authReadyUser || syncCurrentUserFromCompat();
-  return safe(u && u.email).toLowerCase();
+  return safe(u && u.email).toLowerCase() || lastKnownUserEmail();
 }
 function isAllowedLoginEmail(email){
   const e=safe(email).toLowerCase();
@@ -7876,15 +7899,99 @@ function saveProtocolLocally(payload,site=selectedSite,reason=""){
     _id:safe(payload?._id) || makeLocalRecordId("protocol"),
     _offline:true,
     _syncStatus:"local",
+    localOnly:true,
     offlineReason:safe(reason),
     savedAt:safe(payload?.savedAt) || new Date().toISOString(),
-    offlineSavedAt:new Date().toISOString()
+    offlineSavedAt:new Date().toISOString(),
+    syncQueuedAt:new Date().toISOString()
   };
   appendSiteLocalArray("protocolHistory",offlinePayload,site,120);
   return offlinePayload;
 }
 
 let offlineProtocolSyncRunning=false;
+
+function localStorageArrayEntries(prefix){
+  const entries=[];
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key || !key.startsWith(prefix)) continue;
+      const arr=JSON.parse(localStorage.getItem(key) || "[]");
+      if(Array.isArray(arr)){
+        entries.push({key,suffix:key.slice(prefix.length),items:arr});
+      }
+    }
+  }catch(e){
+    console.warn("Lokální frontu se nepodařilo načíst",e);
+  }
+  return entries;
+}
+
+function removeLocalStorageArrayItemByKey(key,id){
+  const cleanId=safe(id);
+  if(!key || !cleanId) return;
+  try{
+    const arr=JSON.parse(localStorage.getItem(key) || "[]");
+    if(!Array.isArray(arr)) return;
+    const next=arr.filter(item=>safe(item && item._id)!==cleanId);
+    localStorage.setItem(key,JSON.stringify(next));
+  }catch(e){}
+}
+
+function siteFromOfflineRecord(record={},cacheSuffix=""){
+  const recordKeys=[
+    record.siteId,
+    record.siteKey,
+    record.siteDocId,
+    record.firebaseDocId,
+    ...(Array.isArray(record.siteKeys) ? record.siteKeys : [])
+  ].map(x=>String(x || "").trim()).filter(Boolean);
+  const found=(rows || []).find(row=>{
+    try{
+      const keys=siteRecordKeys(row);
+      if(recordKeys.some(key=>keys.includes(key))) return true;
+      return recordMatchesSite(record,row);
+    }catch(e){
+      return false;
+    }
+  });
+  if(found) return found;
+  const docId=safe(record.firebaseDocId || record.siteDocId || (/^[-A-Za-z0-9_]{6,}$/.test(cacheSuffix) && !cacheSuffix.startsWith("firebase_") ? cacheSuffix : ""));
+  const siteKey=safe(record.siteKey || record.siteId || cacheSuffix || (docId ? `firebase_${docId}` : "offline_site"));
+  const raw={
+    "Klíč_adresy":siteKey,
+    "Název":safe(record.siteName || record.place || record.siteAddress || ""),
+    "Adresa / umístění":safe(record.siteName || record.place || record.siteAddress || ""),
+    "Popis_zdroje":safe(record.siteSource || record.deviceType || ""),
+    "Zdroj":safe(record.serial || "")
+  };
+  if(docId) raw["Firebase_doc_id"]=docId;
+  if(record.lat) raw["GPS_lat"]=record.lat;
+  if(record.lon) raw["GPS_lon"]=record.lon;
+  return {
+    id:siteKey,
+    raw,
+    firebaseDocId:docId,
+    firebaseData:{raw},
+    adresa:raw["Adresa / umístění"] || raw["Název"],
+    zdroj:raw["Popis_zdroje"],
+    lat:num(raw["GPS_lat"]),
+    lon:num(raw["GPS_lon"])
+  };
+}
+
+function pendingOfflineProtocolSiteRefs(){
+  const byKey=new Map();
+  localStorageArrayEntries("astipMap:protocolHistory:").forEach(entry=>{
+    const offlineItems=entry.items.filter(item=>item && item._offline && item._syncStatus!=="online");
+    if(!offlineItems.length) return;
+    const site=siteFromOfflineRecord(offlineItems[0],entry.suffix);
+    const key=selectedSiteDocId(site) || detailKey(site) || site.id || entry.suffix;
+    byKey.set(key,{site,count:offlineItems.length});
+  });
+  return [...byKey.values()];
+}
 
 async function syncOfflineProtocolsForSite(site=selectedSite,options={}){
   if(offlineProtocolSyncRunning) return 0;
@@ -7939,6 +8046,22 @@ async function syncOfflineProtocolsForSite(site=selectedSite,options={}){
   return synced;
 }
 window.syncOfflineProtocolsForSite=syncOfflineProtocolsForSite;
+
+async function syncAllOfflineProtocols(options={}){
+  if(!firebaseReady || !db || !fb.fsMod || navigator.onLine===false) return 0;
+  const signedUser=await waitForFirebaseUser(3000);
+  if(!signedUser) return 0;
+  const refs=pendingOfflineProtocolSiteRefs();
+  let total=0;
+  for(const ref of refs){
+    total+=await syncOfflineProtocolsForSite(ref.site,{silent:true});
+  }
+  if(total && !options.silent){
+    showSaveConfirmation(total===1 ? "Offline protokol uložen online." : `Offline protokoly uloženy online: ${total}.`);
+  }
+  return total;
+}
+window.syncAllOfflineProtocols=syncAllOfflineProtocols;
 
 async function saveSiteChildItem(kind,id,item,site=selectedSite){
   const docId=selectedSiteDocId(site);
@@ -8537,11 +8660,29 @@ async function loadHistory(siteId){
 window.loadHistory=loadHistory;
 
 window.addEventListener("online",()=>{
-  if(!selectedSite || typeof syncOfflineProtocolsForSite!=="function") return;
-  syncOfflineProtocolsForSite(selectedSite).then(count=>{
-    if(count && typeof loadHistory==="function") loadHistory(selectedSite.id);
-  });
+  if(typeof syncOfflineChanges==="function"){
+    syncOfflineChanges({reason:"online"}).then(count=>{
+      if(count && selectedSite){
+        if(typeof loadHistory==="function") loadHistory(selectedSite.id);
+        if(typeof loadSitePhotos==="function") loadSitePhotos(selectedSite);
+      }
+    });
+  }else if(selectedSite && typeof syncOfflineProtocolsForSite==="function"){
+    syncOfflineProtocolsForSite(selectedSite).then(count=>{
+      if(count && typeof loadHistory==="function") loadHistory(selectedSite.id);
+    });
+  }
 });
+
+window.addEventListener("offline",()=>{
+  if(typeof showSaveConfirmation==="function") showSaveConfirmation("Offline režim. Změny se uloží lokálně.");
+});
+
+setInterval(()=>{
+  if(navigator.onLine!==false && typeof syncOfflineChanges==="function"){
+    syncOfflineChanges({reason:"interval",silent:true});
+  }
+},60000);
 
 
 
@@ -9566,14 +9707,179 @@ async function readOfflinePhotoItems(site=selectedSite){
   }
 }
 
-async function removeOfflinePhotoItem(id,site=selectedSite){
+async function removeOfflinePhotoItem(id,site=selectedSite,sourceItem=null){
   const cleanId=safe(id);
   if(!cleanId) return;
   try{
     await withLocalPhotoStore("readwrite",(store)=>{store.delete(cleanId);});
   }catch(e){}
   removeSiteLocalItem("offlinePhotos",cleanId,site);
+  const explicitCacheKey=safe(sourceItem && sourceItem.siteCacheKey);
+  if(explicitCacheKey){
+    removeLocalStorageArrayItemByKey(explicitCacheKey.replace("astipMap:photos:","astipMap:offlinePhotos:"),cleanId);
+  }
 }
+
+async function readAllOfflinePhotoItems(){
+  const fallback=[];
+  localStorageArrayEntries("astipMap:offlinePhotos:").forEach(entry=>{
+    const siteCacheKey=entry.key.replace("astipMap:offlinePhotos:","astipMap:photos:");
+    entry.items.forEach(item=>{
+      if(item) fallback.push({...item,siteCacheKey:item.siteCacheKey || siteCacheKey});
+    });
+  });
+  let indexed=[];
+  try{
+    indexed=await withLocalPhotoStore("readonly",(store,setResult)=>{
+      const req=store.getAll();
+      req.onsuccess=()=>setResult(Array.isArray(req.result) ? req.result : []);
+      req.onerror=()=>setResult([]);
+    });
+  }catch(e){}
+  const seen=new Set();
+  return [...(indexed || []),...fallback]
+    .filter(item=>item && (item._offline || item.storageMode==="offline" || item.localOnly))
+    .filter(item=>{
+      const id=safe(item._id);
+      if(id && seen.has(id)) return false;
+      if(id) seen.add(id);
+      return !!photoDisplayUrl(item);
+    });
+}
+
+function siteCacheSuffixFromPhoto(item){
+  const key=safe(item && item.siteCacheKey);
+  return key.startsWith("astipMap:photos:") ? key.slice("astipMap:photos:".length) : "";
+}
+
+async function offlinePhotoFileFromItem(item){
+  const dataUrl=safe(item && (item.fullUrl || item.displayUrl || item.url || item.thumbUrl));
+  if(!dataUrl || !dataUrl.startsWith("data:")){
+    throw new Error("Lokální fotka nemá uložená obrazová data.");
+  }
+  const response=await fetch(dataUrl);
+  const blob=await response.blob();
+  const fileName=photoFileName(item || {},0);
+  return new File([blob],fileName,{type:blob.type || item.type || "image/jpeg",lastModified:Date.parse(item.takenAt || item.createdAt || "") || Date.now()});
+}
+
+let offlinePhotoSyncRunning=false;
+
+async function syncOfflinePhotos(options={}){
+  if(offlinePhotoSyncRunning) return 0;
+  if(!firebaseReady || !db || !fb.fsMod || navigator.onLine===false) return 0;
+  const signedUser=await waitForFirebaseUser(3000);
+  if(!signedUser) return 0;
+  const offlineItems=await readAllOfflinePhotoItems();
+  if(!offlineItems.length) return 0;
+  offlinePhotoSyncRunning=true;
+  let synced=0;
+  let failed=0;
+  try{
+    for(const item of offlineItems){
+      const id=safe(item._id) || makeLocalRecordId("photo");
+      const site=siteFromOfflineRecord(item,siteCacheSuffixFromPhoto(item));
+      try{
+        if(!site || !selectedSiteDocId(site)){
+          throw new Error("K fotce nejde najít Firebase bod.");
+        }
+        const folderName=photoFolderName(item) || photoFolderNameForDate(item.createdAt || new Date());
+        const uploadFile=await offlinePhotoFileFromItem({...item,_id:id});
+        const cloudinaryResult=await uploadPhotoToCloudinary(id,uploadFile,site,folderName);
+        const syncedAt=new Date().toISOString();
+        const payload={
+          ...item,
+          _id:id,
+          url:cloudinaryResult.url,
+          displayUrl:cloudinaryResult.displayUrl,
+          fullUrl:cloudinaryResult.fullUrl,
+          thumbUrl:cloudinaryResult.thumbUrl,
+          storageMode:"cloudinary",
+          _offline:false,
+          _syncStatus:"online",
+          localOnly:false,
+          offlineReason:"",
+          syncedAt,
+          syncedBy:signedUser.email || currentUserEmail(),
+          uploadedBy:item.uploadedBy || signedUser.email || currentUserEmail(),
+          cloudinaryPublicId:cloudinaryResult.cloudinaryPublicId,
+          cloudinaryAssetId:cloudinaryResult.cloudinaryAssetId,
+          cloudinaryVersion:cloudinaryResult.cloudinaryVersion,
+          cloudinaryUploadPreset:cloudinaryResult.cloudinaryUploadPreset,
+          cloudinaryFolder:cloudinaryResult.cloudinaryFolder || cloudinaryPhotoFolderPath(folderName),
+          size:uploadFile.size || item.size || item.originalSize || 0
+        };
+        const childOk=await saveSiteChildItem("photos",id,payload,site);
+        const embeddedOk=childOk ? true : await appendEmbeddedSiteItem("photos",payload,site);
+        if(!childOk && !embeddedOk) throw new Error("Firebase nepovolil uložit odkaz k bodu.");
+        appendSiteLocalArray("photos",payload,site,0);
+        await removeOfflinePhotoItem(id,site,item);
+        if(selectedSite && recordMatchesSite(payload,selectedSite)){
+          sitePhotoItems=[payload,...sitePhotoItems.filter(photo=>safe(photo._id)!==id)];
+          renderSitePhotos(sitePhotoItems,true);
+        }
+        synced++;
+      }catch(e){
+        failed++;
+        console.warn("Synchronizace offline fotografie selhala",id,e);
+      }
+    }
+  }finally{
+    offlinePhotoSyncRunning=false;
+  }
+  if(synced && !options.silent){
+    showSaveConfirmation(synced===1 ? "Offline fotografie uložena online." : `Offline fotografie uloženy online: ${synced}.`);
+  }
+  if(failed && !options.silent){
+    const st=document.getElementById("sitePhotosStatus");
+    if(st) st.textContent=`Některé offline fotografie ještě čekají na synchronizaci: ${failed}.`;
+  }
+  return synced;
+}
+window.syncOfflinePhotos=syncOfflinePhotos;
+
+let offlineSyncRunning=false;
+let offlineSyncLastStarted=0;
+
+async function syncOfflineChanges(options={}){
+  if(offlineSyncRunning) return 0;
+  if(navigator.onLine===false) return 0;
+  const now=Date.now();
+  if(!options.force && now-offlineSyncLastStarted<2500) return 0;
+  if(!firebaseReady || !db || !fb.fsMod) return 0;
+  const signedUser=await waitForFirebaseUser(3000);
+  if(!signedUser) return 0;
+  offlineSyncRunning=true;
+  offlineSyncLastStarted=now;
+  let protocolCount=0;
+  let photoCount=0;
+  try{
+    const p=document.getElementById("progress");
+    if(p && !options.silent) p.textContent="Synchronizuji offline změny...";
+    protocolCount=await syncAllOfflineProtocols({silent:true});
+    photoCount=await syncOfflinePhotos({silent:true});
+    const total=protocolCount+photoCount;
+    if(total){
+      if(selectedSite){
+        try{ await loadSitePhotos(selectedSite); }catch(e){}
+        try{ await loadHistory(selectedSite.id); }catch(e){}
+      }
+      if(!options.silent){
+        showSaveConfirmation(`Offline změny odeslány online: ${total}.`);
+      }
+    }
+    if(p && !options.silent) p.textContent="";
+    return total;
+  }catch(e){
+    console.warn("Synchronizace offline změn selhala",e);
+    const p=document.getElementById("progress");
+    if(p && !options.silent) p.textContent="Offline změny zůstaly uložené lokálně a zkusí se odeslat později.";
+    return protocolCount+photoCount;
+  }finally{
+    offlineSyncRunning=false;
+  }
+}
+window.syncOfflineChanges=syncOfflineChanges;
 
 function resetSitePhotoInput(){
   const input=document.getElementById("sitePhotosInput");
@@ -9840,7 +10146,7 @@ async function uploadSitePhotos(){
 
   try{
     const signedUser=(firebaseReady && db) ? await waitForFirebaseUser(1200) : null;
-    const userEmail=signedUser?.email || currentUser?.email || "";
+    const userEmail=signedUser?.email || currentUser?.email || lastKnownUserEmail() || "";
     const keys=sitePhotoKeys(selectedSite);
     const siteKey=keys[0] || selectedSite.id || "bod";
     const siteId=selectedSite.id || siteKey;
@@ -9880,9 +10186,13 @@ async function uploadSitePhotos(){
         thumbUrl:offlineData.dataUrl,
         storageMode:"offline",
         _offline:true,
+        _syncStatus:"local",
+        localOnly:true,
         offlineReason:safe(reason),
         size:offlineData.size || file.size,
-        originalSize:file.size
+        originalSize:file.size,
+        type:offlineData.type || file.type || "image/jpeg",
+        syncQueuedAt:createdAt
       };
       await saveOfflinePhotoItem(photoPayload,selectedSite);
       offlineCount++;
@@ -9947,7 +10257,7 @@ async function uploadSitePhotos(){
       st.textContent=`Uloženo fotografií do složky ${uploadFolderName}: ${onlineCount} online, ${offlineCount} lokálně v tomto zařízení.`;
       showSaveConfirmation("Fotografie uloženy.");
     }else if(offlineCount){
-      st.textContent=`Fotografie uloženy lokálně do složky ${uploadFolderName}: ${offlineCount}. Po připojení budou vidět v tomto prohlížeči.`;
+      st.textContent=`Fotografie uloženy lokálně do složky ${uploadFolderName}: ${offlineCount}. Po připojení se samy odešlou online.`;
       showSaveConfirmation("Fotografie uloženy lokálně.");
     }else if(localOnlyCount){
       st.textContent=`Fotografie nahrány na Cloudinary do složky ${uploadFolderName}. ${localOnlyCount} odkazů Firebase nepovolil uložit k bodu, proto jsou uložené lokálně v tomto prohlížeči.`;
@@ -9955,6 +10265,9 @@ async function uploadSitePhotos(){
     }else{
       st.textContent=`Uloženo fotografií do složky ${uploadFolderName}: ${onlineCount} (Cloudinary).`;
       showSaveConfirmation("Fotografie uloženy.");
+    }
+    if(offlineCount && navigator.onLine!==false && typeof syncOfflineChanges==="function"){
+      setTimeout(()=>syncOfflineChanges({reason:"photo-offline-save",silent:true}),2500);
     }
     resetSitePhotoInput();
     setTimeout(()=>{ try{ loadSitePhotos(selectedSite); }catch(e){} },500);
@@ -10170,7 +10483,7 @@ function protocolPayload(){
     sourceIdentity:siteSourceIdentity(selectedSite),
     siteName:selectedSite?.adresa || "",
     siteSource:selectedSite?.zdroj || "",
-    technicianEmail:currentUser?.email || "",
+    technicianEmail:currentUser?.email || lastKnownUserEmail() || "",
     date:val("protoDate"),
     selectedDevice:val("protoDeviceTypeSelect") || val("protoDeviceSelect"),
     deviceType:val("protoDeviceType"),
@@ -10247,7 +10560,7 @@ function protocolPayload(){
     notes:val("protoNotes"),
     clientSign:val("protoClientSign"),
     clientSignatureDataUrl:signature,
-    techSign:val("protoTechSign") || (currentUser?.displayName || currentUser?.email || ""),
+    techSign:val("protoTechSign") || (currentUser?.displayName || currentUser?.email || lastKnownUserEmail() || ""),
     savedAt:nowIso,
     createdAt:originalCreatedAt,
     updatedAt:protocolEditId() ? nowIso : ""
@@ -10334,8 +10647,8 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   const payload=protocolPayload();
   const editingId=protocolEditId();
   const editing=!!editingId;
-  payload.createdBy=protocolEditState?.item?.createdBy || currentUser?.email || "";
-  payload.updatedBy=currentUser?.email || "";
+  payload.createdBy=protocolEditState?.item?.createdBy || currentUser?.email || lastKnownUserEmail() || "";
+  payload.updatedBy=currentUser?.email || lastKnownUserEmail() || "";
   const onlineSaveAvailable=!!(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine !== false);
   const saveOffline=reason=>{
     const offlinePayload=saveProtocolLocally(payload,selectedSite,reason);
@@ -10344,6 +10657,9 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
     render();
     st.textContent="Protokol uložen lokálně v tomto prohlížeči. Internet/Firebase teď není dostupný.";
     showSaveConfirmation("Protokol uložen lokálně.");
+    if(navigator.onLine!==false && typeof syncOfflineChanges==="function"){
+      setTimeout(()=>syncOfflineChanges({reason:"protocol-offline-save",silent:true}),2000);
+    }
     if(typeof loadHistory === "function") loadHistory(selectedSite.id);
     closeProtocolFormAfterSave();
     return offlinePayload;
@@ -12084,6 +12400,16 @@ setTimeout(()=>{
     try{
       const signedUser=await waitCompatUser();
       if(!signedUser){
+        if(navigator.onLine===false || (window.knownSignedIn && window.knownSignedIn())){
+          const cachedRows=showMapRowsCache(openDocId);
+          if(cachedRows.length){
+            const p=document.getElementById("progress");
+            if(p) p.textContent=navigator.onLine===false
+              ? "Offline režim. Body jsou načtené z lokální cache."
+              : "Čekám na obnovení přihlášení, zatím používám lokální cache.";
+            return cachedRows;
+          }
+        }
         sideStatus("",false);
         if(!opts.retryAuth) setTimeout(()=>loadFirebaseSites(openDocId,{retryAuth:true}),1200);
         return [];
