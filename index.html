@@ -1649,6 +1649,7 @@ button,input,select,textarea{
     <h1>Servis záložních zdrojů</h1>
     <p id="startupIntro">Kontroluji přihlášení...</p>
     <button class="primary" id="startupLoginBtn" onclick="window.loginPopup()">Přihlásit přes Google</button>
+    <button class="secondary install-app-btn" id="startupInstallAppBtn" type="button" style="display:none;margin-top:10px">Instalovat aplikaci</button>
     <p id="startupStatus" class="small"></p>
   </div>
 </div>
@@ -1668,6 +1669,7 @@ button,input,select,textarea{
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
+<button class="secondary install-app-btn" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
 <button class="secondary" id="mainProtocolHistoryBtn" style="margin-top:8px">Historie protokolů</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
@@ -12712,6 +12714,60 @@ setTimeout(()=>{
 </script>
 
 <script>
+let deferredSzzInstallPrompt=null;
+
+function isSzzAppInstalledView(){
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
+function updateSzzInstallButtons(){
+  const show=!!deferredSzzInstallPrompt && !isSzzAppInstalledView();
+  document.querySelectorAll(".install-app-btn").forEach(button=>{
+    button.style.display=show ? "" : "none";
+  });
+}
+
+async function installSzzAppFromPage(){
+  if(!deferredSzzInstallPrompt){
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci teď nabízí prohlížeč v menu.");
+    return;
+  }
+  const promptEvent=deferredSzzInstallPrompt;
+  deferredSzzInstallPrompt=null;
+  updateSzzInstallButtons();
+  try{
+    promptEvent.prompt();
+    const choice=await promptEvent.userChoice;
+    if(choice?.outcome==="accepted"){
+      if(window.showSaveConfirmation) window.showSaveConfirmation("Instalace aplikace spuštěna.");
+    }else if(window.showSaveConfirmation){
+      window.showSaveConfirmation("Instalace zrušena.");
+    }
+  }catch(error){
+    console.warn("Instalaci aplikace se nepodařilo spustit",error);
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci se nepodařilo spustit.");
+  }
+}
+
+window.addEventListener("beforeinstallprompt",event=>{
+  event.preventDefault();
+  deferredSzzInstallPrompt=event;
+  updateSzzInstallButtons();
+});
+
+window.addEventListener("appinstalled",()=>{
+  deferredSzzInstallPrompt=null;
+  updateSzzInstallButtons();
+  if(window.showSaveConfirmation) window.showSaveConfirmation("Aplikace nainstalována.");
+});
+
+document.addEventListener("DOMContentLoaded",()=>{
+  document.querySelectorAll(".install-app-btn").forEach(button=>{
+    button.addEventListener("click",installSzzAppFromPage);
+  });
+  updateSzzInstallButtons();
+});
+
 if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("./sw.js").catch(err=>{
