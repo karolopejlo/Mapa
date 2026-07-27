@@ -17,7 +17,8 @@ try{
 }catch(e){}
 </script>
 <script>
-const SZZ_LOGO_URL="./szz-app-icon-512.png";
+const SZZ_LOGO_URL="./szz-logo-display.png";
+const SZZ_APP_ICON_URL="./szz-app-icon-192.png";
 function installSzzLogoAssets(){
   try{
     const logo=document.querySelector(".startup-card .logo-img");
@@ -26,7 +27,7 @@ function installSzzLogoAssets(){
       logo.dataset.logoFileApplied="1";
     }
     document.querySelectorAll("[data-szz-logo-copy]").forEach(img=>{
-      if(!img.getAttribute("src")) img.src=SZZ_LOGO_URL;
+      img.src=SZZ_LOGO_URL;
     });
     let icon=document.querySelector('link[rel="icon"]');
     if(!icon){
@@ -35,21 +36,22 @@ function installSzzLogoAssets(){
       document.head.appendChild(icon);
     }
     icon.type="image/png";
-    icon.href=SZZ_LOGO_URL;
+    icon.href=SZZ_APP_ICON_URL;
     let apple=document.querySelector('link[rel="apple-touch-icon"]');
     if(!apple){
       apple=document.createElement("link");
       apple.rel="apple-touch-icon";
       document.head.appendChild(apple);
     }
-    apple.href=SZZ_LOGO_URL;
+    apple.href=SZZ_APP_ICON_URL;
   }catch(e){}
 }
 document.addEventListener("DOMContentLoaded",installSzzLogoAssets);
 window.addEventListener("load",installSzzLogoAssets);
 </script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
 window.addEventListener("DOMContentLoaded",()=>{
   const b=document.getElementById("startupLoginBtn");
   if(b) b.addEventListener("click", window.startGoogleLogin);
@@ -60,7 +62,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 setTimeout(()=>{
   const st=document.getElementById("startupStatus");
-  if(st && firebaseReady && (!auth || !fb.authMod)){
+  if(st && window.firebaseReady && (!window.auth || !window.fb || !window.fb.authMod)){
     st.textContent="Firebase se nenačetl. Zkontroluj internet / blokování skriptů.";
   }
 },2000);
@@ -83,23 +85,7 @@ window.addEventListener("orientationchange", mobileFixMap);
 window.addEventListener("pageshow", mobileFixMap);
 
 </script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js">
-window.addEventListener("DOMContentLoaded",()=>{
-  const b=document.getElementById("startupLoginBtn");
-  if(b) b.addEventListener("click", window.startGoogleLogin);
-  const b2=document.getElementById("loginBtn");
-  if(b2) b2.addEventListener("click", window.startGoogleLogin);
-});
-
-
-setTimeout(()=>{
-  const st=document.getElementById("startupStatus");
-  if(st && firebaseReady && (!auth || !fb.authMod)){
-    st.textContent="Firebase se nenačetl. Zkontroluj internet / blokování skriptů.";
-  }
-},2000);
-
-</script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <style>
 
 html,body{height:100%;width:100%}
@@ -129,6 +115,9 @@ aside{overflow:auto;background:#fff;padding:16px;border-right:1px solid var(--bo
 h1{font-size:20px;margin:0 0 6px}.small{font-size:13px;color:#64748b;line-height:1.35}
 .notice{border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px;margin:10px 0;font-size:13px}
 .ok{border-color:#bbf7d0;background:#ecfdf5;color:#166534}.err{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+.offline-map-status{display:none;border-color:#bfdbfe;background:#eff6ff;color:#1e40af;font-weight:700}
+.offline-map-status.err{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+.offline-map-status.ok{border-color:#bbf7d0;background:#ecfdf5;color:#166534}
 input,select,button,textarea{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:10px;background:white;font-size:14px}
 textarea{min-height:75px;resize:vertical}
 button{font-weight:700;cursor:pointer}.primary{background:var(--blue);color:white;border-color:var(--blue)}.secondary{background:#f1f5f9}.danger{background:#fee2e2;color:#991b1b;border-color:#fecaca}
@@ -1649,7 +1638,7 @@ button,input,select,textarea{
 
 <div class="startup auth-checking" id="startupScreen">
   <div class="startup-card">
-    <img class="logo-img" src="./szz-app-icon-512.png" alt="Servis záložních zdrojů logo">
+    <img class="logo-img" src="./szz-logo-display.png" alt="Servis záložních zdrojů logo">
     <h1>Servis záložních zdrojů</h1>
     <p id="startupIntro">Kontroluji přihlášení...</p>
     <button class="primary" id="startupLoginBtn" onclick="window.loginPopup()">Přihlásit přes Google</button>
@@ -1672,8 +1661,8 @@ button,input,select,textarea{
 <label>Hledat</label><input id="search" placeholder="název, adresa, výrobní číslo, kontakt...">
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
-<button class="secondary" id="cacheMapTilesBtn" type="button" style="margin-top:8px">Stáhnout mapu offline</button>
-<p id="offlineMapStatus" class="small"></p>
+<button class="secondary" id="cacheMapTilesBtn" type="button" style="margin-top:8px" onclick="window.cacheVisibleMapTiles && window.cacheVisibleMapTiles()">Stáhnout mapu offline</button>
+<div id="offlineMapStatus" class="notice offline-map-status"></div>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
 <button class="secondary install-app-btn" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
 <button class="secondary" id="mainProtocolHistoryBtn" style="margin-top:8px">Historie protokolů</button>
@@ -2127,7 +2116,7 @@ const firebaseConfig = {
 window.__firebaseConfig = firebaseConfig;
 
 const CSV_FILE="data.csv";
-const firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
+let firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
 const CLOUDINARY_PHOTOS = {
   cloudName:"dnxjc6ixi",
   uploadPreset:"astip_mapy",
@@ -2199,18 +2188,35 @@ window.addEventListener("load",()=>{
 
 
 if(firebaseReady){
-  const appMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
-  const authMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
-  const fsMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
+  let appMod=null;
+  let authMod=null;
+  let fsMod=null;
   let fnMod=null;
   try{
-    fnMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js");
+    appMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
+    authMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
+    fsMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
+    try{
+      fnMod = await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js");
+    }catch(e){
+      console.warn("Firebase Functions knihovna se nepodařila načíst",e);
+    }
   }catch(e){
-    console.warn("Firebase Functions knihovna se nepodařila načíst",e);
+    console.warn("Firebase knihovny nejsou dostupné, spouštím offline režim",e);
+    firebaseReady=false;
+    firebaseUnifiedPrimary=false;
+    window.firebaseReady=false;
+    window.firebaseUnifiedPrimary=false;
+    window.__firebaseUnifiedPrimary=false;
+    const st=document.getElementById("startupStatus");
+    if(st) st.textContent="Firebase není dostupný. Otevírám offline uloženou mapu.";
+    setTimeout(()=>{try{showApp();}catch(err){}},500);
   }
+  if(firebaseReady && appMod && authMod && fsMod){
   fb={appMod,authMod,fsMod,fnMod};
   app=appMod.getApps().length ? appMod.getApp() : appMod.initializeApp(firebaseConfig);
   auth=authMod.getAuth(app);
+  window.auth=auth;
   try{
     if(authMod.useDeviceLanguage) authMod.useDeviceLanguage(auth);
     else if(auth.useDeviceLanguage) auth.useDeviceLanguage();
@@ -2582,20 +2588,71 @@ if(firebaseReady){
     if(user) handleAuthorizedUser(user);
     else handleSignedOut();
   });
+  }
 }
 
 window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
+const APP_SHELL_CACHE_NAME="astip-szz-v11-static";
+const APP_SHELL_URLS=[
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./sw.js",
+  "./szz-logo-display.png",
+  "./szz-app-icon-192.png",
+  "./szz-app-icon-512.png",
+  "./podpis-tipek.png",
+  "./podpis-tipek.jpg",
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+  "https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js"
+];
 L.tileLayer(MAP_TILE_URL_TEMPLATE,{maxZoom:19,attribution:"&copy; OpenStreetMap"}).addTo(map);
 const layer=L.layerGroup().addTo(map);
 
-function setOfflineMapStatus(message="",bad=false){
+function setOfflineMapStatus(message="",state="info"){
   const el=document.getElementById("offlineMapStatus");
   if(!el) return;
+  el.style.display=message ? "block" : "none";
+  el.className=`notice offline-map-status ${state==="error" ? "err" : state==="ok" ? "ok" : ""}`.trim();
   el.textContent=message;
-  el.style.color=bad ? "#991b1b" : "";
+}
+
+function setOfflineMapButtonState(busy=false,text="Stáhnout mapu offline"){
+  const button=document.getElementById("cacheMapTilesBtn");
+  if(!button) return;
+  button.disabled=!!busy;
+  button.textContent=text;
+}
+
+async function cacheAppShellForOffline(){
+  if(!("caches" in window)) return 0;
+  const cache=await caches.open(APP_SHELL_CACHE_NAME);
+  let saved=0;
+  for(const url of APP_SHELL_URLS){
+    try{
+      let response=null;
+      try{
+        response=await fetch(new Request(url,{cache:"reload"}));
+      }catch(e){
+        response=await fetch(new Request(url,{mode:"no-cors",credentials:"omit",cache:"reload"}));
+      }
+      if(response && (response.ok || response.type==="opaque")){
+        await cache.put(new Request(url),response.clone());
+        saved++;
+      }
+    }catch(e){
+      console.warn("Soubor pro offline aplikaci se nepodařilo uložit",url,e);
+    }
+  }
+  return saved;
 }
 
 function clampTile(value,z){
@@ -2649,25 +2706,31 @@ function visibleMapTileUrls(maxTiles=650){
 }
 
 async function cacheVisibleMapTiles(){
-  const button=document.getElementById("cacheMapTilesBtn");
+  if(window.__mapTileCacheRunning) return;
   if(!("caches" in window)){
-    setOfflineMapStatus("Offline cache mapy není v tomto prohlížeči dostupná.",true);
+    setOfflineMapStatus("Offline cache mapy není v tomto prohlížeči dostupná.","error");
     return;
   }
   if(navigator.onLine===false){
-    setOfflineMapStatus("Jsi offline. Mapu stáhni, až bude internet.",true);
+    setOfflineMapStatus("Jsi offline. Mapu stáhni, až bude internet.","error");
     return;
   }
   const urls=visibleMapTileUrls();
   if(!urls.length){
-    setOfflineMapStatus("Nejdřív zobraz oblast mapy, kterou chceš uložit.",true);
+    setOfflineMapStatus("Nejdřív zobraz oblast mapy, kterou chceš uložit.","error");
     return;
   }
   const unique=[...new Set(urls)];
   let index=0, done=0, ok=0, failed=0;
-  if(button) button.disabled=true;
-  setOfflineMapStatus(`Stahuji mapu do offline cache: 0 / ${unique.length} dlaždic...`);
+  window.__mapTileCacheRunning=true;
+  setOfflineMapButtonState(true,"Stahuji mapu...");
+  setOfflineMapStatus("Připravuji aplikaci pro offline otevření...");
   try{
+    if("serviceWorker" in navigator && window.registerSzzServiceWorker){
+      try{ await window.registerSzzServiceWorker(); }catch(e){}
+    }
+    const shellCount=await cacheAppShellForOffline();
+    setOfflineMapStatus(`Aplikace offline připravena (${shellCount} souborů). Stahuji mapu: 0 / ${unique.length} dlaždic...`);
     const cache=await caches.open(MAP_TILE_CACHE_NAME);
     async function worker(){
       while(index<unique.length){
@@ -2687,6 +2750,7 @@ async function cacheVisibleMapTiles(){
           done++;
           if(done===unique.length || done%12===0){
             setOfflineMapStatus(`Stahuji mapu do offline cache: ${done} / ${unique.length} dlaždic...`);
+            setOfflineMapButtonState(true,`Stahuji ${done}/${unique.length}`);
           }
         }
       }
@@ -2695,10 +2759,14 @@ async function cacheVisibleMapTiles(){
     const message=failed
       ? `Mapa uložena částečně: ${ok} dlaždic, ${failed} se nepodařilo.`
       : `Mapa uložena offline: ${ok} dlaždic.`;
-    setOfflineMapStatus(message,!!failed);
+    setOfflineMapStatus(message,failed ? "error" : "ok");
     if(window.showSaveConfirmation) window.showSaveConfirmation(message);
+  }catch(e){
+    console.warn("Offline mapa se nepodařila uložit",e);
+    setOfflineMapStatus("Mapu se nepodařilo uložit offline: " + (e && e.message ? e.message : e),"error");
   }finally{
-    if(button) button.disabled=false;
+    window.__mapTileCacheRunning=false;
+    setOfflineMapButtonState(false);
   }
 }
 
@@ -2710,6 +2778,7 @@ function bindOfflineMapCacheButton(){
   }
 }
 document.addEventListener("DOMContentLoaded",bindOfflineMapCacheButton);
+bindOfflineMapCacheButton();
 window.cacheVisibleMapTiles=cacheVisibleMapTiles;
 
 function safe(v){return String(v??"").trim()}
@@ -13223,13 +13292,24 @@ document.addEventListener("DOMContentLoaded",()=>{
   updateSzzInstallButtons();
 });
 
-if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
-  window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("./sw.js").catch(err=>{
+function registerSzzServiceWorker(){
+  if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
+  if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
+  window.__szzServiceWorkerRegistrationPromise=navigator.serviceWorker.register("./sw.js")
+    .then(registration=>{
+      if(registration.waiting) registration.waiting.postMessage({type:"SKIP_WAITING"});
+      return navigator.serviceWorker.ready.catch(()=>registration);
+    })
+    .catch(err=>{
       console.warn("Service worker se nepodarilo registrovat",err);
+      window.__szzServiceWorkerRegistrationPromise=null;
+      throw err;
     });
-  });
+  return window.__szzServiceWorkerRegistrationPromise;
 }
+window.registerSzzServiceWorker=registerSzzServiceWorker;
+registerSzzServiceWorker().catch(()=>{});
+window.addEventListener("load",()=>registerSzzServiceWorker().catch(()=>{}));
 </script>
 
 </body>

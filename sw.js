@@ -1,7 +1,8 @@
-const CACHE_VERSION = "astip-szz-v10";
+const CACHE_VERSION = "astip-szz-v11";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const TILE_CACHE = "astip-szz-map-tiles-v1";
+
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -13,14 +14,28 @@ const PRECACHE_URLS = [
   "./szz-app-icon-192.png",
   "./szz-app-icon-512.png",
   "./szz-logo.png",
+  "./szz-logo-display.png",
   "./podpis-tipek.png",
   "./podpis-tipek.jpg"
+];
+
+const EXTERNAL_PRECACHE_URLS = [
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+  "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+  "https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      .then((cache) => cacheUrls(cache, PRECACHE_URLS.concat(EXTERNAL_PRECACHE_URLS)))
       .then(() => self.skipWaiting())
   );
 });
@@ -43,6 +58,37 @@ self.addEventListener("message", (event) => {
   }
 });
 
+async function cacheUrls(cache, urls) {
+  await Promise.allSettled(urls.map(async (url) => {
+    try {
+      const request = new Request(url, {cache: "reload"});
+      let response = null;
+      try {
+        response = await fetch(request);
+      } catch (error) {
+        response = await fetch(new Request(url, {
+          cache: "reload",
+          mode: isSameOriginUrl(url) ? "same-origin" : "no-cors",
+          credentials: isSameOriginUrl(url) ? "same-origin" : "omit"
+        }));
+      }
+      if (response && (response.ok || response.type === "opaque")) {
+        await cache.put(request, response.clone());
+      }
+    } catch (error) {
+      console.warn("Offline cache: soubor se nepodařilo uložit", url, error);
+    }
+  }));
+}
+
+function isSameOriginUrl(url) {
+  try {
+    return new URL(url, self.location.href).origin === self.location.origin;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function networkFirst(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   try {
@@ -51,7 +97,9 @@ async function networkFirst(request) {
     return response;
   } catch (error) {
     return (await cache.match(request)) ||
+      (await caches.match("./")) ||
       (await caches.match("./index.html")) ||
+      (await caches.match(new URL("./index.html", self.registration.scope).href)) ||
       Response.error();
   }
 }
