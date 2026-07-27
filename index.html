@@ -5,9 +5,10 @@
 <title>Servis záložních zdrojů - mapa FZ</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
+<meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./szz-icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="./szz-icon.svg">
+<link rel="apple-touch-icon" href="./szz-icon-192.png">
 <script>
 try{
   if(localStorage.getItem("astipFirebaseKnownSignedIn")==="1"){
@@ -7096,7 +7097,9 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
 
 const OFFICIAL_RTF_TEMPLATE_URL="official-template.rtf";
 const OFFICIAL_STOP_RTF_TEMPLATE_URL="official-stop-template.rtf";
+const OFFICIAL_TIPEK_SIGNATURE_URL="./podpis-tipek.jpg";
 const officialRtfTemplateCache={};
+let officialTipekSignatureBytesCache=null;
 
 async function loadOfficialRtfTemplate(mode="ok"){
   const key=mode==="stop" ? "stop" : "ok";
@@ -7108,6 +7111,19 @@ async function loadOfficialRtfTemplate(mode="ok"){
   if(!template.includes("__SZZ_OPERATOR_1__")) throw new Error("Šablona dokladu nemá připravená vyplňovací pole.");
   officialRtfTemplateCache[key]=template;
   return template;
+}
+
+async function loadOfficialTipekSignatureBytes(){
+  if(officialTipekSignatureBytesCache) return officialTipekSignatureBytesCache;
+  try{
+    const response=await fetch(OFFICIAL_TIPEK_SIGNATURE_URL,{cache:"force-cache"});
+    if(!response.ok) throw new Error(`Podpis se nepodařilo načíst (${response.status}).`);
+    officialTipekSignatureBytesCache=new Uint8Array(await response.arrayBuffer());
+    return officialTipekSignatureBytesCache;
+  }catch(e){
+    console.warn("Podpis Ing. Tipek se nepodařilo načíst",e);
+    return null;
+  }
 }
 
 function officialOneLine(value,maxLength=0){
@@ -7335,6 +7351,30 @@ function officialRtfSignatureImage(protocol={}){
   return `{\\pict\\pngblip\\picw900\\pich260\\picwgoal3800\\pichgoal1100 ${bytesToHex(bytes)}}`;
 }
 
+function officialRtfTipekSignatureImage(officialData={}){
+  const bytes=officialData.tipekSignatureBytes;
+  if(!bytes) return "";
+  return `{\\pict\\jpegblip\\picw520\\pich517\\picwgoal1700\\pichgoal1690 ${bytesToHex(bytes)}}`;
+}
+
+function officialRtfTipekSignatureBlock(officialData={}){
+  const signature=officialRtfTipekSignatureImage(officialData);
+  if(!signature) return "";
+  return `{\\pard \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl0\\slmult0\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 {\\*\\szztipeksignature PodpisTipekSZZ}{\\rtlch\\fcs1 \\af0\\afs20 \\ltrch\\fcs0 \\fs20 ${signature}\\tab \\~}\\par }`;
+}
+
+function addOfficialRtfTipekSignature(output,officialData={}){
+  const block=officialRtfTipekSignatureBlock(officialData);
+  if(!block || output.includes("PodpisTipekSZZ")) return output;
+  const marker="{\\*\\bkmkstart _Hlk178752668}______________________________________";
+  const markerIndex=output.indexOf(marker);
+  if(markerIndex>=0){
+    const runStart=output.lastIndexOf("{\\rtlch",markerIndex);
+    if(runStart>=0) return `${output.slice(0,runStart)}${block}${output.slice(runStart)}`;
+  }
+  return output.replace("______________________________________        ______________________________________",`${block}______________________________________        ______________________________________`);
+}
+
 function officialRtfClientSignatureBlock(protocol={}){
   const name=officialOneLine(protocol.clientSign || protocol.customer || "",80);
   const signature=officialRtfSignatureImage(protocol);
@@ -7427,6 +7467,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   });
   output=compactOfficialRtfMeasurementSection(output,protocol);
   output=addOfficialRtfWatermark(output);
+  output=addOfficialRtfTipekSignature(output,officialData);
   output=addOfficialRtfClientSignature(output,protocol);
   output=normalizeOfficialRtfClientLabel(output);
   output=shrinkOfficialRtfTextSize(output);
@@ -7486,6 +7527,10 @@ async function preparedOfficialProtocolExport(protocol={},officialData={},mode="
     ...protocol,
     createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
   };
+  const exportOfficialData={
+    ...officialData,
+    tipekSignatureBytes:officialData.tipekSignatureBytes || await loadOfficialTipekSignatureBytes()
+  };
   const prefix=mode==="stop" ? "doklad-stop-stav" : "doklad-provozuschopnosti";
   const fileBase=officialProtocolAddressFileName(filled,selectedSite) || `${prefix}-${protocolExportDatePart(filled)}`;
   const fileName=`${fileBase}.rtf`;
@@ -7493,7 +7538,7 @@ async function preparedOfficialProtocolExport(protocol={},officialData={},mode="
   return {
     filled,
     fileName,
-    blob:new Blob([fillOfficialRtfTemplate(template,filled,officialData,mode)],{type:"application/rtf;charset=utf-8"})
+    blob:new Blob([fillOfficialRtfTemplate(template,filled,exportOfficialData,mode)],{type:"application/rtf;charset=utf-8"})
   };
 }
 

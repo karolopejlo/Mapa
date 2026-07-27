@@ -1,4 +1,4 @@
-const CACHE_VERSION = "astip-szz-v2";
+const CACHE_VERSION = "astip-szz-v5";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const PRECACHE_URLS = [
@@ -6,7 +6,11 @@ const PRECACHE_URLS = [
   "./index.html",
   "./data.csv",
   "./manifest.webmanifest",
-  "./szz-icon.svg"
+  "./szz-icon.svg",
+  "./szz-icon-192.png",
+  "./szz-icon-512.png",
+  "./podpis-tipek.png",
+  "./podpis-tipek.jpg"
 ];
 
 self.addEventListener("install", (event) => {

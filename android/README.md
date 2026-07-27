@@ -7,7 +7,8 @@ Tahle slozka obsahuje Android projekt pro plnohodnotnou aplikaci postavenou jako
 - spousti web `https://karolopejlo.github.io/Mapa/` jako Android aplikaci,
 - pouziva Chrome/Custom Tabs engine, takze Google prihlaseni funguje lepe nez v obycejnem WebView,
 - po overeni Digital Asset Links se otevira bez horni listy prohlizece jako plna aplikace,
-- zachova offline logiku webu, fotky, Firebase a Cloudinary.
+- zachova offline logiku webu, fotky, Firebase a Cloudinary,
+- pouziva PWA manifest s Android PNG ikonami `szz-icon-192.png` a `szz-icon-512.png`.
 
 ## Co je potreba nainstalovat
 
@@ -36,6 +37,8 @@ To pro TWA nestaci. Produkcni reseni je jedno z techto:
 
 1. Pridat `assetlinks.json` do root webu `karolopejlo.github.io`.
 2. Nastavit vlastni domenu pro tento projekt, napr. `mapa.astip.cz`, a upravit Android projekt na tuhle domenu.
+
+Ukazka obsahu je pripravena v `../.well-known/assetlinks.example.json`. Pred nasazenim se v ni musi nahradit hodnota `DOPLNIT:SHA256:OTISK:PODPISOVEHO:CERTIFIKATU` skutecnym SHA-256 otiskem release klice.
 
 ## Vytvoreni podpisoveho klice
 
