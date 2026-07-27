@@ -1,8 +1,3 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <rect x="74" y="155" width="330" height="202" rx="32" fill="#fff"/>
-  <rect x="404" y="218" width="34" height="76" rx="10" fill="#fff"/>
-  <path d="M206 124h88l-54 113h78L169 397l45-122h-76z" fill="#ef3340"/>
-  <path d="M276 243h102v36l-51 49h55v42H262v-38l51-48h-37z" fill="#111827"/>
-  <path d="M117 243h86v38l-42 47h44v42H101v-38l43-48h-27z" fill="#111827"/>
+  <image href="./szz-icon-512.png" x="0" y="0" width="512" height="512" preserveAspectRatio="xMidYMid meet"/>
 </svg>

@@ -1,6 +1,7 @@
-const CACHE_VERSION = "astip-szz-v8";
+const CACHE_VERSION = "astip-szz-v9";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
+const TILE_CACHE = "astip-szz-map-tiles-v1";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -9,6 +10,7 @@ const PRECACHE_URLS = [
   "./szz-icon.svg",
   "./szz-icon-192.png",
   "./szz-icon-512.png",
+  "./szz-logo.png",
   "./podpis-tipek.png",
   "./podpis-tipek.jpg"
 ];
@@ -26,7 +28,7 @@ self.addEventListener("activate", (event) => {
     caches.keys()
       .then((keys) => Promise.all(
         keys
-          .filter((key) => ![STATIC_CACHE, RUNTIME_CACHE].includes(key))
+          .filter((key) => ![STATIC_CACHE, RUNTIME_CACHE, TILE_CACHE].includes(key))
           .map((key) => caches.delete(key))
       ))
       .then(() => self.clients.claim())
@@ -53,7 +55,7 @@ async function networkFirst(request) {
 }
 
 async function staleWhileRevalidate(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
+  const cache = await caches.open(isMapTileRequest(request) ? TILE_CACHE : RUNTIME_CACHE);
   const cached = await cache.match(request);
   const network = fetch(request)
     .then((response) => {
@@ -64,6 +66,15 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => cached);
   return cached || network;
+}
+
+function isMapTileRequest(request) {
+  try {
+    const url = new URL(request.url);
+    return url.hostname === "tile.openstreetmap.org" && /\/\d+\/\d+\/\d+\.png$/.test(url.pathname);
+  } catch (error) {
+    return false;
+  }
 }
 
 self.addEventListener("fetch", (event) => {
