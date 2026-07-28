@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Servis záložních zdrojů - mapa FZ</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.webmanifest">
@@ -109,9 +109,9 @@ border-color:#be185d !important;
 :root{--red:#dc2626;--orange:#f97316;--green:#16a34a;--gray:#64748b;--blue:#2563eb;--border:#e2e8f0}
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a}
-.app{display:grid;grid-template-columns:395px 1fr;height:100vh}
-aside{overflow:auto;background:#fff;padding:16px;border-right:1px solid var(--border)}
-#map{height:100vh;width:100%;background:#e5e7eb}
+.app{display:grid;grid-template-columns:395px minmax(0,1fr);height:100vh}
+aside{overflow:auto;background:#fff;padding:16px;border-right:1px solid var(--border);width:395px;min-width:395px;max-width:395px;resize:none}
+#map{height:100vh;width:100%;min-width:0;background:#e5e7eb;touch-action:none}
 h1{font-size:20px;margin:0 0 6px}.small{font-size:13px;color:#64748b;line-height:1.35}
 .notice{border:1px solid #fde68a;background:#fffbeb;color:#92400e;border-radius:12px;padding:10px;margin:10px 0;font-size:13px}
 .ok{border-color:#bbf7d0;background:#ecfdf5;color:#166534}.err{border-color:#fecaca;background:#fef2f2;color:#991b1b}
@@ -214,7 +214,7 @@ max-height:96px;
 object-fit:contain;
 }
 
-@media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:45vh 55vh}#map{height:45vh}aside{order:2;border-right:0;border-top:1px solid var(--border)}}
+@media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:45vh 55vh}#map{height:45vh}aside{order:2;border-right:0;border-top:1px solid var(--border);width:auto;min-width:0;max-width:none}}
 
 /* MOBIL / TABLET OPTIMALIZACE */
 button,input,select,textarea{
@@ -242,6 +242,9 @@ button,input,select,textarea{
     border-right:0;
     border-top:1px solid var(--border);
     padding:12px;
+    width:auto;
+    min-width:0;
+    max-width:none;
   }
   .drawer{
     width:100vw !important;
@@ -1614,13 +1617,16 @@ button,input,select,textarea{
 }
 @media(max-width:1024px) and (orientation:landscape){
   .app{
-    grid-template-columns:minmax(320px,38vw) minmax(0,1fr) !important;
+    grid-template-columns:395px minmax(0,1fr) !important;
     grid-template-rows:1fr !important;
   }
   aside{
     order:0 !important;
     border-right:1px solid var(--border) !important;
     border-top:0 !important;
+    width:395px !important;
+    min-width:395px !important;
+    max-width:395px !important;
   }
   #map{
     height:100dvh !important;
@@ -2753,8 +2759,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-07-28-auth-v15";
-const APP_SHELL_CACHE_NAME="astip-szz-v15-static";
+const APP_BUILD_VERSION="2026-07-28-protocol-panel-v16";
+const APP_SHELL_CACHE_NAME="astip-szz-v16-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -3432,6 +3438,9 @@ function applyEditToRow(r){
   if(!e) return r;
 
   const rawEdits = e.rawEdits || {};
+  const hasRawEdit=(key)=>Object.prototype.hasOwnProperty.call(rawEdits,key);
+  const importantNoteAliases=["Důležitá poznámka","DŮLEŽITÁ POZNÁMKA","Důležité poznámky","dulezita poznamka"];
+  const editedImportantNoteKey=importantNoteAliases.find(hasRawEdit);
   const lat = num(e.gpsLat) ?? num((e.rawEdits||{})["GPS_lat"]);
   const lon = num(e.gpsLon) ?? num((e.rawEdits||{})["GPS_lon"]);
   const updatedRaw = {...r.raw, ...rawEdits};
@@ -3441,7 +3450,8 @@ function applyEditToRow(r){
   if(e.name) updatedRaw["Upravený název"] = e.name;
   if(e.contact) updatedRaw["Upravený kontakt"] = e.contact;
   if(e.source) updatedRaw["Upravený zdroj"] = e.source;
-  if(e.notes) updatedRaw["Upravené poznámky"] = e.notes;
+  if(hasRawEdit("Poznámky")) updatedRaw["Upravené poznámky"] = rawEdits["Poznámky"];
+  else if(e.notes) updatedRaw["Upravené poznámky"] = e.notes;
   if(e.gpsAddress) updatedRaw["Upravená Adresa_GPS"] = e.gpsAddress;
   if(e.lastCheck) updatedRaw["Upravená poslední kontrola"] = e.lastCheck;
   if(e.nextCheck) updatedRaw["Upravená další kontrola"] = e.nextCheck;
@@ -3460,12 +3470,18 @@ function applyEditToRow(r){
     r.adresa
   ].filter(Boolean).join(" "));
 
+  const editedNotes=hasRawEdit("Poznámky")
+    ? rawEdits["Poznámky"]
+    : editedImportantNoteKey
+      ? rawEdits[editedImportantNoteKey]
+      : e.notes || r.poznamky;
+
   return {...r,
     raw: updatedRaw,
     adresa:e.name || rawEdits["Název"] || rawEdits["Adresa / umístění"] || rawEdits["Umístění zdroje"] || r.adresa,
     kontakt:e.contact || rawEdits["Kontakt"] || r.kontakt,
     zdroj:e.source || rawEdits["Popis_zdroje"] || r.zdroj,
-    poznamky:e.notes || rawEdits["Poznámky"] || rawEdits["Důležitá poznámka"] || r.poznamky,
+    poznamky:editedNotes,
     kraj:regionValue || rawEdits["Kraj"] || r.kraj,
     posledni:e.lastCheck || r.posledni,
     pristi:e.nextCheck || r.pristi,
@@ -5884,8 +5900,11 @@ async function saveAllDataEdits(){
     let value=String(el.value || "").trim();
     if(spec.type==="yesno") value=yesNoFixed(value,"ne");
     if(spec.type==="period") value=value==="6" ? "6" : "12";
-    if(!value && spec.type!=="yesno" && spec.type!=="period") return;
+    if(!value && spec.type!=="yesno" && spec.type!=="period" && !spec.important) return;
     editedRaw[spec.key]=value;
+    if(spec.important){
+      (spec.keys || []).forEach(key=>{editedRaw[key]=value;});
+    }
   });
 
   const gpsLat=safe(document.querySelector('#detailTable [data-key="GPS_lat"]')?.value);
@@ -7585,7 +7604,7 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
 
 const OFFICIAL_RTF_TEMPLATE_URL="official-template.rtf";
 const OFFICIAL_STOP_RTF_TEMPLATE_URL="official-stop-template.rtf";
-const OFFICIAL_TIPEK_SIGNATURE_URL="./podpis-tipek.jpg";
+const OFFICIAL_TIPEK_SIGNATURE_URL="./podpis-tipek.png";
 const OFFICIAL_WATERMARK_LOGO_URL="./szz-logo-display.png";
 const officialRtfTemplateCache={};
 let officialTipekSignatureBytesCache=null;
@@ -7857,7 +7876,7 @@ function officialRtfSignatureImage(protocol={}){
 function officialRtfTipekSignatureImage(officialData={}){
   const bytes=officialData.tipekSignatureBytes;
   if(!bytes) return "";
-  return `{\\pict\\jpegblip\\picw520\\pich517\\picwgoal2150\\pichgoal2138 ${bytesToHex(bytes)}}`;
+  return `{\\pict\\pngblip\\picw865\\pich666\\picwgoal3200\\pichgoal2464 ${bytesToHex(bytes)}}`;
 }
 
 function officialRtfClientSignatureContent(protocol={}){
@@ -8509,7 +8528,7 @@ async function syncOfflineProtocolsForSite(site=selectedSite,options={}){
         ...payload,
         updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
       },{merge:true});
-      await updateSiteControlDateFromProtocol(payload,site);
+      await updateSiteControlDateFromProtocol(payload,site,{clearManualStatus:item.clearManualStatusAfterSave !== false});
       removeSiteLocalItem("protocolHistory",id,site);
       appendSiteLocalArray("protocolHistory",payload,site,120);
       synced++;
@@ -8753,6 +8772,70 @@ function applyProtocolFieldsToSite(protocol,site=selectedSite){
   if(selectedSite && detailKey(selectedSite)===detailKey(site)) selectedSite=site;
 }
 
+function clearManualStatusRaw(raw={}){
+  raw["Stop Stav"]="NE";
+  raw["Kontrola objednaná"]="NE";
+  raw["Objednáno"]="NE";
+  raw["Objednaná oprava"]="NE";
+  raw["Stav pro mapu"]="";
+  return raw;
+}
+
+function manualStatusSiteMatches(row,site,selectedKey,docId){
+  if(!row || !site) return false;
+  const rowDocId=selectedSiteDocId(row);
+  return row===site
+    || detailKey(row)===selectedKey
+    || row.id===selectedKey
+    || (!!docId && rowDocId===docId);
+}
+
+function clearManualStatusEditCache(site=selectedSite){
+  if(!site) return;
+  const keys=[
+    detailKey(site),
+    site.id,
+    selectedSiteDocId(site),
+    site.firebaseDocId,
+    site.raw && site.raw["Firebase_doc_id"]
+  ].map(safe).filter(Boolean);
+  [...new Set(keys)].forEach(key=>{
+    const existing=editCache[key] || {};
+    editCache[key]={
+      ...existing,
+      ordered:false,
+      repairOrdered:false,
+      stopped:false,
+      rawEdits:clearManualStatusRaw({...(existing.rawEdits || {})}),
+      updatedBy:currentUser?.email || existing.updatedBy || "",
+      updatedAt:new Date().toISOString()
+    };
+  });
+}
+
+function clearManualStatusLocalState(site=selectedSite){
+  if(!site) return;
+  const selectedKey=detailKey(site) || site.id;
+  const docId=selectedSiteDocId(site);
+  clearManualStatusEditCache(site);
+  const applyClear=(target)=>{
+    const raw=clearManualStatusRaw({...(target.raw || {})});
+    const refreshed=normalize([raw])[0];
+    return {
+      ...target,
+      ...refreshed,
+      raw,
+      ordered:false,
+      repairOrdered:false,
+      stopped:false,
+      firebaseDocId:target.firebaseDocId || raw["Firebase_doc_id"] || "",
+      firebaseData:{...(target.firebaseData || {}),raw}
+    };
+  };
+  rows=rows.map(row=>manualStatusSiteMatches(row,site,selectedKey,docId) ? applyClear(row) : row);
+  selectedSite=rows.find(row=>manualStatusSiteMatches(row,site,selectedKey,docId)) || applyClear(site);
+}
+
 function refreshSelectedDetailDataView(){
   if(!selectedSite) return;
   const table=document.getElementById("detailTable");
@@ -8794,13 +8877,14 @@ async function refreshSiteDataFromFirebase(site=selectedSite){
   }
 }
 
-async function updateSiteControlDateFromProtocol(protocol,site=selectedSite){
+async function updateSiteControlDateFromProtocol(protocol,site=selectedSite,options={}){
   const docId=selectedSiteDocId(site);
   const latest=protocolDateIso(protocol);
   if(!docId || !firebaseReady || !db) return false;
   const baseRaw={...(site?.raw || {})};
   const raw=latest ? applyLatestProtocolDateToRaw(baseRaw,{protocolHistory:[protocol]}) : baseRaw;
   applyProtocolFieldsToRaw(raw,protocol);
+  if(options.clearManualStatus) clearManualStatusRaw(raw);
   raw["Firebase_doc_id"]=docId;
   if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
   try{
@@ -8827,6 +8911,7 @@ async function updateSiteControlDateFromProtocol(protocol,site=selectedSite){
         }
       });
     }
+    if(options.clearManualStatus) clearManualStatusLocalState(site);
     return true;
   }catch(e){
     console.warn("Uložení poslední kontroly z protokolu selhalo",e);
@@ -11151,10 +11236,12 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   const editing=!!editingId;
   payload.createdBy=protocolEditState?.item?.createdBy || currentUser?.email || lastKnownUserEmail() || "";
   payload.updatedBy=currentUser?.email || lastKnownUserEmail() || "";
+  payload.clearManualStatusAfterSave=!editing;
   const onlineSaveAvailable=!!(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine !== false);
   const saveOffline=reason=>{
     const offlinePayload=saveProtocolLocally(payload,selectedSite,reason);
     applyProtocolFieldsToSite(offlinePayload,selectedSite);
+    if(!editing) clearManualStatusLocalState(selectedSite);
     refreshSelectedDetailDataView();
     render();
     st.textContent="Protokol uložen lokálně v tomto prohlížeči. Internet/Firebase teď není dostupný.";
@@ -11199,7 +11286,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
       console.warn("Samostatný protokol se neuložil, používám kopii pod bodem",e);
       if(!embeddedOk) throw e;
     }
-    await updateSiteControlDateFromProtocol(payload,selectedSite);
+    await updateSiteControlDateFromProtocol(payload,selectedSite,{clearManualStatus:!editing});
     refreshSelectedDetailDataView();
     st.textContent=editing ? "Protokol upraven." : "Protokol uložen.";
     showSaveConfirmation(editing ? "Protokol upraven." : "Protokol uložen.");
@@ -13613,7 +13700,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-07-28-auth-v15";
+  const serviceWorkerBuildVersion="2026-07-28-protocol-panel-v16";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
