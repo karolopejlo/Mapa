@@ -1661,7 +1661,7 @@ button,input,select,textarea{
 <label>Hledat</label><input id="search" placeholder="název, adresa, výrobní číslo, kontakt...">
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
-<button class="secondary admin-app-only" id="cacheMapTilesBtn" type="button" style="display:none;margin-top:8px" onclick="window.cacheVisibleMapTiles && window.cacheVisibleMapTiles()">Stáhnout mapu offline</button>
+<button class="secondary admin-app-only" id="cacheMapTilesBtn" type="button" style="display:none;margin-top:8px">Stáhnout mapu ČR offline</button>
 <div id="offlineMapStatus" class="notice offline-map-status admin-app-only"></div>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
 <button class="secondary install-app-btn admin-app-only" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
@@ -2425,6 +2425,16 @@ if(firebaseReady){
   function currentAuthCandidate(){
     return auth.currentUser || window.__authReadyUser || window.currentUser || syncCurrentUserFromCompat() || null;
   }
+  function appIsOpenOrHasRows(){
+    const appEl=document.getElementById("mainApp");
+    const visibleApp=!!(appEl && appEl.style.display && appEl.style.display!=="none");
+    const resumed=!!(document.documentElement && document.documentElement.classList.contains("auth-resume"));
+    const loadedRows=(Array.isArray(rows) && rows.length) || (Array.isArray(window.rows) && window.rows.length);
+    return !!(window.__mapAppUnlocked || visibleApp || resumed || loadedRows || window.__firebaseUnifiedRowsLoaded);
+  }
+  function shouldKeepAppOpenOnAuthNull(){
+    return !explicitSignOutPending() && (knownSignedIn() || appIsOpenOrHasRows());
+  }
   async function waitForAuthCandidate(timeoutMs=3500){
     const started=Date.now();
     while(Date.now()-started<timeoutMs){
@@ -2622,7 +2632,7 @@ if(firebaseReady){
           return;
         }
         clearAuthPending();
-        if(knownSignedIn() && !explicitSignOutPending()){
+        if(shouldKeepAppOpenOnAuthNull()){
           keepAppOpenDuringAuthRestore("Google přihlášení se zatím nevrátilo s uživatelem. Mapa zůstává otevřená a přihlášení zkusím obnovit na pozadí.");
           return;
         }
@@ -2662,7 +2672,7 @@ if(firebaseReady){
       },600);
       return;
     }
-    if(knownSession){
+    if(knownSession || appIsOpenOrHasRows()){
       keepAppOpenDuringAuthRestore("Přihlášení se obnovuje na pozadí. Mapa zůstává otevřená z uložených dat.");
       return;
     }
@@ -2717,7 +2727,11 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_SHELL_CACHE_NAME="astip-szz-v12-static";
+const APP_SHELL_CACHE_NAME="astip-szz-v13-static";
+const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
+const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
+const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
+const CZECH_OFFLINE_ZOOMS=[6,7,8,9,10,11];
 const APP_SHELL_URLS=[
   "./",
   "./index.html",
@@ -2747,7 +2761,7 @@ function setOfflineMapStatus(message="",state="info"){
   el.textContent=message;
 }
 
-function setOfflineMapButtonState(busy=false,text="Stáhnout mapu offline"){
+function setOfflineMapButtonState(busy=false,text="Stáhnout mapu ČR offline"){
   const button=document.getElementById("cacheMapTilesBtn");
   if(!button) return;
   button.disabled=!!busy;
@@ -2799,18 +2813,22 @@ function mapTileUrl(z,x,y){
     .replace("{y}",String(y));
 }
 
-function visibleMapTileUrls(maxTiles=650){
-  if(!map || typeof map.getBounds!=="function") return [];
-  const bounds=map.getBounds().pad(0.15);
-  const zoom=Math.max(3,Math.min(17,Math.round(map.getZoom() || 7)));
-  const minZoom=Math.max(3,zoom);
-  const maxZoom=Math.min(17,zoom+2);
+function boundsValue(bounds,key){
+  const method="get"+key.charAt(0).toUpperCase()+key.slice(1);
+  if(bounds && typeof bounds[method]==="function") return bounds[method]();
+  return Number(bounds && bounds[key]);
+}
+
+function mapTileUrlsForBounds(bounds,zooms,maxTiles=Infinity){
+  const west=boundsValue(bounds,"west");
+  const east=boundsValue(bounds,"east");
+  const north=boundsValue(bounds,"north");
+  const south=boundsValue(bounds,"south");
+  if(![west,east,north,south].every(Number.isFinite)) return [];
   const urls=[];
-  for(let z=minZoom;z<=maxZoom;z++){
-    const west=bounds.getWest();
-    const east=bounds.getEast();
-    const north=bounds.getNorth();
-    const south=bounds.getSouth();
+  for(const zRaw of zooms){
+    const z=Math.max(3,Math.min(17,Number(zRaw)));
+    if(!Number.isFinite(z)) continue;
     const x1=lonToTileX(west,z);
     const x2=lonToTileX(east,z);
     const y1=latToTileY(north,z);
@@ -2827,7 +2845,28 @@ function visibleMapTileUrls(maxTiles=650){
   return urls;
 }
 
-async function cacheVisibleMapTiles(){
+function visibleMapTileUrls(maxTiles=650){
+  if(!map || typeof map.getBounds!=="function") return [];
+  const bounds=map.getBounds().pad(0.15);
+  const zoom=Math.max(3,Math.min(17,Math.round(map.getZoom() || 7)));
+  const zooms=[];
+  for(let z=zoom;z<=Math.min(17,zoom+2);z++) zooms.push(z);
+  return mapTileUrlsForBounds(bounds,zooms,maxTiles);
+}
+
+function czechOfflineMapTileUrls(){
+  return mapTileUrlsForBounds(CZECH_OFFLINE_BOUNDS,CZECH_OFFLINE_ZOOMS,Infinity);
+}
+
+function czechOfflineMapReady(){
+  try{return localStorage.getItem(CZECH_OFFLINE_DONE_KEY)===CZECH_OFFLINE_TILE_VERSION;}catch(e){return false;}
+}
+
+function markCzechOfflineMapReady(){
+  try{localStorage.setItem(CZECH_OFFLINE_DONE_KEY,CZECH_OFFLINE_TILE_VERSION);}catch(e){}
+}
+
+async function cacheMapTileUrls(urls,options={}){
   if(window.__mapTileCacheRunning) return;
   if(typeof isAppAdmin==="function" && !isAppAdmin()){
     setOfflineMapStatus("Offline mapy může stahovat jen správce.","error");
@@ -2841,22 +2880,22 @@ async function cacheVisibleMapTiles(){
     setOfflineMapStatus("Jsi offline. Mapu stáhni, až bude internet.","error");
     return;
   }
-  const urls=visibleMapTileUrls();
   if(!urls.length){
-    setOfflineMapStatus("Nejdřív zobraz oblast mapy, kterou chceš uložit.","error");
+    setOfflineMapStatus(options.emptyMessage || "Nejdřív zobraz oblast mapy, kterou chceš uložit.","error");
     return;
   }
   const unique=[...new Set(urls)];
   let index=0, done=0, ok=0, failed=0;
   window.__mapTileCacheRunning=true;
-  setOfflineMapButtonState(true,"Stahuji mapu...");
-  setOfflineMapStatus("Připravuji aplikaci pro offline otevření...");
+  setOfflineMapButtonState(true,options.buttonText || "Stahuji mapu...");
+  setOfflineMapStatus(options.startMessage || "Připravuji aplikaci pro offline otevření...");
   try{
     if("serviceWorker" in navigator && window.registerSzzServiceWorker){
       try{ await window.registerSzzServiceWorker(); }catch(e){}
     }
     const shellCount=await cacheAppShellForOffline();
-    setOfflineMapStatus(`Aplikace offline připravena (${shellCount} souborů). Stahuji mapu: 0 / ${unique.length} dlaždic...`);
+    const label=options.label || "mapu";
+    setOfflineMapStatus(`Aplikace offline připravena (${shellCount} souborů). Stahuji ${label}: 0 / ${unique.length} dlaždic...`);
     const cache=await caches.open(MAP_TILE_CACHE_NAME);
     async function worker(){
       while(index<unique.length){
@@ -2874,8 +2913,8 @@ async function cacheVisibleMapTiles(){
           failed++;
         }finally{
           done++;
-          if(done===unique.length || done%12===0){
-            setOfflineMapStatus(`Stahuji mapu do offline cache: ${done} / ${unique.length} dlaždic...`);
+          if(done===unique.length || done%24===0){
+            setOfflineMapStatus(`Stahuji ${label} do offline cache: ${done} / ${unique.length} dlaždic...`);
             setOfflineMapButtonState(true,`Stahuji ${done}/${unique.length}`);
           }
         }
@@ -2883,8 +2922,9 @@ async function cacheVisibleMapTiles(){
     }
     await Promise.all(Array.from({length:Math.min(6,unique.length)},()=>worker()));
     const message=failed
-      ? `Mapa uložena částečně: ${ok} dlaždic, ${failed} se nepodařilo.`
-      : `Mapa uložena offline: ${ok} dlaždic.`;
+      ? `${options.donePrefix || "Mapa"} uložena částečně: ${ok} dlaždic, ${failed} se nepodařilo.`
+      : `${options.donePrefix || "Mapa"} uložena offline: ${ok} dlaždic.`;
+    if(!failed && options.markCzechReady) markCzechOfflineMapReady();
     setOfflineMapStatus(message,failed ? "error" : "ok");
     if(window.showSaveConfirmation) window.showSaveConfirmation(message);
   }catch(e){
@@ -2896,16 +2936,49 @@ async function cacheVisibleMapTiles(){
   }
 }
 
+async function cacheVisibleMapTiles(){
+  return cacheMapTileUrls(visibleMapTileUrls(),{
+    label:"aktuální výřez mapy",
+    donePrefix:"Mapa"
+  });
+}
+
+async function cacheCzechOfflineMap(options={}){
+  if(czechOfflineMapReady() && !options.force){
+    setOfflineMapStatus("Offline mapa ČR už je v tomto zařízení připravená.","ok");
+    return;
+  }
+  return cacheMapTileUrls(czechOfflineMapTileUrls(),{
+    label:"mapu ČR",
+    buttonText:"Stahuji ČR...",
+    startMessage:"Připravuji aplikaci a mapu ČR pro offline režim...",
+    emptyMessage:"Mapu ČR se nepodařilo připravit.",
+    donePrefix:"Mapa ČR",
+    markCzechReady:true
+  });
+}
+
+function maybeAutoCacheCzechOfflineMap(){
+  if(navigator.onLine===false) return;
+  if(typeof isAppAdmin==="function" && !isAppAdmin()) return;
+  if(!("caches" in window)) return;
+  if(czechOfflineMapReady() || window.__autoCzechOfflineMapStarted) return;
+  window.__autoCzechOfflineMapStarted=true;
+  setTimeout(()=>cacheCzechOfflineMap().catch(e=>console.warn("Automatické stažení mapy ČR selhalo",e)),4500);
+}
+
 function bindOfflineMapCacheButton(){
   const button=document.getElementById("cacheMapTilesBtn");
   if(button && !button.__offlineMapBound){
-    button.addEventListener("click",cacheVisibleMapTiles);
+    button.addEventListener("click",()=>cacheCzechOfflineMap({force:true}));
     button.__offlineMapBound=true;
   }
 }
 document.addEventListener("DOMContentLoaded",bindOfflineMapCacheButton);
 bindOfflineMapCacheButton();
 window.cacheVisibleMapTiles=cacheVisibleMapTiles;
+window.cacheCzechOfflineMap=cacheCzechOfflineMap;
+window.maybeAutoCacheCzechOfflineMap=maybeAutoCacheCzechOfflineMap;
 
 function safe(v){return String(v??"").trim()}
 function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
@@ -9077,6 +9150,7 @@ function fixMapView(){
 function showApp(){
   if(window.setStartupAuthChecking) window.setStartupAuthChecking(false);
   if(window.updateAdminAppControls) window.updateAdminAppControls();
+  window.__mapAppUnlocked=true;
   const startup=document.getElementById("startupScreen");
   const app=document.getElementById("mainApp");
   const loginRow=document.getElementById("mainLoginRow");
@@ -9086,10 +9160,12 @@ function showApp(){
   if(loginRow) loginRow.style.display="none";
   if(topLogout) topLogout.style.display=currentUser ? "block" : "none";
   setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); }catch(e){}},250);
+  if(window.maybeAutoCacheCzechOfflineMap) setTimeout(()=>window.maybeAutoCacheCzechOfflineMap(),1200);
 }
 function showLogin(){
   if(window.setStartupAuthChecking) window.setStartupAuthChecking(false);
   if(window.updateAdminAppControls) window.updateAdminAppControls();
+  window.__mapAppUnlocked=false;
   const startup=document.getElementById("startupScreen");
   const app=document.getElementById("mainApp");
   const loginRow=document.getElementById("mainLoginRow");
