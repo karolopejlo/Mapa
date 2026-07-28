@@ -18,6 +18,8 @@ neobaluje, ale ma vlastni lokalni data a synchronizaci.
    - Room / SQLite
    - tabulky: `sites`, `sources`, `protocols`, `photos`, `sync_queue`
    - kazda zmena se nejdriv ulozi lokalne a potom se prida do fronty synchronizace
+   - zalozeno: `app/src/main/java/cz/astip/serviszdroju/offline/OfflineTables.java`
+   - zalozeno: `SyncOperation.java` a `SyncState.java` pro budouci synchronizacni frontu
 
 2. Offline mapa
    - MapLibre Android
@@ -42,8 +44,8 @@ neobaluje, ale ma vlastni lokalni data a synchronizaci.
 ## Postup prepisu
 
 1. Nechat soucasnou TWA jako docasne funkcni reseni.
-2. Pridat nativni obrazovku prihlaseni a lokalni databazi.
-3. Pridat seznam bodu a detail bodu z lokalni databaze.
+2. Pridat Room/SQLite vrstvu podle zalozeneho offline kontraktu.
+3. Pridat nativni obrazovku prihlaseni a lokalni databazi.
 4. Pridat MapLibre offline mapu CR.
 5. Pridat offline protokoly a fotografie.
 6. Pridat synchronizaci s Firebase a Cloudinary.

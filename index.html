@@ -1665,7 +1665,7 @@ button,input,select,textarea{
 <div id="offlineMapStatus" class="notice offline-map-status admin-app-only"></div>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
 <button class="secondary install-app-btn admin-app-only" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
-<button class="secondary" id="mainProtocolHistoryBtn" style="margin-top:8px">Historie protokolů</button>
+<button class="secondary protocol-history-private" id="mainProtocolHistoryBtn" style="display:none;margin-top:8px">Historie protokolů</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
 <div class="legend">
@@ -2001,7 +2001,7 @@ Cena FZ: ..."></textarea>
   <p id="newSiteStatus" class="small"></p>
 </div>
 
-<div class="card"><h3>Historie záznamů</h3><div id="history" class="small">Zatím nenačteno.</div></div>
+<div class="card protocol-history-private" id="detailHistoryCard" style="display:none"><h3>Historie záznamů</h3><div id="history" class="small">Zatím nenačteno.</div></div>
 
 <div class="card official-protocol-card" id="officialProtocolCard">
   <div class="official-protocol-head">
@@ -2135,7 +2135,6 @@ const AUTH_KNOWN_SIGNED_IN_KEY="astipFirebaseKnownSignedIn";
 const AUTH_EXPLICIT_SIGN_OUT_KEY="astipFirebaseExplicitSignOut";
 const AUTH_LAST_EMAIL_KEY="astipFirebaseLastEmail";
 const AUTH_RESTORE_GRACE_MS=12000;
-const AUTH_REDIRECT_RECOVERY_MS=14000;
 const authBootStartedAt=Date.now();
 function knownSignedIn(){
   try{return localStorage.getItem(AUTH_KNOWN_SIGNED_IN_KEY)==="1";}catch(e){return false;}
@@ -2320,9 +2319,6 @@ if(firebaseReady){
   function authPending(){
     try{return safe(sessionStorage.getItem(AUTH_REDIRECT_PENDING_KEY));}catch(e){return "";}
   }
-  function setAuthPending(){
-    try{sessionStorage.setItem(AUTH_REDIRECT_PENDING_KEY,String(Date.now()));}catch(e){}
-  }
   function clearAuthPending(){
     try{sessionStorage.removeItem(AUTH_REDIRECT_PENDING_KEY);}catch(e){}
   }
@@ -2355,17 +2351,10 @@ if(firebaseReady){
     if(code==="auth/account-exists-with-different-credential"){
       return "Tento e-mail je ve Firebase vedený pod jiným způsobem přihlášení.";
     }
-    return [code,message].filter(Boolean).join(" ") || "Přihlášení se nepodařilo dokončit.";
+    return [code,message].filter(Boolean).join(" ") || "Google účet se nepodařilo načíst. Zkus přihlášení znovu.";
   }
   function redirectResolver(){
     return authMod.browserPopupRedirectResolver || undefined;
-  }
-  async function signInWithGoogleRedirect(provider){
-    const compatClient=await ensureCompatAuthPersistence();
-    if(compatClient && provider && compatClient.signInWithRedirect) return compatClient.signInWithRedirect(provider);
-    const resolver=redirectResolver();
-    if(resolver) return authMod.signInWithRedirect(auth,provider,resolver);
-    return authMod.signInWithRedirect(auth,provider);
   }
   async function signInWithGooglePopup(provider){
     const compatClient=await ensureCompatAuthPersistence();
@@ -2373,13 +2362,6 @@ if(firebaseReady){
     const resolver=redirectResolver();
     if(resolver) return authMod.signInWithPopup(auth,provider,resolver);
     return authMod.signInWithPopup(auth,provider);
-  }
-  async function getGoogleRedirectResult(){
-    const compatClient=await ensureCompatAuthPersistence();
-    if(compatClient && compatClient.getRedirectResult) return compatClient.getRedirectResult();
-    const resolver=redirectResolver();
-    if(resolver) return authMod.getRedirectResult(auth,resolver);
-    return authMod.getRedirectResult(auth);
   }
   function setProgressStatus(message){
     const p=document.getElementById("progress");
@@ -2436,27 +2418,21 @@ if(firebaseReady){
       }else{
         const restored=await waitForAuthCandidate(5000);
         if(restored) await handleAuthorizedUser(restored);
+        else{
+          setStartupAuthChecking(false);
+          setStartupStatus("Google přihlášení se zavřelo bez dokončení. Zkus tlačítko znovu a vyber účet @astip.cz.");
+        }
       }
     }catch(e){
       const code=safe(e && e.code);
-      const canTryRedirect=[
+      const browserPopupIssue=[
         "auth/popup-blocked",
         "auth/cancelled-popup-request",
         "auth/operation-not-supported-in-this-environment"
       ].includes(code);
-      if(!canTryRedirect){
-        clearAuthPending();
-        setStartupStatus("Přihlášení selhalo: " + authErrorText(e));
-        return;
-      }
-      try{
-        setStartupStatus("Popup přihlášení prohlížeč nepovolil, zkouším přesměrování...");
-        setAuthPending();
-        await signInWithGoogleRedirect(provider);
-      }catch(redirectError){
-        clearAuthPending();
-        setStartupStatus("Přihlášení selhalo: " + authErrorText(redirectError));
-      }
+      clearAuthPending();
+      setStartupAuthChecking(false);
+      setStartupStatus("Přihlášení selhalo: " + (browserPopupIssue ? "Prohlížeč nepovolil Google přihlašovací okno. Povol vyskakovací okna pro tento web a zkus tlačítko znovu." : authErrorText(e)));
     }
   }
   async function signOutFirebase(){
@@ -2478,8 +2454,6 @@ if(firebaseReady){
   function delay(ms){
     return new Promise(resolve=>setTimeout(resolve,ms));
   }
-  let authRedirectRecoveryInProgress=false;
-  let authRedirectRecoveryPromise=null;
   let backgroundAuthRetryTimer=null;
   function currentAuthCandidate(){
     return syncCurrentUserFromCompat() || window.__authReadyUser || window.currentUser || (auth && auth.currentUser) || null;
@@ -2549,43 +2523,17 @@ if(firebaseReady){
   }
   async function finishRedirectLoginIfPending(){
     if(!authPending()) return false;
-    if(authRedirectRecoveryPromise) return authRedirectRecoveryPromise;
-    authRedirectRecoveryInProgress=true;
-    setStartupAuthChecking(true);
-    setStartupStatus("Dokončuji Google přihlášení...");
-    authRedirectRecoveryPromise=(async()=>{
-      try{
-        const redirectResult=await Promise.race([
-          getGoogleRedirectResult(),
-          delay(AUTH_REDIRECT_RECOVERY_MS).then(()=>null)
-        ]);
-        let user=(redirectResult && redirectResult.user) || currentAuthCandidate();
-        if(!user && auth.authStateReady){
-          await Promise.race([
-            auth.authStateReady(),
-            delay(4000)
-          ]);
-          user=currentAuthCandidate();
-        }
-        if(!user) user=await waitForAuthCandidate(4500);
-        if(user){
-          await handleAuthorizedUser(user);
-          return true;
-        }
-        return false;
-      }catch(e){
-        clearAuthPending();
-        setStartupAuthChecking(false);
-        setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
-        return false;
-      }
-    })();
+    clearAuthPending();
     try{
-      return await authRedirectRecoveryPromise;
-    }finally{
-      authRedirectRecoveryPromise=null;
-      authRedirectRecoveryInProgress=false;
+      const user=await tryRestoreAuthCandidate(2500);
+      if(user){
+        await handleAuthorizedUser(user);
+        return true;
+      }
+    }catch(e){
+      console.warn("Obnova přihlášení po starém redirectu selhala",e);
     }
+    return false;
   }
   async function waitForFirebaseRowsLoader(timeoutMs=5000){
     const started=Date.now();
@@ -2687,7 +2635,7 @@ if(firebaseReady){
     if(authPending()){
       setStartupAuthChecking(true);
       try{document.documentElement.classList.add("auth-resume");}catch(e){}
-      setStartupStatus("Dokončuji Google přihlášení...");
+      setStartupStatus("Kontroluji přihlášení...");
       finishRedirectLoginIfPending().then(done=>{
         if(done) return;
         const restored=currentAuthCandidate();
@@ -2697,7 +2645,7 @@ if(firebaseReady){
         }
         clearAuthPending();
         if(shouldKeepAppOpenOnAuthNull()){
-          keepAppOpenDuringAuthRestore("Google přihlášení se zatím nevrátilo s uživatelem. Mapa zůstává otevřená a přihlášení zkusím obnovit na pozadí.");
+          keepAppOpenDuringAuthRestore("Přihlášení se obnovuje na pozadí. Mapa zůstává otevřená z uložených dat.");
           return;
         }
         forgetKnownSignedIn();
@@ -2706,7 +2654,7 @@ if(firebaseReady){
         const topLogoutBtn=document.getElementById("topLogoutBtn");
         if(topLogoutBtn) topLogoutBtn.style.display="none";
         showLogin();
-        setStartupStatus("Přihlášení se nepodařilo dokončit. Zkus tlačítko znovu a vyber účet @astip.cz.");
+        setStartupStatus("");
       });
       return;
     }
@@ -2765,20 +2713,12 @@ if(firebaseReady){
     if(authPending()){
       await finishRedirectLoginIfPending();
     }else{
-      const redirectResult=await Promise.race([
-        getGoogleRedirectResult(),
-        delay(3500).then(()=>null)
-      ]);
-      if(redirectResult && redirectResult.user) setSignedUser(redirectResult.user);
-      if(auth.authStateReady) await Promise.race([
-        auth.authStateReady(),
-        delay(3500)
-      ]);
-      if(auth.currentUser) setSignedUser(auth.currentUser);
+      const restored=await tryRestoreAuthCandidate(2500);
+      if(restored) setSignedUser(restored);
     }
   }catch(e){
     clearAuthPending();
-    setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
+    setStartupStatus("Chyba kontroly přihlášení: " + authErrorText(e));
   }
 
   const compatAuthForListener=await ensureCompatAuthPersistence();
@@ -3187,6 +3127,9 @@ const APP_ADMIN_EMAILS = [
 const APP_ALLOWED_EMAILS = [
   "iva.glozova@astip.cz"
 ];
+const APP_PROTOCOL_HISTORY_EMAILS = [
+  "iva.glozova@astip.cz"
+];
 window.appRegionOptions = () => APP_REGION_OPTIONS.slice();
 function compatAuthCurrentUser(){
   try{
@@ -3216,6 +3159,17 @@ function isAppAdmin(){
   const email=currentUserEmail();
   return !!email && APP_ADMIN_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
 }
+function canViewProtocolHistory(){
+  const email=currentUserEmail();
+  if(!email) return false;
+  return isAppAdmin() || APP_PROTOCOL_HISTORY_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
+}
+function updateProtocolHistoryVisibility(){
+  const show=canViewProtocolHistory();
+  document.querySelectorAll(".protocol-history-private").forEach(el=>{
+    el.style.display=show ? "" : "none";
+  });
+}
 function updateAdminAppControls(){
   const show=!!isAppAdmin();
   document.querySelectorAll(".admin-app-only").forEach(el=>{
@@ -3234,9 +3188,11 @@ function updateAdminAppControls(){
     }
     el.style.display=show ? "" : "none";
   });
+  updateProtocolHistoryVisibility();
   if(typeof window.updateSzzInstallButtons==="function") window.updateSzzInstallButtons();
 }
 window.isAppAdmin=isAppAdmin;
+window.canViewProtocolHistory=canViewProtocolHistory;
 window.updateAdminAppControls=updateAdminAppControls;
 document.addEventListener("DOMContentLoaded",updateAdminAppControls);
 setTimeout(updateAdminAppControls,0);
@@ -8891,6 +8847,13 @@ async function deleteCurrentHistoryProtocol(){
 function renderHistory(){
   const history=document.getElementById("history");
   if(!history) return;
+  if(!canViewProtocolHistory()){
+    detailHistoryItems=[];
+    detailHistoryIndex=0;
+    history.textContent="Historii protokolů může zobrazit jen správce nebo Iva.";
+    updateOfficialProtocolSourceInfo();
+    return;
+  }
 
   if(!detailHistoryItems.length){
     history.textContent="Zatím žádný záznam.";
@@ -8988,6 +8951,13 @@ function renderHistory(){
 async function loadHistory(siteId){
   const history=document.getElementById("history");
   if(!history) return;
+  if(!canViewProtocolHistory()){
+    detailHistoryItems=[];
+    detailHistoryIndex=0;
+    history.textContent="Historii protokolů může zobrazit jen správce nebo Iva.";
+    updateOfficialProtocolSourceInfo();
+    return;
+  }
   const localHistoryItems=readSiteLocalArray("protocolHistory",selectedSite).map((item,idx)=>({
     ...item,
     _type:"Protokol",
@@ -9289,6 +9259,7 @@ function readAllLocalProtocolHistoryItems(){
 }
 
 async function loadMainProtocolHistoryItems(){
+  if(!canViewProtocolHistory()) return [];
   const items=[];
   const addItem=item=>{
     if(!item) return;
@@ -9321,6 +9292,10 @@ async function loadMainProtocolHistoryItems(){
 }
 
 async function openMainProtocolHistoryPanel(){
+  if(!canViewProtocolHistory()){
+    showSaveConfirmation("Historii protokolů může zobrazit jen správce nebo Iva.");
+    return;
+  }
   const drawer=document.getElementById("drawer");
   if(!drawer) return;
   if(!window.__normalDrawerTemplate || !window.__normalDrawerTemplate.includes('id="detailTable"')){
