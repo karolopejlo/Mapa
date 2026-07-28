@@ -1661,7 +1661,7 @@ button,input,select,textarea{
 <label>Hledat</label><input id="search" placeholder="název, adresa, výrobní číslo, kontakt...">
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
-<button class="secondary admin-app-only" id="cacheMapTilesBtn" type="button" style="display:none;margin-top:8px">Stáhnout mapu ČR offline</button>
+<button class="secondary admin-app-only" id="cacheMapTilesBtn" type="button" style="display:none;margin-top:8px">Stáhnout mapu do telefonu</button>
 <div id="offlineMapStatus" class="notice offline-map-status admin-app-only"></div>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
 <button class="secondary install-app-btn admin-app-only" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
@@ -2152,6 +2152,49 @@ function markExplicitSignOut(){
 function clearExplicitSignOut(){
   try{sessionStorage.removeItem(AUTH_EXPLICIT_SIGN_OUT_KEY);}catch(e){}
 }
+let compatAuthClient=null;
+function ensureCompatFirebaseApp(){
+  if(!window.firebase || !firebase.initializeApp) return null;
+  try{
+    if((!firebase.apps || !firebase.apps.length) && window.__firebaseConfig){
+      firebase.initializeApp(window.__firebaseConfig);
+    }
+    return firebase.apps && firebase.apps.length ? firebase : null;
+  }catch(e){
+    console.warn("Firebase compat aplikace se nepodařila připravit",e);
+    return null;
+  }
+}
+function getCompatAuthClient(){
+  if(compatAuthClient) return compatAuthClient;
+  const compat=ensureCompatFirebaseApp();
+  if(!compat || !compat.auth) return null;
+  try{
+    compatAuthClient=compat.auth();
+    return compatAuthClient;
+  }catch(e){
+    console.warn("Firebase compat auth se nepodařilo připravit",e);
+    return null;
+  }
+}
+async function ensureCompatAuthPersistence(){
+  const client=getCompatAuthClient();
+  if(!client || !window.firebase || !firebase.auth || !firebase.auth.Auth) return client;
+  try{
+    await client.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  }catch(e){
+    try{ await client.setPersistence(firebase.auth.Auth.Persistence.SESSION); }catch(err){}
+  }
+  return client;
+}
+function compatGoogleProvider(){
+  if(!window.firebase || !firebase.auth || !firebase.auth.GoogleAuthProvider) return null;
+  const provider=new firebase.auth.GoogleAuthProvider();
+  provider.addScope("email");
+  provider.addScope("profile");
+  provider.setCustomParameters({prompt:"select_account",hd:"astip.cz"});
+  return provider;
+}
 function rememberKnownSignedIn(user=null){
   try{localStorage.setItem(AUTH_KNOWN_SIGNED_IN_KEY,"1");}catch(e){}
   const email=safe(user && user.email).toLowerCase();
@@ -2318,16 +2361,22 @@ if(firebaseReady){
     return authMod.browserPopupRedirectResolver || undefined;
   }
   async function signInWithGoogleRedirect(provider){
+    const compatClient=await ensureCompatAuthPersistence();
+    if(compatClient && provider && compatClient.signInWithRedirect) return compatClient.signInWithRedirect(provider);
     const resolver=redirectResolver();
     if(resolver) return authMod.signInWithRedirect(auth,provider,resolver);
     return authMod.signInWithRedirect(auth,provider);
   }
   async function signInWithGooglePopup(provider){
+    const compatClient=await ensureCompatAuthPersistence();
+    if(compatClient && provider && compatClient.signInWithPopup) return compatClient.signInWithPopup(provider);
     const resolver=redirectResolver();
     if(resolver) return authMod.signInWithPopup(auth,provider,resolver);
     return authMod.signInWithPopup(auth,provider);
   }
   async function getGoogleRedirectResult(){
+    const compatClient=await ensureCompatAuthPersistence();
+    if(compatClient && compatClient.getRedirectResult) return compatClient.getRedirectResult();
     const resolver=redirectResolver();
     if(resolver) return authMod.getRedirectResult(auth,resolver);
     return authMod.getRedirectResult(auth);
@@ -2346,6 +2395,8 @@ if(firebaseReady){
     }
   }
   function googleRedirectProvider(){
+    const compatProvider=compatGoogleProvider();
+    if(compatProvider) return compatProvider;
     const provider=new authMod.GoogleAuthProvider();
     provider.addScope("email");
     provider.addScope("profile");
@@ -2369,18 +2420,22 @@ if(firebaseReady){
     if(typeof updateAdminAppControls==="function") updateAdminAppControls();
   }
   async function startFirebaseRedirectLogin(){
-    if(!firebaseReady || !auth) return;
+    if(!firebaseReady || (!auth && !getCompatAuthClient())) return;
+    await ensureCompatAuthPersistence();
     const provider=googleRedirectProvider();
     try{
       clearAuthPending();
       setStartupStatus("Otevírám Google přihlášení...");
-      const activeEmail=String(auth.currentUser?.email || "").toLowerCase();
+      const activeEmail=String(currentAuthCandidate()?.email || "").toLowerCase();
       if(activeEmail && !isAllowedLoginEmail(activeEmail)){
         setStartupStatus("Otevírám Google přihlášení, vyber účet @astip.cz...");
       }
       const popupResult=await signInWithGooglePopup(provider);
       if(popupResult && popupResult.user){
         await handleAuthorizedUser(popupResult.user);
+      }else{
+        const restored=await waitForAuthCandidate(5000);
+        if(restored) await handleAuthorizedUser(restored);
       }
     }catch(e){
       const code=safe(e && e.code);
@@ -2409,7 +2464,11 @@ if(firebaseReady){
       markExplicitSignOut();
       forgetKnownSignedIn();
       clearSignedUser();
-      await authMod.signOut(auth);
+      const compatClient=getCompatAuthClient();
+      await Promise.allSettled([
+        compatClient && compatClient.signOut ? compatClient.signOut() : Promise.resolve(),
+        auth && authMod.signOut ? authMod.signOut(auth) : Promise.resolve()
+      ]);
     }catch(e){
       setStartupStatus("Odhlášení selhalo: " + (e.code || "") + " " + (e.message || e));
     }finally{
@@ -2423,7 +2482,7 @@ if(firebaseReady){
   let authRedirectRecoveryPromise=null;
   let backgroundAuthRetryTimer=null;
   function currentAuthCandidate(){
-    return auth.currentUser || window.__authReadyUser || window.currentUser || syncCurrentUserFromCompat() || null;
+    return syncCurrentUserFromCompat() || window.__authReadyUser || window.currentUser || (auth && auth.currentUser) || null;
   }
   function appIsOpenOrHasRows(){
     const appEl=document.getElementById("mainApp");
@@ -2445,6 +2504,7 @@ if(firebaseReady){
     return currentAuthCandidate();
   }
   async function tryRestoreAuthCandidate(timeoutMs=4500){
+    await ensureCompatAuthPersistence();
     if(auth && auth.authStateReady){
       await Promise.race([
         auth.authStateReady(),
@@ -2597,7 +2657,11 @@ if(firebaseReady){
       setStartupStatus("Přihlášení je povoleno jen pro @astip.cz. Přihlášený účet: " + (email || "bez e-mailu"));
       markExplicitSignOut();
       forgetKnownSignedIn();
-      await authMod.signOut(auth).catch(()=>{});
+      const compatClient=getCompatAuthClient();
+      await Promise.allSettled([
+        compatClient && compatClient.signOut ? compatClient.signOut() : Promise.resolve(),
+        auth && authMod.signOut ? authMod.signOut(auth) : Promise.resolve()
+      ]);
       clearSignedUser();
       showLogin();
       return;
@@ -2642,7 +2706,7 @@ if(firebaseReady){
         const topLogoutBtn=document.getElementById("topLogoutBtn");
         if(topLogoutBtn) topLogoutBtn.style.display="none";
         showLogin();
-        setStartupStatus("Google přihlášení se nevrátilo s přihlášeným uživatelem. Zkus tlačítko znovu a vyber účet @astip.cz; pokud se to opakuje, smaž v Chrome data pro tento web.");
+        setStartupStatus("Přihlášení se nepodařilo dokončit. Zkus tlačítko znovu a vyber účet @astip.cz.");
       });
       return;
     }
@@ -2697,6 +2761,7 @@ if(firebaseReady){
 
   try{
     setStartupStatus("Kontroluji přihlášení...");
+    await ensureCompatAuthPersistence();
     if(authPending()){
       await finishRedirectLoginIfPending();
     }else{
@@ -2716,9 +2781,20 @@ if(firebaseReady){
     setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
   }
 
+  const compatAuthForListener=await ensureCompatAuthPersistence();
+  if(compatAuthForListener && compatAuthForListener.onAuthStateChanged){
+    compatAuthForListener.onAuthStateChanged(user=>{
+      if(user) handleAuthorizedUser(user);
+      else handleSignedOut();
+    });
+  }else{
+    authMod.onAuthStateChanged(auth,user=>{
+      if(user) handleAuthorizedUser(user);
+      else handleSignedOut();
+    });
+  }
   authMod.onAuthStateChanged(auth,user=>{
     if(user) handleAuthorizedUser(user);
-    else handleSignedOut();
   });
   }
 }
@@ -2727,7 +2803,7 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_SHELL_CACHE_NAME="astip-szz-v13-static";
+const APP_SHELL_CACHE_NAME="astip-szz-v14-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -2761,7 +2837,7 @@ function setOfflineMapStatus(message="",state="info"){
   el.textContent=message;
 }
 
-function setOfflineMapButtonState(busy=false,text="Stáhnout mapu ČR offline"){
+function setOfflineMapButtonState(busy=false,text="Stáhnout mapu do telefonu"){
   const button=document.getElementById("cacheMapTilesBtn");
   if(!button) return;
   button.disabled=!!busy;
@@ -2958,15 +3034,6 @@ async function cacheCzechOfflineMap(options={}){
   });
 }
 
-function maybeAutoCacheCzechOfflineMap(){
-  if(navigator.onLine===false) return;
-  if(typeof isAppAdmin==="function" && !isAppAdmin()) return;
-  if(!("caches" in window)) return;
-  if(czechOfflineMapReady() || window.__autoCzechOfflineMapStarted) return;
-  window.__autoCzechOfflineMapStarted=true;
-  setTimeout(()=>cacheCzechOfflineMap().catch(e=>console.warn("Automatické stažení mapy ČR selhalo",e)),4500);
-}
-
 function bindOfflineMapCacheButton(){
   const button=document.getElementById("cacheMapTilesBtn");
   if(button && !button.__offlineMapBound){
@@ -2978,7 +3045,6 @@ document.addEventListener("DOMContentLoaded",bindOfflineMapCacheButton);
 bindOfflineMapCacheButton();
 window.cacheVisibleMapTiles=cacheVisibleMapTiles;
 window.cacheCzechOfflineMap=cacheCzechOfflineMap;
-window.maybeAutoCacheCzechOfflineMap=maybeAutoCacheCzechOfflineMap;
 
 function safe(v){return String(v??"").trim()}
 function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
@@ -3124,9 +3190,8 @@ const APP_ALLOWED_EMAILS = [
 window.appRegionOptions = () => APP_REGION_OPTIONS.slice();
 function compatAuthCurrentUser(){
   try{
-    if(window.firebase && firebase.auth){
-      return firebase.auth().currentUser || null;
-    }
+    const client=getCompatAuthClient();
+    return client && client.currentUser ? client.currentUser : null;
   }catch(e){}
   return null;
 }
@@ -3176,7 +3241,7 @@ window.updateAdminAppControls=updateAdminAppControls;
 document.addEventListener("DOMContentLoaded",updateAdminAppControls);
 setTimeout(updateAdminAppControls,0);
 function waitForFirebaseUser(timeoutMs=8000){
-  if(!firebaseReady || !auth) return Promise.resolve(currentUser || window.currentUser || null);
+  if(!firebaseReady || (!auth && !getCompatAuthClient())) return Promise.resolve(currentUser || window.currentUser || null);
   const existing=currentUser || window.currentUser || window.__authReadyUser || syncCurrentUserFromCompat();
   if(existing) return Promise.resolve(existing);
   return new Promise(resolve=>{
@@ -3190,15 +3255,25 @@ function waitForFirebaseUser(timeoutMs=8000){
       window.currentUser=currentUser;
       resolve(currentUser);
     };
-    const timer=setTimeout(()=>finish(syncCurrentUserFromCompat() || currentUser || window.currentUser || null),timeoutMs);
+    const timer=setTimeout(()=>finish(syncCurrentUserFromCompat() || currentUser || window.currentUser || (auth && auth.currentUser) || null),timeoutMs);
     try{
-      unsub=fb.authMod.onAuthStateChanged(auth,user=>{
-        clearTimeout(timer);
-        finish(user || syncCurrentUserFromCompat());
-      });
+      const compatClient=getCompatAuthClient();
+      if(compatClient && compatClient.onAuthStateChanged){
+        unsub=compatClient.onAuthStateChanged(user=>{
+          if(!user && !explicitSignOutPending()) return;
+          clearTimeout(timer);
+          finish(user || syncCurrentUserFromCompat());
+        });
+      }else{
+        unsub=fb.authMod.onAuthStateChanged(auth,user=>{
+          if(!user && !explicitSignOutPending()) return;
+          clearTimeout(timer);
+          finish(user || syncCurrentUserFromCompat());
+        });
+      }
     }catch(e){
       clearTimeout(timer);
-      finish(syncCurrentUserFromCompat() || currentUser || window.currentUser || null);
+      finish(syncCurrentUserFromCompat() || currentUser || window.currentUser || (auth && auth.currentUser) || null);
     }
   });
 }
@@ -9160,7 +9235,6 @@ function showApp(){
   if(loginRow) loginRow.style.display="none";
   if(topLogout) topLogout.style.display=currentUser ? "block" : "none";
   setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); }catch(e){}},250);
-  if(window.maybeAutoCacheCzechOfflineMap) setTimeout(()=>window.maybeAutoCacheCzechOfflineMap(),1200);
 }
 function showLogin(){
   if(window.setStartupAuthChecking) window.setStartupAuthChecking(false);

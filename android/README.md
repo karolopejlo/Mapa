@@ -1,6 +1,8 @@
 # Android aplikace SZZ mapa
 
-Tahle slozka obsahuje Android projekt pro plnohodnotnou aplikaci postavenou jako Trusted Web Activity.
+Tahle slozka obsahuje soucasny Android projekt postaveny jako Trusted Web Activity.
+Je to docasny mezikrok k plnohodnotne offline aplikaci: podrobny navrh nativni verze je v
+`OFFLINE_NATIVE_APP_PLAN.md`.
 
 ## Co to dela
 
