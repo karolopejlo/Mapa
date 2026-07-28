@@ -2421,6 +2421,7 @@ if(firebaseReady){
   }
   let authRedirectRecoveryInProgress=false;
   let authRedirectRecoveryPromise=null;
+  let backgroundAuthRetryTimer=null;
   function currentAuthCandidate(){
     return auth.currentUser || window.__authReadyUser || window.currentUser || syncCurrentUserFromCompat() || null;
   }
@@ -2432,6 +2433,49 @@ if(firebaseReady){
       await delay(250);
     }
     return currentAuthCandidate();
+  }
+  async function tryRestoreAuthCandidate(timeoutMs=4500){
+    if(auth && auth.authStateReady){
+      await Promise.race([
+        auth.authStateReady(),
+        delay(timeoutMs)
+      ]).catch(()=>{});
+    }
+    return currentAuthCandidate() || await waitForAuthCandidate(timeoutMs);
+  }
+  function clearBackgroundAuthRetry(){
+    if(backgroundAuthRetryTimer){
+      clearTimeout(backgroundAuthRetryTimer);
+      backgroundAuthRetryTimer=null;
+    }
+  }
+  function scheduleBackgroundAuthRetry(delayMs=2500){
+    if(backgroundAuthRetryTimer || explicitSignOutPending()) return;
+    backgroundAuthRetryTimer=setTimeout(async()=>{
+      backgroundAuthRetryTimer=null;
+      const restored=await tryRestoreAuthCandidate(3500);
+      if(restored){
+        handleAuthorizedUser(restored);
+      }
+    },delayMs);
+  }
+  function keepAppOpenDuringAuthRestore(message){
+    if(explicitSignOutPending()) return false;
+    setStartupAuthChecking(false);
+    try{document.documentElement.classList.add("auth-resume");}catch(e){}
+    showApp();
+    const topLogoutBtn=document.getElementById("topLogoutBtn");
+    if(topLogoutBtn) topLogoutBtn.style.display="block";
+    setProgressStatus(message || "Přihlášení se obnovuje na pozadí. Mapa zůstává otevřená z uložených dat.");
+    setTimeout(()=>{
+      try{
+        if(typeof window.loadFirebaseSitesUnified==="function"){
+          window.loadFirebaseSitesUnified(null,{offlineCacheOnly:true});
+        }
+      }catch(e){}
+    },200);
+    scheduleBackgroundAuthRetry();
+    return true;
   }
   async function finishRedirectLoginIfPending(){
     if(!authPending()) return false;
@@ -2534,6 +2578,7 @@ if(firebaseReady){
     return false;
   }
   async function handleAuthorizedUser(user){
+    clearBackgroundAuthRetry();
     clearAuthPending();
     clearExplicitSignOut();
     setSignedUser(user);
@@ -2577,6 +2622,10 @@ if(firebaseReady){
           return;
         }
         clearAuthPending();
+        if(knownSignedIn() && !explicitSignOutPending()){
+          keepAppOpenDuringAuthRestore("Google přihlášení se zatím nevrátilo s uživatelem. Mapa zůstává otevřená a přihlášení zkusím obnovit na pozadí.");
+          return;
+        }
         forgetKnownSignedIn();
         setStartupAuthChecking(false);
         clearSignedUser();
@@ -2589,14 +2638,7 @@ if(firebaseReady){
     }
     const knownSession=knownSignedIn() && !explicitSignOutPending();
     if(knownSession && navigator.onLine===false){
-      setStartupAuthChecking(false);
-      showApp();
-      setProgressStatus("Offline režim. Používám lokálně uložené body, protokoly a fotky.");
-      setTimeout(()=>{
-        try{
-          if(typeof window.loadFirebaseSitesUnified==="function") window.loadFirebaseSitesUnified(null,{offlineCacheOnly:true});
-        }catch(e){}
-      },300);
+      keepAppOpenDuringAuthRestore("Offline režim. Používám lokálně uložené body, protokoly a fotky.");
       return;
     }
     const restoringKnownSession=knownSession && Date.now()-authBootStartedAt<AUTH_RESTORE_GRACE_MS;
@@ -2615,13 +2657,13 @@ if(firebaseReady){
           return;
         }
         if(Date.now()-authBootStartedAt>=AUTH_RESTORE_GRACE_MS){
-          forgetKnownSignedIn();
-          setStartupAuthChecking(false);
-          clearSignedUser();
-          showLogin();
-          setStartupStatus("Přihlášení se nepodařilo obnovit. Zkus se přihlásit znovu účtem @astip.cz.");
+          keepAppOpenDuringAuthRestore("Přihlášení se zatím nepodařilo obnovit. Mapa zůstává otevřená z uložených dat a přihlášení zkusím obnovit na pozadí.");
         }
       },600);
+      return;
+    }
+    if(knownSession){
+      keepAppOpenDuringAuthRestore("Přihlášení se obnovuje na pozadí. Mapa zůstává otevřená z uložených dat.");
       return;
     }
     forgetKnownSignedIn();
@@ -2675,7 +2717,7 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_SHELL_CACHE_NAME="astip-szz-v11-static";
+const APP_SHELL_CACHE_NAME="astip-szz-v12-static";
 const APP_SHELL_URLS=[
   "./",
   "./index.html",
