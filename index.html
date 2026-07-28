@@ -1642,7 +1642,7 @@ button,input,select,textarea{
     <h1>Servis záložních zdrojů</h1>
     <p id="startupIntro">Kontroluji přihlášení...</p>
     <button class="primary" id="startupLoginBtn" onclick="window.loginPopup()">Přihlásit přes Google</button>
-    <button class="secondary install-app-btn" id="startupInstallAppBtn" type="button" style="display:none;margin-top:10px">Instalovat aplikaci</button>
+    <button class="secondary install-app-btn admin-app-only" id="startupInstallAppBtn" type="button" style="display:none;margin-top:10px">Instalovat aplikaci</button>
     <p id="startupStatus" class="small"></p>
   </div>
 </div>
@@ -1661,10 +1661,10 @@ button,input,select,textarea{
 <label>Hledat</label><input id="search" placeholder="název, adresa, výrobní číslo, kontakt...">
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
-<button class="secondary" id="cacheMapTilesBtn" type="button" style="margin-top:8px" onclick="window.cacheVisibleMapTiles && window.cacheVisibleMapTiles()">Stáhnout mapu offline</button>
-<div id="offlineMapStatus" class="notice offline-map-status"></div>
+<button class="secondary admin-app-only" id="cacheMapTilesBtn" type="button" style="display:none;margin-top:8px" onclick="window.cacheVisibleMapTiles && window.cacheVisibleMapTiles()">Stáhnout mapu offline</button>
+<div id="offlineMapStatus" class="notice offline-map-status admin-app-only"></div>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
-<button class="secondary install-app-btn" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
+<button class="secondary install-app-btn admin-app-only" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
 <button class="secondary" id="mainProtocolHistoryBtn" style="margin-top:8px">Historie protokolů</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
@@ -2134,7 +2134,8 @@ window.rows = rows;
 const AUTH_KNOWN_SIGNED_IN_KEY="astipFirebaseKnownSignedIn";
 const AUTH_EXPLICIT_SIGN_OUT_KEY="astipFirebaseExplicitSignOut";
 const AUTH_LAST_EMAIL_KEY="astipFirebaseLastEmail";
-const AUTH_RESTORE_GRACE_MS=7000;
+const AUTH_RESTORE_GRACE_MS=12000;
+const AUTH_REDIRECT_RECOVERY_MS=14000;
 const authBootStartedAt=Date.now();
 function knownSignedIn(){
   try{return localStorage.getItem(AUTH_KNOWN_SIGNED_IN_KEY)==="1";}catch(e){return false;}
@@ -2357,6 +2358,7 @@ if(firebaseReady){
     window.__authReadyUser=user;
     const userBox=document.getElementById("userBox");
     if(userBox) userBox.textContent=user?`Přihlášen: ${user.email}`:"Nepřihlášeno";
+    if(typeof updateAdminAppControls==="function") updateAdminAppControls();
   }
   function clearSignedUser(){
     currentUser=null;
@@ -2364,6 +2366,7 @@ if(firebaseReady){
     window.__authReadyUser=null;
     const userBox=document.getElementById("userBox");
     if(userBox) userBox.textContent="Nepřihlášeno";
+    if(typeof updateAdminAppControls==="function") updateAdminAppControls();
   }
   async function startFirebaseRedirectLogin(){
     if(!firebaseReady || !auth) return;
@@ -2415,6 +2418,60 @@ if(firebaseReady){
   }
   function delay(ms){
     return new Promise(resolve=>setTimeout(resolve,ms));
+  }
+  let authRedirectRecoveryInProgress=false;
+  let authRedirectRecoveryPromise=null;
+  function currentAuthCandidate(){
+    return auth.currentUser || window.__authReadyUser || window.currentUser || syncCurrentUserFromCompat() || null;
+  }
+  async function waitForAuthCandidate(timeoutMs=3500){
+    const started=Date.now();
+    while(Date.now()-started<timeoutMs){
+      const user=currentAuthCandidate();
+      if(user) return user;
+      await delay(250);
+    }
+    return currentAuthCandidate();
+  }
+  async function finishRedirectLoginIfPending(){
+    if(!authPending()) return false;
+    if(authRedirectRecoveryPromise) return authRedirectRecoveryPromise;
+    authRedirectRecoveryInProgress=true;
+    setStartupAuthChecking(true);
+    setStartupStatus("Dokončuji Google přihlášení...");
+    authRedirectRecoveryPromise=(async()=>{
+      try{
+        const redirectResult=await Promise.race([
+          getGoogleRedirectResult(),
+          delay(AUTH_REDIRECT_RECOVERY_MS).then(()=>null)
+        ]);
+        let user=(redirectResult && redirectResult.user) || currentAuthCandidate();
+        if(!user && auth.authStateReady){
+          await Promise.race([
+            auth.authStateReady(),
+            delay(4000)
+          ]);
+          user=currentAuthCandidate();
+        }
+        if(!user) user=await waitForAuthCandidate(4500);
+        if(user){
+          await handleAuthorizedUser(user);
+          return true;
+        }
+        return false;
+      }catch(e){
+        clearAuthPending();
+        setStartupAuthChecking(false);
+        setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
+        return false;
+      }
+    })();
+    try{
+      return await authRedirectRecoveryPromise;
+    }finally{
+      authRedirectRecoveryPromise=null;
+      authRedirectRecoveryInProgress=false;
+    }
   }
   async function waitForFirebaseRowsLoader(timeoutMs=5000){
     const started=Date.now();
@@ -2508,6 +2565,28 @@ if(firebaseReady){
     }
   }
   function handleSignedOut(){
+    if(authPending()){
+      setStartupAuthChecking(true);
+      try{document.documentElement.classList.add("auth-resume");}catch(e){}
+      setStartupStatus("Dokončuji Google přihlášení...");
+      finishRedirectLoginIfPending().then(done=>{
+        if(done) return;
+        const restored=currentAuthCandidate();
+        if(restored){
+          handleAuthorizedUser(restored);
+          return;
+        }
+        clearAuthPending();
+        forgetKnownSignedIn();
+        setStartupAuthChecking(false);
+        clearSignedUser();
+        const topLogoutBtn=document.getElementById("topLogoutBtn");
+        if(topLogoutBtn) topLogoutBtn.style.display="none";
+        showLogin();
+        setStartupStatus("Google přihlášení se nevrátilo s přihlášeným uživatelem. Zkus tlačítko znovu a vyber účet @astip.cz; pokud se to opakuje, smaž v Chrome data pro tento web.");
+      });
+      return;
+    }
     const knownSession=knownSignedIn() && !explicitSignOutPending();
     if(knownSession && navigator.onLine===false){
       setStartupAuthChecking(false);
@@ -2551,10 +2630,7 @@ if(firebaseReady){
     const topLogoutBtn=document.getElementById("topLogoutBtn");
     if(topLogoutBtn) topLogoutBtn.style.display="none";
     showLogin();
-    if(authPending()){
-      setStartupStatus("Google přihlášení se vrátilo bez přihlášeného uživatele. Zkus tlačítko znovu a vyber účet @astip.cz; pokud se to opakuje, smaž v Chrome data pro tento web.");
-      clearAuthPending();
-    }else if(lastAuthMessage && lastAuthMessage!=="Kontroluji přihlášení..."){
+    if(lastAuthMessage && lastAuthMessage!=="Kontroluji přihlášení..."){
       setStartupStatus(lastAuthMessage);
     }else{
       setStartupStatus("");
@@ -2569,16 +2645,20 @@ if(firebaseReady){
 
   try{
     setStartupStatus("Kontroluji přihlášení...");
-    const redirectResult=await Promise.race([
-      getGoogleRedirectResult(),
-      delay(1800).then(()=>null)
-    ]);
-    if(redirectResult && redirectResult.user) setSignedUser(redirectResult.user);
-    if(auth.authStateReady) await Promise.race([
-      auth.authStateReady(),
-      delay(1200)
-    ]);
-    if(auth.currentUser) setSignedUser(auth.currentUser);
+    if(authPending()){
+      await finishRedirectLoginIfPending();
+    }else{
+      const redirectResult=await Promise.race([
+        getGoogleRedirectResult(),
+        delay(3500).then(()=>null)
+      ]);
+      if(redirectResult && redirectResult.user) setSignedUser(redirectResult.user);
+      if(auth.authStateReady) await Promise.race([
+        auth.authStateReady(),
+        delay(3500)
+      ]);
+      if(auth.currentUser) setSignedUser(auth.currentUser);
+    }
   }catch(e){
     clearAuthPending();
     setStartupStatus("Chyba návratu z přihlášení: " + authErrorText(e));
@@ -2707,6 +2787,10 @@ function visibleMapTileUrls(maxTiles=650){
 
 async function cacheVisibleMapTiles(){
   if(window.__mapTileCacheRunning) return;
+  if(typeof isAppAdmin==="function" && !isAppAdmin()){
+    setOfflineMapStatus("Offline mapy může stahovat jen správce.","error");
+    return;
+  }
   if(!("caches" in window)){
     setOfflineMapStatus("Offline cache mapy není v tomto prohlížeči dostupná.","error");
     return;
@@ -2952,6 +3036,30 @@ function isAppAdmin(){
   const email=currentUserEmail();
   return !!email && APP_ADMIN_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
 }
+function updateAdminAppControls(){
+  const show=!!isAppAdmin();
+  document.querySelectorAll(".admin-app-only").forEach(el=>{
+    if(el.id==="offlineMapStatus"){
+      if(!show){
+        el.textContent="";
+        el.style.display="none";
+      }else{
+        el.style.display=el.textContent ? "block" : "none";
+      }
+      return;
+    }
+    if(el.classList && el.classList.contains("install-app-btn")){
+      if(!show) el.style.display="none";
+      return;
+    }
+    el.style.display=show ? "" : "none";
+  });
+  if(typeof window.updateSzzInstallButtons==="function") window.updateSzzInstallButtons();
+}
+window.isAppAdmin=isAppAdmin;
+window.updateAdminAppControls=updateAdminAppControls;
+document.addEventListener("DOMContentLoaded",updateAdminAppControls);
+setTimeout(updateAdminAppControls,0);
 function waitForFirebaseUser(timeoutMs=8000){
   if(!firebaseReady || !auth) return Promise.resolve(currentUser || window.currentUser || null);
   const existing=currentUser || window.currentUser || window.__authReadyUser || syncCurrentUserFromCompat();
@@ -8926,6 +9034,7 @@ function fixMapView(){
 
 function showApp(){
   if(window.setStartupAuthChecking) window.setStartupAuthChecking(false);
+  if(window.updateAdminAppControls) window.updateAdminAppControls();
   const startup=document.getElementById("startupScreen");
   const app=document.getElementById("mainApp");
   const loginRow=document.getElementById("mainLoginRow");
@@ -8938,6 +9047,7 @@ function showApp(){
 }
 function showLogin(){
   if(window.setStartupAuthChecking) window.setStartupAuthChecking(false);
+  if(window.updateAdminAppControls) window.updateAdminAppControls();
   const startup=document.getElementById("startupScreen");
   const app=document.getElementById("mainApp");
   const loginRow=document.getElementById("mainLoginRow");
@@ -13244,14 +13354,25 @@ function isSzzAppInstalledView(){
   return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
 }
 
+function canShowSzzInstallButton(){
+  return !!deferredSzzInstallPrompt
+    && !isSzzAppInstalledView()
+    && !!window.isAppAdmin
+    && window.isAppAdmin();
+}
+
 function updateSzzInstallButtons(){
-  const show=!!deferredSzzInstallPrompt && !isSzzAppInstalledView();
+  const show=canShowSzzInstallButton();
   document.querySelectorAll(".install-app-btn").forEach(button=>{
     button.style.display=show ? "" : "none";
   });
 }
 
 async function installSzzAppFromPage(){
+  if(!window.isAppAdmin || !window.isAppAdmin()){
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci aplikace může spustit jen správce.");
+    return;
+  }
   if(!deferredSzzInstallPrompt){
     if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci teď nabízí prohlížeč v menu.");
     return;
@@ -13272,6 +13393,9 @@ async function installSzzAppFromPage(){
     if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci se nepodařilo spustit.");
   }
 }
+
+window.updateSzzInstallButtons=updateSzzInstallButtons;
+window.installSzzAppFromPage=installSzzAppFromPage;
 
 window.addEventListener("beforeinstallprompt",event=>{
   event.preventDefault();
