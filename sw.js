@@ -1,4 +1,4 @@
-const CACHE_VERSION = "astip-szz-v14";
+const CACHE_VERSION = "astip-szz-v15";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const TILE_CACHE = "astip-szz-map-tiles-v1";
@@ -92,7 +92,7 @@ function isSameOriginUrl(url) {
 async function networkFirst(request) {
   const cache = await caches.open(RUNTIME_CACHE);
   try {
-    const response = await fetch(request);
+    const response = await fetch(new Request(request, {cache: "reload"}));
     if (response && response.ok) cache.put(request, response.clone());
     return response;
   } catch (error) {
@@ -127,10 +127,24 @@ function isMapTileRequest(request) {
   }
 }
 
+function isAppShellRequest(request) {
+  try {
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return false;
+    return request.destination === "document" ||
+      request.destination === "script" ||
+      request.destination === "style" ||
+      request.destination === "manifest" ||
+      /\/(index\.html|manifest\.webmanifest|sw\.js)$/.test(url.pathname);
+  } catch (error) {
+    return false;
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const {request} = event;
   if (request.method !== "GET") return;
-  if (request.mode === "navigate") {
+  if (request.mode === "navigate" || isAppShellRequest(request)) {
     event.respondWith(networkFirst(request));
     return;
   }

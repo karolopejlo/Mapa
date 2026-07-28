@@ -2152,6 +2152,7 @@ function clearExplicitSignOut(){
   try{sessionStorage.removeItem(AUTH_EXPLICIT_SIGN_OUT_KEY);}catch(e){}
 }
 let compatAuthClient=null;
+let compatAuthPersistencePromise=null;
 function ensureCompatFirebaseApp(){
   if(!window.firebase || !firebase.initializeApp) return null;
   try{
@@ -2185,6 +2186,15 @@ async function ensureCompatAuthPersistence(){
     try{ await client.setPersistence(firebase.auth.Auth.Persistence.SESSION); }catch(err){}
   }
   return client;
+}
+function primeCompatAuthPersistence(){
+  if(!compatAuthPersistencePromise){
+    compatAuthPersistencePromise=ensureCompatAuthPersistence().catch(e=>{
+      console.warn("Firebase compat persistence se nepodařila připravit",e);
+      return getCompatAuthClient();
+    });
+  }
+  return compatAuthPersistencePromise;
 }
 function compatGoogleProvider(){
   if(!window.firebase || !firebase.auth || !firebase.auth.GoogleAuthProvider) return null;
@@ -2356,8 +2366,8 @@ if(firebaseReady){
   function redirectResolver(){
     return authMod.browserPopupRedirectResolver || undefined;
   }
-  async function signInWithGooglePopup(provider){
-    const compatClient=await ensureCompatAuthPersistence();
+  function signInWithGooglePopup(provider){
+    const compatClient=getCompatAuthClient();
     if(compatClient && provider && compatClient.signInWithPopup) return compatClient.signInWithPopup(provider);
     const resolver=redirectResolver();
     if(resolver) return authMod.signInWithPopup(auth,provider,resolver);
@@ -2403,7 +2413,7 @@ if(firebaseReady){
   }
   async function startFirebaseRedirectLogin(){
     if(!firebaseReady || (!auth && !getCompatAuthClient())) return;
-    await ensureCompatAuthPersistence();
+    primeCompatAuthPersistence();
     const provider=googleRedirectProvider();
     try{
       clearAuthPending();
@@ -2709,7 +2719,7 @@ if(firebaseReady){
 
   try{
     setStartupStatus("Kontroluji přihlášení...");
-    await ensureCompatAuthPersistence();
+    await primeCompatAuthPersistence();
     if(authPending()){
       await finishRedirectLoginIfPending();
     }else{
@@ -2721,7 +2731,7 @@ if(firebaseReady){
     setStartupStatus("Chyba kontroly přihlášení: " + authErrorText(e));
   }
 
-  const compatAuthForListener=await ensureCompatAuthPersistence();
+  const compatAuthForListener=await primeCompatAuthPersistence();
   if(compatAuthForListener && compatAuthForListener.onAuthStateChanged){
     compatAuthForListener.onAuthStateChanged(user=>{
       if(user) handleAuthorizedUser(user);
@@ -2743,7 +2753,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_SHELL_CACHE_NAME="astip-szz-v14-static";
+const APP_BUILD_VERSION="2026-07-28-auth-v15";
+const APP_SHELL_CACHE_NAME="astip-szz-v15-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -7575,8 +7586,10 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
 const OFFICIAL_RTF_TEMPLATE_URL="official-template.rtf";
 const OFFICIAL_STOP_RTF_TEMPLATE_URL="official-stop-template.rtf";
 const OFFICIAL_TIPEK_SIGNATURE_URL="./podpis-tipek.jpg";
+const OFFICIAL_WATERMARK_LOGO_URL="./szz-logo-display.png";
 const officialRtfTemplateCache={};
 let officialTipekSignatureBytesCache=null;
+let officialWatermarkLogoBytesCache=null;
 
 async function loadOfficialRtfTemplate(mode="ok"){
   const key=mode==="stop" ? "stop" : "ok";
@@ -7599,6 +7612,19 @@ async function loadOfficialTipekSignatureBytes(){
     return officialTipekSignatureBytesCache;
   }catch(e){
     console.warn("Podpis Ing. Tipek se nepodařilo načíst",e);
+    return null;
+  }
+}
+
+async function loadOfficialWatermarkLogoBytes(){
+  if(officialWatermarkLogoBytesCache) return officialWatermarkLogoBytesCache;
+  try{
+    const response=await fetch(OFFICIAL_WATERMARK_LOGO_URL,{cache:"force-cache"});
+    if(!response.ok) throw new Error(`Logo se nepodařilo načíst (${response.status}).`);
+    officialWatermarkLogoBytesCache=new Uint8Array(await response.arrayBuffer());
+    return officialWatermarkLogoBytesCache;
+  }catch(e){
+    console.warn("Logo pro vodoznak dokladu se nepodařilo načíst",e);
     return null;
   }
 }
@@ -7806,16 +7832,16 @@ function dataUrlImageBytes(dataUrl){
   try{return base64ToBytes(match[1]);}catch(e){return null;}
 }
 
-function officialRtfWatermark(){
-  const bytes=dataUrlImageBytes(szzLogoDataUrl());
+function officialRtfWatermark(officialData={}){
+  const bytes=officialData.watermarkLogoBytes || dataUrlImageBytes(szzLogoDataUrl());
   if(!bytes) return "";
   const hex=bytesToHex(bytes);
-  return `{\\shp{\\*\\shpinst\\shpleft1200\\shptop2450\\shpright9200\\shpbottom10450\\shpfhdr1\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr3\\shpwrk0\\shpfblwtxt1\\shpz2\\shplid20260721{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn fLockAspectRatio}{\\sv 1}}{\\sp{\\sn fFlipH}{\\sv 0}}{\\sp{\\sn fFlipV}{\\sv 0}}{\\sp{\\sn pib}{\\sv {\\pict\\picscalex40\\picscaley40\\piccropl0\\piccropr0\\piccropt0\\piccropb0\\picw1063\\pich1063\\picwgoal8000\\pichgoal8000\\pngblip ${hex}}}}{\\sp{\\sn pibFlags}{\\sv 2}}{\\sp{\\sn pictureContrast}{\\sv 19661}}{\\sp{\\sn pictureBrightness}{\\sv 22938}}{\\sp{\\sn fLine}{\\sv 0}}{\\sp{\\sn wzName}{\\sv WordPictureWatermarkSZZ}}{\\sp{\\sn posh}{\\sv 2}}{\\sp{\\sn posrelh}{\\sv 0}}{\\sp{\\sn posv}{\\sv 2}}{\\sp{\\sn posrelv}{\\sv 0}}{\\sp{\\sn dhgt}{\\sv 251660288}}{\\sp{\\sn fLayoutInCell}{\\sv 0}}{\\sp{\\sn fBehindDocument}{\\sv 1}}}}{\\shprslt\\par\\pard\\ql \\li0\\ri0\\widctlpar\\phmrg\\posxc\\posyc\\dxfrtext180\\dfrmtxtx180\\dfrmtxty0\\wraparound\\aspalpha\\aspnum\\faauto\\adjustright\\rin0\\lin0\\itap0}\\par `;
+  return `{\\shp{\\*\\shpinst\\shpleft900\\shptop4300\\shpright9900\\shpbottom8765\\shpfhdr1\\shpbxcolumn\\shpbxignore\\shpbypara\\shpbyignore\\shpwr3\\shpwrk0\\shpfblwtxt1\\shpz2\\shplid20260728{\\sp{\\sn shapeType}{\\sv 75}}{\\sp{\\sn fLockAspectRatio}{\\sv 1}}{\\sp{\\sn fFlipH}{\\sv 0}}{\\sp{\\sn fFlipV}{\\sv 0}}{\\sp{\\sn pib}{\\sv {\\pict\\piccropl0\\piccropr0\\piccropt0\\piccropb0\\picw998\\pich495\\picwgoal9000\\pichgoal4465\\pngblip ${hex}}}}{\\sp{\\sn pibFlags}{\\sv 2}}{\\sp{\\sn pictureContrast}{\\sv 19661}}{\\sp{\\sn pictureBrightness}{\\sv 22938}}{\\sp{\\sn fLine}{\\sv 0}}{\\sp{\\sn wzName}{\\sv WordPictureWatermarkSZZ}}{\\sp{\\sn posh}{\\sv 2}}{\\sp{\\sn posrelh}{\\sv 0}}{\\sp{\\sn posv}{\\sv 2}}{\\sp{\\sn posrelv}{\\sv 0}}{\\sp{\\sn dhgt}{\\sv 251660288}}{\\sp{\\sn fLayoutInCell}{\\sv 0}}{\\sp{\\sn fBehindDocument}{\\sv 1}}}}{\\shprslt\\par\\pard\\ql \\li0\\ri0\\widctlpar\\phmrg\\posxc\\posyc\\dxfrtext180\\dfrmtxtx180\\dfrmtxty0\\wraparound\\aspalpha\\aspnum\\faauto\\adjustright\\rin0\\lin0\\itap0}\\par `;
 }
 
-function addOfficialRtfWatermark(output){
-  if(output.includes("WordPictureWatermarkSZZ") || output.includes("WordPictureWatermark415820")) return output;
-  const watermark=officialRtfWatermark();
+function addOfficialRtfWatermark(output,officialData={}){
+  if(output.includes("WordPictureWatermarkSZZ")) return output;
+  const watermark=officialRtfWatermark(officialData);
   if(!watermark) return output;
   const shapeIndex=output.indexOf("{\\shp{\\*\\shpinst");
   if(shapeIndex<0) return output;
@@ -7831,7 +7857,7 @@ function officialRtfSignatureImage(protocol={}){
 function officialRtfTipekSignatureImage(officialData={}){
   const bytes=officialData.tipekSignatureBytes;
   if(!bytes) return "";
-  return `{\\pict\\jpegblip\\picw520\\pich517\\picwgoal1550\\pichgoal1540 ${bytesToHex(bytes)}}`;
+  return `{\\pict\\jpegblip\\picw520\\pich517\\picwgoal2150\\pichgoal2138 ${bytesToHex(bytes)}}`;
 }
 
 function officialRtfClientSignatureContent(protocol={}){
@@ -7940,7 +7966,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   });
   output=compactOfficialRtfEmptyNoteBeforeSignatures(output,officialData);
   output=compactOfficialRtfMeasurementSection(output,protocol);
-  output=addOfficialRtfWatermark(output);
+  output=addOfficialRtfWatermark(output,officialData);
   output=addOfficialRtfSignatures(output,protocol,officialData);
   output=normalizeOfficialRtfClientLabel(output);
   output=shrinkOfficialRtfTextSize(output);
@@ -8002,7 +8028,8 @@ async function preparedOfficialProtocolExport(protocol={},officialData={},mode="
   };
   const exportOfficialData={
     ...officialData,
-    tipekSignatureBytes:officialData.tipekSignatureBytes || await loadOfficialTipekSignatureBytes()
+    tipekSignatureBytes:officialData.tipekSignatureBytes || await loadOfficialTipekSignatureBytes(),
+    watermarkLogoBytes:officialData.watermarkLogoBytes || await loadOfficialWatermarkLogoBytes()
   };
   const prefix=mode==="stop" ? "doklad-stop-stav" : "doklad-provozuschopnosti";
   const fileBase=officialProtocolAddressFileName(filled,selectedSite) || `${prefix}-${protocolExportDatePart(filled)}`;
@@ -13586,9 +13613,33 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  window.__szzServiceWorkerRegistrationPromise=navigator.serviceWorker.register("./sw.js")
+  const serviceWorkerBuildVersion="2026-07-28-auth-v15";
+  const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
+  if(!window.__szzSwControllerChangeBound){
+    window.__szzSwControllerChangeBound=true;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      try{
+        if(sessionStorage.getItem(reloadKey)==="1") return;
+        sessionStorage.setItem(reloadKey,"1");
+        location.reload();
+      }catch(e){
+        location.reload();
+      }
+    });
+  }
+  window.__szzServiceWorkerRegistrationPromise=navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"})
     .then(registration=>{
       if(registration.waiting) registration.waiting.postMessage({type:"SKIP_WAITING"});
+      registration.addEventListener("updatefound",()=>{
+        const worker=registration.installing;
+        if(!worker) return;
+        worker.addEventListener("statechange",()=>{
+          if(worker.state==="installed" && navigator.serviceWorker.controller){
+            worker.postMessage({type:"SKIP_WAITING"});
+          }
+        });
+      });
+      try{ registration.update(); }catch(e){}
       return navigator.serviceWorker.ready.catch(()=>registration);
     })
     .catch(err=>{
