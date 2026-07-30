@@ -2788,8 +2788,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-07-30-official-data-v18";
-const APP_SHELL_CACHE_NAME="astip-szz-v18-static";
+const APP_BUILD_VERSION="2026-07-30-official-data-v19";
+const APP_SHELL_CACHE_NAME="astip-szz-v19-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -7395,6 +7395,74 @@ function officialProtocolInputData(){
   };
 }
 
+function sharedOfficialProtocolData(data={}){
+  return {
+    operator:data.operator || "",
+    objectAddress:data.objectAddress || "",
+    manufacturerKey:data.manufacturerKey || "szz",
+    manufacturer:data.manufacturer || officialManufacturerTextByKey(data.manufacturerKey || "szz"),
+    updatedAt:data.updatedAt || new Date().toISOString(),
+    updatedBy:data.updatedBy || currentUser?.email || ""
+  };
+}
+
+async function propagateOfficialProtocolDataToSiblingSources(data={},site=selectedSite,signedUser=null){
+  if(!site) return 0;
+  const siblings=siteSiblingRows(site)
+    .filter(row=>row && !selectedSiteMatchForSave(row,detailKey(site) || site.id || "",selectedSiteDocId(site)));
+  if(!siblings.length) return 0;
+
+  const shared=sharedOfficialProtocolData(data);
+  const identityKeys=new Set();
+  const canSaveRemote=!!(firebaseReady && db && fb.fsMod && signedUser);
+  const remoteWrites=[];
+  let saved=0;
+
+  siblings.forEach(sibling=>{
+    const existing=officialProtocolDataForSite(sibling);
+    const siblingData={
+      ...existing,
+      ...shared,
+      note:existing.note || ""
+    };
+    writeSiteLocalObject("officialProtocolData",siblingData,sibling);
+    sibling.firebaseData={...(sibling.firebaseData || {}),officialProtocolData:siblingData};
+    rowIdentityKeys(sibling).forEach(key=>identityKeys.add(key));
+    saved++;
+
+    if(canSaveRemote){
+      const docId=selectedSiteDocId(sibling);
+      if(docId){
+        const {doc,setDoc,serverTimestamp}=fb.fsMod;
+        remoteWrites.push(setDoc(doc(db,"sitesUnified",docId),{
+          officialProtocolData:siblingData,
+          updatedAt:serverTimestamp ? serverTimestamp() : siblingData.updatedAt,
+          updatedBy:currentUser?.email || ""
+        },{merge:true}).catch(e=>{
+          console.warn("Sdílená data dokladu se nepodařila uložit pro další zdroj",sibling,e);
+        }));
+      }
+    }
+  });
+
+  if(remoteWrites.length) await Promise.all(remoteWrites);
+  if(identityKeys.size){
+    rows=rows.map(row=>{
+      if(!rowMatchesIdentity(row,identityKeys)) return row;
+      const existing=row.firebaseData?.officialProtocolData || {};
+      return {
+        ...row,
+        firebaseData:{
+          ...(row.firebaseData || {}),
+          officialProtocolData:{...existing,...shared,note:existing.note || ""}
+        }
+      };
+    });
+    window.rows=rows;
+  }
+  return saved;
+}
+
 function fillOfficialProtocolInputs(site=selectedSite){
   const data=officialProtocolDataForSite(site);
   const raw=site?.raw || {};
@@ -7468,9 +7536,10 @@ async function saveOfficialProtocolData(options={}){
   writeSiteLocalObject("officialProtocolData",data,selectedSite);
   selectedSite.firebaseData={...(selectedSite.firebaseData || {}),officialProtocolData:data};
   let savedToFirebase=false;
+  let signedUser=null;
   const docId=selectedSiteDocId(selectedSite);
   if(docId && firebaseReady && db && fb.fsMod){
-    const signedUser=await waitForFirebaseUser(1200);
+    signedUser=await waitForFirebaseUser(1200);
     if(signedUser){
       try{
         const {doc,setDoc,serverTimestamp}=fb.fsMod;
@@ -7486,9 +7555,11 @@ async function saveOfficialProtocolData(options={}){
       }
     }
   }
+  const siblingCount=await propagateOfficialProtocolDataToSiblingSources(data,selectedSite,signedUser);
   if(!options.silent){
-    if(status) status.textContent=savedToFirebase ? "Data provozovatele uložena." : "Data provozovatele uložena lokálně.";
-    showSaveConfirmation("Data provozovatele uložena.");
+    const siblingText=siblingCount ? ` Data propsána i do dalších zdrojů na stejném místě: ${siblingCount}.` : "";
+    if(status) status.textContent=(savedToFirebase ? "Data provozovatele uložena." : "Data provozovatele uložena lokálně.") + siblingText;
+    showSaveConfirmation(siblingCount ? "Data provozovatele uložena pro celé místo." : "Data provozovatele uložena.");
   }
   return data;
 }
@@ -7997,7 +8068,7 @@ function officialRtfSignatureImage(protocol={}){
 function officialRtfTipekSignatureImage(officialData={}){
   const bytes=officialData.tipekSignatureBytes;
   if(!bytes) return "";
-  return `{\\pict\\pngblip\\picw865\\pich666\\picwgoal3200\\pichgoal2464 ${bytesToHex(bytes)}}`;
+  return `{\\pict\\pngblip\\picw865\\pich666\\picwgoal2850\\pichgoal2195 ${bytesToHex(bytes)}}`;
 }
 
 function officialRtfClientSignatureContent(protocol={}){
@@ -8125,7 +8196,37 @@ function protocolWordFileNameJoin(parts,fallback="protokol"){
   return name.slice(0,140) || fallback;
 }
 
-function officialProtocolAddressFileName(protocol={},site=selectedSite){
+function officialProtocolFileDatePart(protocol={}){
+  const raw=safe(protocol.date || protocol.checkDate || protocol.createdAt || protocol.savedAt || "");
+  const d=parseDateValue(raw);
+  if(d){
+    const pad=n=>String(n).padStart(2,"0");
+    return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;
+  }
+  const today=new Date();
+  const pad=n=>String(n).padStart(2,"0");
+  return `${pad(today.getDate())}-${pad(today.getMonth()+1)}-${today.getFullYear()}`;
+}
+
+function officialSourceFileLabel(protocol={},site=selectedSite){
+  if(!siteHasMultipleSources(site)) return "";
+  const text=safe(
+    protocol.deviceType ||
+    protocol.selectedDevice ||
+    protocol.siteSource ||
+    siteSourceLabel(site) ||
+    sourceTypeTextFromRaw(site?.raw || {})
+  );
+  if(!text) return "";
+  const power=text.match(/\b\d+(?:[,.]\d+)?\s*(?:kva|va|kw|w)\b/i);
+  if(power) return power[0].replace(/\s+/g,"").replace(",",".");
+  const larger=text.match(/\b\d{3,}\b/);
+  if(larger) return larger[0];
+  const any=text.match(/\b\d+(?:[,.]\d+)?\b/);
+  return any ? any[0].replace(",",".") : "";
+}
+
+function officialProtocolAddressFileName(protocol={},site=selectedSite,mode="ok"){
   const raw=site?.raw || {};
   const address=officialOneLine(
     protocol.siteAddress ||
@@ -8158,7 +8259,13 @@ function officialProtocolAddressFileName(protocol={},site=selectedSite){
   }else{
     street=address;
   }
-  return protocolWordFileNameJoin([city,street,protocolExportDatePart(protocol)],"doklad");
+  return protocolWordFileNameJoin([
+    street,
+    city,
+    officialProtocolFileDatePart(protocol),
+    officialSourceFileLabel(protocol,site),
+    mode==="stop" ? "STOP STAV" : ""
+  ],"doklad");
 }
 
 async function preparedOfficialProtocolExport(protocol={},officialData={},mode="ok"){
@@ -8172,7 +8279,7 @@ async function preparedOfficialProtocolExport(protocol={},officialData={},mode="
     watermarkLogoBytes:officialData.watermarkLogoBytes || await loadOfficialWatermarkLogoBytes()
   };
   const prefix=mode==="stop" ? "doklad-stop-stav" : "doklad-provozuschopnosti";
-  const fileBase=officialProtocolAddressFileName(filled,selectedSite) || `${prefix}-${protocolExportDatePart(filled)}`;
+  const fileBase=officialProtocolAddressFileName(filled,selectedSite,mode) || `${prefix}-${officialProtocolFileDatePart(filled)}`;
   const fileName=`${fileBase}.rtf`;
   const template=await loadOfficialRtfTemplate(mode);
   return {
@@ -8846,6 +8953,25 @@ function applyLatestProtocolToSite(protocol,site=selectedSite){
   if(selectedSite && detailKey(selectedSite)===detailKey(site)) selectedSite=site;
 }
 
+function protocolRepairHistoryEntry(protocol={}){
+  const note=safe(protocol.notes).replace(/\s+/g," ").trim();
+  if(!note) return "";
+  const date=protocolDisplayDate(protocol.savedAt || protocol.updatedAt || protocol.createdAt || protocol.date || new Date().toISOString());
+  return `${date ? `${date} - ` : ""}${note}`;
+}
+
+function appendProtocolNoteToRepairHistory(raw={},protocol={}){
+  const entry=protocolRepairHistoryEntry(protocol);
+  if(!entry) return raw;
+  const current=safe(raw["Historie oprav"] || raw["Historie_oprav"] || "");
+  const lines=current.split(/\r?\n/).map(line=>safe(line)).filter(Boolean);
+  if(lines.some(line=>line===entry)) return raw;
+  const history=[entry,...lines].join("\n");
+  raw["Historie oprav"]=history;
+  raw["Historie_oprav"]=history;
+  return raw;
+}
+
 function applyProtocolFieldsToRaw(raw,protocol={}){
   const out=raw || {};
   const device=safe(protocol.deviceType || protocol.selectedDevice);
@@ -8876,6 +9002,7 @@ function applyProtocolFieldsToRaw(raw,protocol={}){
     out["Postup testování"]=testProcedure;
     out["Postup testovani"]=testProcedure;
   }
+  appendProtocolNoteToRepairHistory(out,protocol);
   return out;
 }
 
