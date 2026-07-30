@@ -213,6 +213,30 @@ height:auto;
 max-height:96px;
 object-fit:contain;
 }
+.app-tools{
+  margin:8px 0 0;
+}
+.app-tools-toggle{
+  width:auto !important;
+  min-height:28px !important;
+  padding:4px 9px !important;
+  border-radius:999px !important;
+  font-size:11px !important;
+  line-height:1.1;
+}
+.app-tools-panel{
+  display:none;
+  gap:6px;
+  margin-top:6px;
+}
+.app-tools-panel.open{
+  display:grid;
+}
+.app-tools-panel button{
+  min-height:36px !important;
+  padding:6px 8px !important;
+  font-size:13px !important;
+}
 
 @media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:45vh 55vh}#map{height:45vh}aside{order:2;border-right:0;border-top:1px solid var(--border);width:auto;min-width:0;max-width:none}}
 
@@ -1648,7 +1672,7 @@ button,input,select,textarea{
     <h1>Servis záložních zdrojů</h1>
     <p id="startupIntro">Kontroluji přihlášení...</p>
     <button class="primary" id="startupLoginBtn" onclick="window.loginPopup()">Přihlásit přes Google</button>
-    <button class="secondary install-app-btn admin-app-only" id="startupInstallAppBtn" type="button" style="display:none;margin-top:10px">Instalovat aplikaci</button>
+    <button class="secondary install-app-btn" id="startupInstallAppBtn" type="button" style="display:none;margin-top:10px">Stáhnout aplikaci</button>
     <p id="startupStatus" class="small"></p>
   </div>
 </div>
@@ -1667,10 +1691,15 @@ button,input,select,textarea{
 <label>Hledat</label><input id="search" placeholder="název, adresa, výrobní číslo, kontakt...">
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
-<button class="secondary admin-app-only" id="cacheMapTilesBtn" type="button" style="display:none;margin-top:8px">Stáhnout mapu do telefonu</button>
-<div id="offlineMapStatus" class="notice offline-map-status admin-app-only"></div>
+<div class="app-tools">
+  <button class="secondary app-tools-toggle" id="appToolsToggle" type="button" aria-expanded="false">Aplikace</button>
+  <div class="app-tools-panel" id="appToolsPanel">
+    <button class="secondary install-app-btn" id="installAppBtn" type="button">Stáhnout aplikaci</button>
+    <button class="secondary" id="cacheMapTilesBtn" type="button">Stáhnout mapové podklady do telefonu</button>
+    <div id="offlineMapStatus" class="notice offline-map-status"></div>
+  </div>
+</div>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
-<button class="secondary install-app-btn admin-app-only" id="installAppBtn" type="button" style="display:none;margin-top:8px">Instalovat aplikaci</button>
 <button class="secondary protocol-history-private" id="mainProtocolHistoryBtn" style="display:none;margin-top:8px">Historie protokolů</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
@@ -2759,8 +2788,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-07-28-protocol-panel-v16";
-const APP_SHELL_CACHE_NAME="astip-szz-v16-static";
+const APP_BUILD_VERSION="2026-07-30-app-offline-v17";
+const APP_SHELL_CACHE_NAME="astip-szz-v17-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -2901,10 +2930,6 @@ function markCzechOfflineMapReady(){
 
 async function cacheMapTileUrls(urls,options={}){
   if(window.__mapTileCacheRunning) return;
-  if(typeof isAppAdmin==="function" && !isAppAdmin()){
-    setOfflineMapStatus("Offline mapy může stahovat jen správce.","error");
-    return;
-  }
   if(!("caches" in window)){
     setOfflineMapStatus("Offline cache mapy není v tomto prohlížeči dostupná.","error");
     return;
@@ -3188,23 +3213,6 @@ function updateProtocolHistoryVisibility(){
   });
 }
 function updateAdminAppControls(){
-  const show=!!isAppAdmin();
-  document.querySelectorAll(".admin-app-only").forEach(el=>{
-    if(el.id==="offlineMapStatus"){
-      if(!show){
-        el.textContent="";
-        el.style.display="none";
-      }else{
-        el.style.display=el.textContent ? "block" : "none";
-      }
-      return;
-    }
-    if(el.classList && el.classList.contains("install-app-btn")){
-      if(!show) el.style.display="none";
-      return;
-    }
-    el.style.display=show ? "" : "none";
-  });
   updateProtocolHistoryVisibility();
   if(typeof window.updateSzzInstallButtons==="function") window.updateSzzInstallButtons();
 }
@@ -5411,6 +5419,99 @@ function selectedSiteMatchForSave(row, selectedKey, firebaseDocId){
   return detailKey(row)===selectedKey || row.id===selectedKey || (firebaseDocId && rowDocId===firebaseDocId);
 }
 
+function sharedPlaceEditsFromRaw(editedRaw={}){
+  const out={};
+  const copy=(from,to=from)=>{
+    if(Object.prototype.hasOwnProperty.call(editedRaw,from)){
+      out[to]=editedRaw[from];
+    }
+  };
+  copy("Adresa / umístění");
+  copy("Adresa / umístění","Původní adresa / umístění");
+  copy("Adresa_GPS");
+  copy("GPS_lat");
+  copy("GPS_lon");
+  copy("Kraj");
+  return out;
+}
+
+function rowIdentityKeys(row){
+  return [
+    selectedSiteDocId(row),
+    row && row.firebaseDocId,
+    row && row.id,
+    detailKey(row),
+    row && row.raw && row.raw["Firebase_doc_id"]
+  ].map(safe).filter(Boolean);
+}
+
+function rowMatchesIdentity(row,identityKeys){
+  if(!row || !identityKeys || !identityKeys.size) return false;
+  return rowIdentityKeys(row).some(key=>identityKeys.has(key));
+}
+
+async function propagateSharedPlaceEditsToSiblingSources(siblingRows=[],sharedRaw={}){
+  const validSiblings=(siblingRows || []).filter(Boolean);
+  const keys=Object.keys(sharedRaw || {});
+  if(!validSiblings.length || !keys.length) return 0;
+
+  const identityKeys=new Set();
+  const {doc,setDoc,serverTimestamp}=fb.fsMod;
+  let saved=0;
+
+  for(const sibling of validSiblings){
+    const docId=selectedSiteDocId(sibling);
+    const selectedKey=detailKey(sibling) || sibling.id || docId;
+    rowIdentityKeys(sibling).forEach(key=>identityKeys.add(key));
+    const mergedRaw={...(sibling.raw || {}), ...sharedRaw};
+    if(docId) mergedRaw["Firebase_doc_id"]=docId;
+    if(docId && !mergedRaw["Klíč_adresy"]) mergedRaw["Klíč_adresy"]="firebase_"+docId;
+    const lat=num(mergedRaw["GPS_lat"]);
+    const lon=num(mergedRaw["GPS_lon"]);
+    const edit={
+      rawEdits:sharedRaw,
+      gpsAddress:sharedRaw["Adresa_GPS"] || "",
+      gpsLat:sharedRaw["GPS_lat"] || "",
+      gpsLon:sharedRaw["GPS_lon"] || "",
+      updatedBy:currentUser?.email || "",
+      updatedAt:new Date().toISOString()
+    };
+
+    try{
+      if(docId && isFirebaseUnifiedRow(sibling)){
+        await setDoc(doc(db,"sitesUnified",docId),{
+          raw:mergedRaw,
+          dedupKeys:typeof window.siteDedupKeysFromRaw==="function" ? window.siteDedupKeysFromRaw(mergedRaw) : [],
+          name:mergedRaw["Název"] || mergedRaw["Adresa / umístění"] || mergedRaw["Adresa_GPS"] || "",
+          lat:Number.isFinite(lat) ? lat : null,
+          lon:Number.isFinite(lon) ? lon : null,
+          updatedBy:currentUser?.email || "",
+          updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        },{merge:true});
+      }else{
+        await saveLegacySiteEditIfNeeded(selectedKey,edit,sibling);
+      }
+      editCache[selectedKey]={...(editCache[selectedKey] || editCache[sibling.id] || {}), ...edit};
+      if(docId) editCache[docId]={...(editCache[docId] || {}), ...edit};
+      saved++;
+    }catch(e){
+      console.warn("Společná adresa zdroje se nepodařila uložit",sibling,e);
+    }
+  }
+
+  if(identityKeys.size){
+    rows=rows.map(row=>{
+      if(!rowMatchesIdentity(row,identityKeys)) return row;
+      const raw={...(row.raw || {}), ...sharedRaw};
+      const docId=selectedSiteDocId(row);
+      if(docId) raw["Firebase_doc_id"]=docId;
+      return applyEditToRow({...row, raw, firebaseDocId:docId || row.firebaseDocId});
+    });
+    window.rows=rows;
+  }
+  return saved;
+}
+
 async function saveSelectedSiteGpsPosition(lat,lon,found={},address=""){
   if(!selectedSite) throw new Error("Není vybrané místo.");
   const selectedKey=detailKey(selectedSite) || selectedSite.id;
@@ -5438,6 +5539,9 @@ async function saveSelectedSiteGpsPosition(lat,lon,found={},address=""){
     updatedAt:new Date().toISOString()
   };
   const matches=(row)=>selectedSiteMatchForSave(row,selectedKey,firebaseDocId);
+  const sharedSiblingRows=siteSiblingRows(selectedSite)
+    .filter(row=>!selectedSiteMatchForSave(row,selectedKey,firebaseDocId));
+  let siblingAddressUpdates=0;
 
   if(firebaseReady && currentUser && firebaseDocId && isFirebaseUnifiedRow(selectedSite)){
     const {doc,setDoc,serverTimestamp}=fb.fsMod;
@@ -5454,6 +5558,9 @@ async function saveSelectedSiteGpsPosition(lat,lon,found={},address=""){
     },{merge:true});
   }else if(firebaseReady && currentUser){
     await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
+  }
+  if(firebaseReady && currentUser){
+    siblingAddressUpdates=await propagateSharedPlaceEditsToSiblingSources(sharedSiblingRows,editedRaw);
   }
 
   editCache[selectedKey]={...(editCache[selectedKey]||editCache[selectedSite.id]||{}), ...edit};
@@ -5476,7 +5583,9 @@ async function saveSelectedSiteGpsPosition(lat,lon,found={},address=""){
     if(window.map && window.map.setView) window.map.setView([lat,lon],15);
   }catch(e){}
   if(typeof showSaveConfirmation==="function"){
-    showSaveConfirmation(firebaseReady && currentUser ? "GPS poloha uložena." : "GPS poloha dopočítána.");
+    showSaveConfirmation(firebaseReady && currentUser
+      ? (siblingAddressUpdates ? "GPS poloha uložena i u dalších zdrojů." : "GPS poloha uložena.")
+      : "GPS poloha dopočítána.");
   }
   return !!(firebaseReady && currentUser);
 }
@@ -5936,6 +6045,10 @@ async function saveAllDataEdits(){
   try{
     const selectedKey=detailKey(selectedSite) || selectedSite.id;
     const {doc,setDoc,serverTimestamp}=fb.fsMod;
+    const sharedPlaceEdits=sharedPlaceEditsFromRaw(editedRaw);
+    const sharedSiblingRows=Object.keys(sharedPlaceEdits).length
+      ? siteSiblingRows(selectedSite).filter(row=>!selectedSiteMatchForSave(row,selectedKey,selectedSiteDocId(selectedSite)))
+      : [];
     const edit = {
       rawEdits: editedRaw,
       name: editedRaw["Název"] || editedRaw["Adresa / umístění"] || "",
@@ -5975,6 +6088,7 @@ async function saveAllDataEdits(){
       };
       await setDoc(doc(db,"sitesUnified",firebaseDocId), firebaseUpdate, {merge:true});
     }
+    const siblingAddressUpdates=await propagateSharedPlaceEditsToSiblingSources(sharedSiblingRows,sharedPlaceEdits);
 
     await saveLegacySiteEditIfNeeded(selectedKey,edit,selectedSite);
 
@@ -5993,8 +6107,9 @@ async function saveAllDataEdits(){
       }catch(e){}
     }
 
-    if(st) st.textContent=cancelOrderedByDateChange ? "Data uložena. Objednaná kontrola byla zrušena kvůli změně termínu." : "Data uložena.";
-    showSaveConfirmation(cancelOrderedByDateChange ? "Data uložena, objednání kontroly zrušeno." : "Data uložena.");
+    const siblingText=siblingAddressUpdates ? ` Adresa propsána i do dalších zdrojů: ${siblingAddressUpdates}.` : "";
+    if(st) st.textContent=cancelOrderedByDateChange ? `Data uložena. Objednaná kontrola byla zrušena kvůli změně termínu.${siblingText}` : `Data uložena.${siblingText}`;
+    showSaveConfirmation(cancelOrderedByDateChange ? "Data uložena, objednání kontroly zrušeno." : (siblingAddressUpdates ? "Data a společná adresa uloženy." : "Data uložena."));
     const reopenKey=(selectedSite && (detailKey(selectedSite) || selectedSite.firebaseDocId || selectedKey)) || selectedKey;
     render();
     if(selectedSite && Number.isFinite(selectedSite.lat) && Number.isFinite(selectedSite.lon)){
@@ -9570,6 +9685,7 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
 
   try{
     let savedRef=null;
+    let savedOffline=false;
     if(firebaseUnifiedPrimary){
       if(typeof window.saveUnifiedSiteRaw!=="function") throw new Error("Firebase ukládání nových bodů ještě není připravené.");
       const raw={...(data.allRawData || {})};
@@ -9600,10 +9716,11 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
       if(result.duplicate){
         st.textContent="Bod už existuje. Otevírám existující záznam.";
         addSourceBaseSite=null;
-        if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
+        if(navigator.onLine !== false && typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
         return;
       }
       savedRef={id:result.id};
+      savedOffline=!!result.offline;
     }else{
       const {collection,addDoc}=fb.fsMod;
       savedRef=await addDoc(collection(db,"sites"),data);
@@ -9626,7 +9743,12 @@ document.getElementById("saveNewSiteBtn").onclick=async()=>{
     document.getElementById("newExtra").value="";
     clearNewSiteAllFields();
     document.getElementById("newAllData").value="";
-    if(firebaseUnifiedPrimary && typeof window.refreshFirebaseSitesAfterSave==="function"){
+    if(savedOffline){
+      if(typeof render==="function") render();
+      if(savedRef && savedRef.id && typeof window.openDetailById==="function"){
+        setTimeout(()=>window.openDetailById(savedRef.id),250);
+      }
+    }else if(firebaseUnifiedPrimary && typeof window.refreshFirebaseSitesAfterSave==="function"){
       await window.refreshFirebaseSitesAfterSave(savedRef && savedRef.id);
     }else if(firebaseUnifiedPrimary && typeof window.loadFirebaseSitesUnified==="function"){
       await window.loadFirebaseSitesUnified();
@@ -10438,14 +10560,18 @@ async function syncOfflineChanges(options={}){
   if(!signedUser) return 0;
   offlineSyncRunning=true;
   offlineSyncLastStarted=now;
+  let siteCount=0;
   let protocolCount=0;
   let photoCount=0;
   try{
     const p=document.getElementById("progress");
     if(p && !options.silent) p.textContent="Synchronizuji offline změny...";
+    if(typeof window.syncOfflineSites==="function"){
+      siteCount=await window.syncOfflineSites({silent:true});
+    }
     protocolCount=await syncAllOfflineProtocols({silent:true});
     photoCount=await syncOfflinePhotos({silent:true});
-    const total=protocolCount+photoCount;
+    const total=siteCount+protocolCount+photoCount;
     if(total){
       if(selectedSite){
         try{ await loadSitePhotos(selectedSite); }catch(e){}
@@ -11679,6 +11805,7 @@ setTimeout(()=>{
     }catch(e){}
 
     let savedUnified=false;
+    let savedOffline=false;
     let savedId=id;
 
     try{
@@ -11691,10 +11818,11 @@ setTimeout(()=>{
         const result=await window.saveUnifiedSiteRaw(raw,{docId:id});
         if(result.duplicate){
           if(st) st.textContent="Bod už existuje. Otevírám existující záznam.";
-          if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
+          if(navigator.onLine !== false && typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
           return;
         }
-        savedUnified=true;
+        savedOffline=!!result.offline;
+        savedUnified=!savedOffline;
         savedId=result.id;
         if(result.row) row=result.row;
       }else if(window.firebaseReady && firestoreDb && fbMod.fsMod){
@@ -11712,7 +11840,7 @@ setTimeout(()=>{
     }
 
     // vložit bod do hlavního seznamu tak, aby ho render() hned zobrazil na mapě
-    if(!savedUnified && Array.isArray(window.rows)){
+    if(!savedUnified && !savedOffline && Array.isArray(window.rows)){
       row.i = window.rows.length;
       row.lat = Number(row.lat);
       row.lon = Number(row.lon);
@@ -11733,7 +11861,7 @@ setTimeout(()=>{
         visibleAfterReload=await window.refreshFirebaseSitesAfterSave(savedId);
       }else if(savedUnified && typeof window.loadFirebaseSitesUnified==="function"){
         await window.loadFirebaseSitesUnified();
-      }else if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
+      }else if(!savedOffline && window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
         await window.loadFirebaseSitesUnified();
       }else if(typeof render==="function") render();
 
@@ -11741,7 +11869,7 @@ setTimeout(()=>{
       if(visibleAfterReload && hasGps){
         const latlng=[row.lat,row.lon];
 
-        if(!savedUnified){
+        if(!savedUnified && !savedOffline){
           try{
             if(window.L && window.map){
               const marker=L.circleMarker(latlng,{
@@ -12048,6 +12176,7 @@ setTimeout(()=>{
     }
 
     let savedUnified=false;
+    let savedOffline=false;
     let savedId=row.id;
 
     try{
@@ -12060,10 +12189,11 @@ setTimeout(()=>{
         const result=await window.saveUnifiedSiteRaw(row.raw,{docId:row.id});
         if(result.duplicate){
           if(st) st.textContent="Bod už existuje. Otevírám existující záznam.";
-          if(typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
+          if(navigator.onLine !== false && typeof window.loadFirebaseSitesUnified==="function") await window.loadFirebaseSitesUnified(result.id);
           return;
         }
-        savedUnified=true;
+        savedOffline=!!result.offline;
+        savedUnified=!savedOffline;
         savedId=result.id;
         if(result.row) row=result.row;
       }else if(window.firebaseReady && firestoreDb && fbMod.fsMod){
@@ -12080,7 +12210,7 @@ setTimeout(()=>{
       return;
     }
 
-    if(!savedUnified && Array.isArray(window.rows)){
+    if(!savedUnified && !savedOffline && Array.isArray(window.rows)){
       row.i=window.rows.length;
       window.rows.push(row);
     }
@@ -12094,7 +12224,7 @@ setTimeout(()=>{
         visibleAfterReload=await window.refreshFirebaseSitesAfterSave(savedId);
       }else if(savedUnified && typeof window.loadFirebaseSitesUnified==="function"){
         await window.loadFirebaseSitesUnified();
-      }else if(window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
+      }else if(!savedOffline && window.__firebaseUnifiedPrimary !== false && typeof window.loadFirebaseSitesUnified==="function"){
         await window.loadFirebaseSitesUnified();
       }else if(typeof render==="function") render();
 
@@ -12908,6 +13038,86 @@ setTimeout(()=>{
     }
   }
   window.saveFirebaseMapRowsCache=saveMapRowsCache;
+  const OFFLINE_SITE_QUEUE_KEY="astipMap:offlineSites:v1";
+  function readOfflineSiteQueue(){
+    try{
+      const items=JSON.parse(localStorage.getItem(OFFLINE_SITE_QUEUE_KEY) || "[]");
+      return Array.isArray(items) ? items.filter(item=>item && item.docId && item.raw) : [];
+    }catch(e){
+      return [];
+    }
+  }
+  function writeOfflineSiteQueue(items=[]){
+    try{
+      localStorage.setItem(OFFLINE_SITE_QUEUE_KEY,JSON.stringify(items));
+    }catch(e){
+      console.warn("Offline frontu nových bodů se nepodařilo uložit",e);
+    }
+  }
+  function removeOfflineSiteFromQueue(docId){
+    const id=String(docId || "");
+    if(!id) return;
+    writeOfflineSiteQueue(readOfflineSiteQueue().filter(item=>String(item.docId || "")!==id));
+  }
+  function saveUnifiedSiteRawOffline(rawInput={},opts={},reason=""){
+    const docId=String(opts.docId || rawInput.Firebase_doc_id || rawInput["Firebase_doc_id"] || `offline_${Date.now()}_${Math.random().toString(36).slice(2,7)}`);
+    let raw=completeFirebaseRaw(rawInput || {}, docId);
+    raw["Firebase_doc_id"]=docId;
+    if(!raw["Klíč_adresy"]) raw["Klíč_adresy"]="firebase_"+docId;
+    const now=new Date().toISOString();
+    const queue=readOfflineSiteQueue().filter(item=>String(item.docId || "")!==docId);
+    queue.push({
+      docId,
+      raw,
+      createdAt:now,
+      updatedAt:now,
+      reason:String(reason || "Offline režim"),
+      createdBy:(window.currentUser && window.currentUser.email) || window.lastKnownUserEmail?.() || ""
+    });
+    writeOfflineSiteQueue(queue);
+    const row=rowFromDoc(docId,{raw,createdAt:now,updatedAt:now,manualEntry:true,localOnly:true,offline:true});
+    const nextRows=(Array.isArray(window.rows) ? window.rows : [])
+      .filter(existing=>String(existing.firebaseDocId || existing.raw?.["Firebase_doc_id"] || existing.id || "")!==docId)
+      .concat([row]);
+    if(typeof window.setFirebaseSiteRows==="function") window.setFirebaseSiteRows(nextRows,docId);
+    else{
+      rows=nextRows;
+      window.rows=rows;
+      if(typeof render==="function") render();
+    }
+    saveMapRowsCache(nextRows);
+    if(window.showSaveConfirmation) window.showSaveConfirmation("Uloženo offline. Po připojení se odešle do Firebase.");
+    const p=document.getElementById("progress");
+    if(p) p.textContent="Nový bod/zdroj je uložený offline a čeká na synchronizaci.";
+    return {duplicate:false,id:docId,row,offline:true,localOnly:true};
+  }
+  async function syncOfflineSites(options={}){
+    if(navigator.onLine===false) return 0;
+    const queue=readOfflineSiteQueue();
+    if(!queue.length) return 0;
+    const database=db();
+    if(!database) return 0;
+    const signedUser=await waitCompatUser(2500);
+    if(!signedUser) return 0;
+    let synced=0;
+    for(const item of queue){
+      try{
+        await saveUnifiedSiteRaw(item.raw,{docId:item.docId,skipOffline:true});
+        removeOfflineSiteFromQueue(item.docId);
+        synced++;
+      }catch(e){
+        console.warn("Offline bod/zdroj se nepodařilo synchronizovat",item.docId,e);
+      }
+    }
+    if(synced && !options.silent && window.showSaveConfirmation){
+      window.showSaveConfirmation(synced===1 ? "Offline bod/zdroj odeslán online." : `Offline body/zdroje odeslány online: ${synced}.`);
+    }
+    if(synced && typeof loadFirebaseSites==="function"){
+      try{ await loadFirebaseSites(null,{force:true,skipLocalCache:true}); }catch(e){}
+    }
+    return synced;
+  }
+  window.syncOfflineSites=syncOfflineSites;
   function readMapRowsCache(){
     try{
       const parsed=JSON.parse(localStorage.getItem(FIREBASE_SITE_CACHE_KEY) || "null");
@@ -12942,9 +13152,19 @@ setTimeout(()=>{
     return applyFirebaseRows(cachedRows, openDocId, `<b>Načteno ${cachedRows.length} bodů z lokální cache.</b> Aktualizuji Firebase na pozadí...`, false);
   }
   async function saveUnifiedSiteRaw(rawInput, opts={}){
-    const database=db(), u=await waitCompatUser();
-    if(!database) throw new Error("Firebase není dostupný nebo není inicializovaný.");
-    if(!u) throw new Error("Nejdřív se přihlaš přes Google.");
+    if(navigator.onLine===false && !(opts && opts.skipOffline)){
+      return saveUnifiedSiteRawOffline(rawInput,opts,"Bez připojení k internetu.");
+    }
+    const database=db();
+    if(!database){
+      if(!(opts && opts.skipOffline)) return saveUnifiedSiteRawOffline(rawInput,opts,"Firebase není dostupný.");
+      throw new Error("Firebase není dostupný nebo není inicializovaný.");
+    }
+    const u=await waitCompatUser();
+    if(!u){
+      if(!(opts && opts.skipOffline)) return saveUnifiedSiteRawOffline(rawInput,opts,"Přihlášení se nepodařilo obnovit.");
+      throw new Error("Nejdřív se přihlaš přes Google.");
+    }
 
     const requestedDocId=opts && opts.docId ? String(opts.docId) : "";
     let raw=completeFirebaseRaw(rawInput || {}, requestedDocId || null);
@@ -13582,11 +13802,12 @@ setTimeout(()=>{
       const docId = "site_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
       const result = await window.saveUnifiedSiteRaw(raw, {docId});
       const savedId = result && result.id ? result.id : docId;
+      const savedOffline = !!(result && result.offline);
 
       if(result && result.duplicate){
         if(st) st.textContent = "Takový zdroj už existuje. Otevírám existující záznam.";
         restoreNormalDrawerTemplateForSource();
-        if(typeof window.loadFirebaseSitesUnified === "function") await window.loadFirebaseSitesUnified(savedId);
+        if(navigator.onLine !== false && typeof window.loadFirebaseSitesUnified === "function") await window.loadFirebaseSitesUnified(savedId);
         if(typeof window.openDetailById === "function") setTimeout(()=>window.openDetailById(savedId), 250);
         return;
       }
@@ -13595,10 +13816,12 @@ setTimeout(()=>{
       if(st) st.textContent = "Nový zdroj uložen.";
 
       let visible = true;
-      if(typeof window.refreshFirebaseSitesAfterSave === "function"){
+      if(!savedOffline && typeof window.refreshFirebaseSitesAfterSave === "function"){
         visible = await window.refreshFirebaseSitesAfterSave(savedId);
-      }else if(typeof window.loadFirebaseSitesUnified === "function"){
+      }else if(!savedOffline && typeof window.loadFirebaseSitesUnified === "function"){
         await window.loadFirebaseSitesUnified(savedId);
+      }else if(typeof render === "function"){
+        render();
       }
       restoreNormalDrawerTemplateForSource();
       if(visible && typeof window.openDetailById === "function"){
@@ -13636,10 +13859,7 @@ function isSzzAppInstalledView(){
 }
 
 function canShowSzzInstallButton(){
-  return !!deferredSzzInstallPrompt
-    && !isSzzAppInstalledView()
-    && !!window.isAppAdmin
-    && window.isAppAdmin();
+  return !isSzzAppInstalledView();
 }
 
 function updateSzzInstallButtons(){
@@ -13650,10 +13870,6 @@ function updateSzzInstallButtons(){
 }
 
 async function installSzzAppFromPage(){
-  if(!window.isAppAdmin || !window.isAppAdmin()){
-    if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci aplikace může spustit jen správce.");
-    return;
-  }
   if(!deferredSzzInstallPrompt){
     if(window.showSaveConfirmation) window.showSaveConfirmation("Instalaci teď nabízí prohlížeč v menu.");
     return;
@@ -13691,6 +13907,16 @@ window.addEventListener("appinstalled",()=>{
 });
 
 document.addEventListener("DOMContentLoaded",()=>{
+  const appToolsToggle=document.getElementById("appToolsToggle");
+  const appToolsPanel=document.getElementById("appToolsPanel");
+  if(appToolsToggle && appToolsPanel && !appToolsToggle.__appToolsBound){
+    appToolsToggle.__appToolsBound=true;
+    appToolsToggle.addEventListener("click",()=>{
+      const open=!appToolsPanel.classList.contains("open");
+      appToolsPanel.classList.toggle("open",open);
+      appToolsToggle.setAttribute("aria-expanded",open ? "true" : "false");
+    });
+  }
   document.querySelectorAll(".install-app-btn").forEach(button=>{
     button.addEventListener("click",installSzzAppFromPage);
   });
@@ -13700,7 +13926,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-07-28-protocol-panel-v16";
+  const serviceWorkerBuildVersion="2026-07-30-app-offline-v17";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
