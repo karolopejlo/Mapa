@@ -2763,6 +2763,11 @@ if(firebaseReady){
           keepAppOpenDuringAuthRestore("Přihlášení se obnovuje na pozadí. Mapa zůstává otevřená z uložených dat.");
           return;
         }
+        if(!explicitSignOutPending()){
+          clearSignedUser();
+          keepAppOpenDuringAuthRestore("Přihlášení se nepodařilo obnovit. Mapa zůstává otevřená, pro úpravy klikni na Přihlásit technika.");
+          return;
+        }
         forgetKnownSignedIn();
         setStartupAuthChecking(false);
         clearSignedUser();
@@ -2803,17 +2808,22 @@ if(firebaseReady){
       keepAppOpenDuringAuthRestore("Přihlášení se obnovuje na pozadí. Mapa zůstává otevřená z uložených dat.");
       return;
     }
-    forgetKnownSignedIn();
-    setStartupAuthChecking(false);
-    clearSignedUser();
-    const topLogoutBtn=document.getElementById("topLogoutBtn");
-    if(topLogoutBtn) topLogoutBtn.style.display="none";
-    showLogin();
-    if(lastAuthMessage && lastAuthMessage!=="Kontroluji přihlášení..."){
-      setStartupStatus(lastAuthMessage);
-    }else{
-      setStartupStatus("");
+    if(explicitSignOutPending()){
+      forgetKnownSignedIn();
+      setStartupAuthChecking(false);
+      clearSignedUser();
+      const topLogoutBtn=document.getElementById("topLogoutBtn");
+      if(topLogoutBtn) topLogoutBtn.style.display="none";
+      showLogin();
+      if(lastAuthMessage && lastAuthMessage!=="Kontroluji přihlášení..."){
+        setStartupStatus(lastAuthMessage);
+      }else{
+        setStartupStatus("");
+      }
+      return;
     }
+    clearSignedUser();
+    keepAppOpenDuringAuthRestore("Nejsi přihlášený k Firebase. Mapa se otevřela z uložených dat, pro úpravy klikni na Přihlásit technika.");
   }
 
   window.__startFirebaseRedirectLogin=startFirebaseRedirectLogin;
@@ -2858,8 +2868,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-03-android-install-auth-v20";
-const APP_SHELL_CACHE_NAME="astip-szz-v20-static";
+const APP_BUILD_VERSION="2026-08-03-map-first-auth-v21";
+const APP_SHELL_CACHE_NAME="astip-szz-v21-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -14196,7 +14206,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-03-android-install-auth-v20";
+  const serviceWorkerBuildVersion="2026-08-03-map-first-auth-v21";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
