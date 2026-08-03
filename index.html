@@ -1690,7 +1690,7 @@ button,input,select,textarea{
 <div class="sidebar-brand" aria-label="Logo SZZ"><img class="sidebar-logo-img" data-szz-logo-copy alt="Logo SZZ"></div>
 <button class="secondary" id="topLogoutBtn" style="display:none;margin:8px 0">Odhlásit technika</button>
 
-<div id="firebaseBox" class="notice err">Firebase config není doplněný. Přihlášení a úpravy poběží po vložení configu.</div>
+<div id="firebaseBox" class="notice err" style="display:none">Firebase se nepodařilo načíst.</div>
 <div class="row" id="mainLoginRow" style="display:none"><button class="primary" id="loginBtn">Přihlásit technika</button><button class="secondary" id="logoutBtn">Odhlásit</button></div>
 <p id="userBox" class="small" style="display:none">Nepřihlášeno</p>
 
@@ -1701,7 +1701,7 @@ button,input,select,textarea{
 <div class="row"><div><label>Stav</label><select id="statusFilter"><option value="">Vše</option></select></div><div><label>Kraj</label><select id="regionFilter"><option value="">Vše</option></select></div></div>
 <button class="secondary" id="fitBtn" style="margin-top:8px">Přiblížit na body</button>
 <button class="primary" id="addSiteBtn" style="margin-top:8px">Přidat nové místo</button>
-<button class="secondary protocol-history-private" id="mainProtocolHistoryBtn" style="display:none;margin-top:8px">Historie protokolů</button>
+<button class="secondary main-protocol-history-private" id="mainProtocolHistoryBtn" style="display:none;margin-top:8px">Historie protokolů</button>
 
 <div class="stats"><div class="stat"><b id="shownCount">0</b><span>zobrazeno</span></div><div class="stat" id="gpsStatBox" style="display:none"><b id="gpsCount">0</b><span>s GPS</span></div></div>
 <div class="legend">
@@ -2220,6 +2220,7 @@ window.__firebaseConfig = firebaseConfig;
 
 const CSV_FILE="data.csv";
 let firebaseReady = !firebaseConfig.apiKey.includes("VLOZIT");
+const firebaseConfigured = firebaseReady;
 const CLOUDINARY_PHOTOS = {
   cloudName:"dnxjc6ixi",
   uploadPreset:"astip_mapy",
@@ -2230,6 +2231,7 @@ let app, auth, db, mailFunctions=null, fb={}, currentUser=null;
 let rows=[], csvRows=[], originalCsvRows=[], extraSites=[], selectedSite=null, addSourceBaseSite=null, editCache={};
 let firebaseUnifiedPrimary = firebaseReady;
 window.firebaseReady = firebaseReady;
+window.__firebaseConfigured = firebaseConfigured;
 window.firebaseUnifiedPrimary = firebaseUnifiedPrimary;
 window.__firebaseUnifiedPrimary = firebaseUnifiedPrimary;
 window.cloudinaryPhotoConfig = CLOUDINARY_PHOTOS;
@@ -2337,7 +2339,16 @@ const ORIGINAL_PINK_PLACES = ["bedřichov 290, hotel", "benešov, máchova 400, 
 window.addEventListener("load",()=>{
   if(!firebaseReady){
     const st=document.getElementById("startupStatus");
-    if(st) st.textContent="Firebase není nastavený – otevírám mapu bez ukládání.";
+    const message=firebaseConfigured
+      ? "Firebase se zatím nepodařilo načíst. Mapa se otevře z uložených dat, přihlášení můžeš zkusit tlačítkem."
+      : "Firebase není nastavený – otevírám mapu bez ukládání.";
+    if(st) st.textContent=message;
+    const box=document.getElementById("firebaseBox");
+    if(box){
+      box.style.display="block";
+      box.className=firebaseConfigured ? "notice" : "notice err";
+      box.textContent=message;
+    }
     setTimeout(()=>showApp(),1200);
   }
 });
@@ -2358,14 +2369,44 @@ if(firebaseReady){
       console.warn("Firebase Functions knihovna se nepodařila načíst",e);
     }
   }catch(e){
-    console.warn("Firebase knihovny nejsou dostupné, spouštím offline režim",e);
-    firebaseReady=false;
-    firebaseUnifiedPrimary=false;
-    window.firebaseReady=false;
-    window.firebaseUnifiedPrimary=false;
-    window.__firebaseUnifiedPrimary=false;
+    console.warn("Firebase modulární knihovny nejsou dostupné, zkouším záložní režim",e);
+    const compatAvailable=!!(window.firebase && firebase.initializeApp && firebase.auth);
+    if(compatAvailable){
+      try{
+        if((!firebase.apps || !firebase.apps.length) && window.__firebaseConfig){
+          firebase.initializeApp(window.__firebaseConfig);
+        }
+      }catch(initError){
+        console.warn("Firebase compat inicializace po chybě importu selhala",initError);
+      }
+      firebaseReady=true;
+      firebaseUnifiedPrimary=true;
+      window.firebaseReady=true;
+      window.firebaseUnifiedPrimary=true;
+      window.__firebaseUnifiedPrimary=true;
+      const box=document.getElementById("firebaseBox");
+      if(box){
+        box.style.display="block";
+        box.className="notice";
+        box.textContent="Firebase běží v záložním režimu. Pro úpravy se přihlaš tlačítkem Přihlásit technika.";
+      }
+    }else{
+      firebaseReady=false;
+      firebaseUnifiedPrimary=false;
+      window.firebaseReady=false;
+      window.firebaseUnifiedPrimary=false;
+      window.__firebaseUnifiedPrimary=false;
+      const box=document.getElementById("firebaseBox");
+      if(box){
+        box.style.display="block";
+        box.className="notice err";
+        box.textContent="Firebase knihovny se nepodařilo načíst. Přihlášení zatím není dostupné, mapa běží z uložených dat.";
+      }
+    }
     const st=document.getElementById("startupStatus");
-    if(st) st.textContent="Firebase není dostupný. Otevírám offline uloženou mapu.";
+    if(st) st.textContent=compatAvailable
+      ? "Firebase modul se načetl v záložním režimu. Otevírám mapu."
+      : "Firebase není dostupný. Otevírám offline uloženou mapu.";
     setTimeout(()=>{try{showApp();}catch(err){}},500);
   }
   if(firebaseReady && appMod && authMod && fsMod){
@@ -2925,8 +2966,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-03-popup-login-v23";
-const APP_SHELL_CACHE_NAME="astip-szz-v23-static";
+const APP_BUILD_VERSION="2026-08-03-login-button-history-v24";
+const APP_SHELL_CACHE_NAME="astip-szz-v24-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -3343,10 +3384,19 @@ function canViewProtocolHistory(){
   if(!email) return false;
   return isAllowedLoginEmail(email) || APP_PROTOCOL_HISTORY_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
 }
+function canViewMainProtocolHistory(){
+  const email=currentUserEmail();
+  if(!email) return false;
+  return isAppAdmin() || APP_PROTOCOL_HISTORY_EMAILS.map(e=>String(e).toLowerCase()).includes(email);
+}
 function updateProtocolHistoryVisibility(){
-  const show=canViewProtocolHistory();
+  const showDetail=canViewProtocolHistory();
+  const showMain=canViewMainProtocolHistory();
   document.querySelectorAll(".protocol-history-private").forEach(el=>{
-    el.style.display=show ? "" : "none";
+    el.style.display=showDetail ? "" : "none";
+  });
+  document.querySelectorAll(".main-protocol-history-private").forEach(el=>{
+    el.style.display=showMain ? "" : "none";
   });
 }
 function updateAdminAppControls(){
@@ -3355,6 +3405,7 @@ function updateAdminAppControls(){
 }
 window.isAppAdmin=isAppAdmin;
 window.canViewProtocolHistory=canViewProtocolHistory;
+window.canViewMainProtocolHistory=canViewMainProtocolHistory;
 window.updateAdminAppControls=updateAdminAppControls;
 document.addEventListener("DOMContentLoaded",updateAdminAppControls);
 setTimeout(updateAdminAppControls,0);
@@ -9703,7 +9754,8 @@ function showApp(){
   if(topLogout){
     const hasUser=!!(currentUser || window.currentUser || window.__authReadyUser);
     if(window.setTopAuthButtonMode) window.setTopAuthButtonMode(hasUser ? "logout" : "login");
-    topLogout.style.display=(hasUser || firebaseReady) ? "block" : "none";
+    const canTryLogin=hasUser || firebaseReady || window.__firebaseConfigured || !!(window.firebase && firebase.auth);
+    topLogout.style.display=canTryLogin ? "block" : "none";
   }
   setTimeout(()=>{try{ if(window.mobileFixMap) window.mobileFixMap(); if(window.map) window.map.invalidateSize(true); }catch(e){}},250);
 }
@@ -9760,7 +9812,7 @@ function readAllLocalProtocolHistoryItems(){
 }
 
 async function loadMainProtocolHistoryItems(){
-  if(!canViewProtocolHistory()) return [];
+  if(!canViewMainProtocolHistory()) return [];
   const items=[];
   const addItem=item=>{
     if(!item) return;
@@ -9793,8 +9845,8 @@ async function loadMainProtocolHistoryItems(){
 }
 
 async function openMainProtocolHistoryPanel(){
-  if(!canViewProtocolHistory()){
-    showSaveConfirmation("Historii protokolů uvidí přihlášený technik.");
+  if(!canViewMainProtocolHistory()){
+    showSaveConfirmation("Hlavní historii protokolů může zobrazit jen správce nebo Iva.");
     return;
   }
   const drawer=document.getElementById("drawer");
@@ -14263,7 +14315,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-03-popup-login-v23";
+  const serviceWorkerBuildVersion="2026-08-03-login-button-history-v24";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
