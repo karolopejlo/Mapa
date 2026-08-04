@@ -2048,8 +2048,8 @@ Cena FZ: ..."></textarea>
   </div>
   <div class="official-protocol-actions">
     <button class="secondary" type="button" id="officialProtocolDataBtn">Doplnit data provozovatele</button>
-    <button class="primary" type="button" id="officialProtocolOkBtn">Vygenerovat protokol funkční</button>
-    <button class="secondary" type="button" id="officialProtocolStopBtn">Vygenerovat protokol Stop Stav</button>
+    <button class="primary" type="button" id="officialProtocolOkBtn">Vygenerovat doklad funkční</button>
+    <button class="secondary" type="button" id="officialProtocolStopBtn">Doklad Stop Stav</button>
   </div>
   <div class="official-protocol-data" id="officialProtocolDataBox" style="display:none">
     <label>a) Provozovatel PBZ</label>
@@ -2966,8 +2966,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-03-login-button-history-v24";
-const APP_SHELL_CACHE_NAME="astip-szz-v24-static";
+const APP_BUILD_VERSION="2026-08-04-offline-map-doklad-v25";
+const APP_SHELL_CACHE_NAME="astip-szz-v25-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -3004,6 +3004,13 @@ function setOfflineMapStatus(message="",state="info"){
 function setOfflineMapButtonState(busy=false,text="Stáhnout mapu do telefonu"){
   const button=document.getElementById("cacheMapTilesBtn");
   if(!button) return;
+  if(czechOfflineMapReady()){
+    button.style.display="none";
+    button.disabled=false;
+    button.textContent="Mapa je uložená";
+    return;
+  }
+  button.style.display="";
   button.disabled=!!busy;
   button.textContent=text;
 }
@@ -3180,7 +3187,8 @@ async function cacheVisibleMapTiles(){
 }
 
 async function cacheCzechOfflineMap(options={}){
-  if(czechOfflineMapReady() && !options.force){
+  if(czechOfflineMapReady()){
+    setOfflineMapButtonState(false,"Mapa je uložená");
     setOfflineMapStatus("Offline mapa ČR už je v tomto zařízení připravená.","ok");
     return;
   }
@@ -3197,8 +3205,12 @@ async function cacheCzechOfflineMap(options={}){
 function bindOfflineMapCacheButton(){
   const button=document.getElementById("cacheMapTilesBtn");
   if(button && !button.__offlineMapBound){
-    button.addEventListener("click",()=>cacheCzechOfflineMap({force:true}));
+    button.addEventListener("click",()=>cacheCzechOfflineMap());
     button.__offlineMapBound=true;
+  }
+  setOfflineMapButtonState(false);
+  if(czechOfflineMapReady()){
+    setOfflineMapStatus("Offline mapa ČR je v tomto zařízení připravená.","ok");
   }
 }
 document.addEventListener("DOMContentLoaded",bindOfflineMapCacheButton);
@@ -7826,16 +7838,33 @@ function officialMeasurementLineText(label,value,unit){
   return `${label} –${measured ? ` ${measured}${suffix}` : ""}`;
 }
 
+function officialOptionalMeasurementLineText(label,value,unit){
+  const measured=unit==="RAW" ? officialOneLine(value) : officialMeasurementValue(value,unit);
+  return measured ? officialMeasurementLineText(label,value,unit) : "";
+}
+
+function officialMeasurementPairValue(firstValue,secondValue,unit){
+  const first=officialMeasurementValue(firstValue,unit);
+  const second=officialMeasurementValue(secondValue,unit);
+  if(first && second) return `1: ${first}   2: ${second}`;
+  return first || second;
+}
+
 function officialProtocolMeasurementColumns(protocol={}){
   const unbalance=officialCombinedMeasurement(protocol.unbalance1,protocol.unbalance2);
+  const output1=officialMeasurementLineText("Výstup 1",protocol.output1Vac,"VAC");
+  const backup1=officialMeasurementLineText("Výstup při záloze 1",protocol.backup1Vac,"VAC");
   return {
     left:[
       officialMeasurementLineText("Vstup",protocol.inputVac,"VAC"),
-      officialMeasurementLineText("Výstup",protocol.output1Vac || protocol.output2Vac,"VAC"),
-      officialMeasurementLineText("Výstup při záloze",protocol.backup1Vac || protocol.backup2Vac,"VAC"),
+      output1,
+      backup1,
       officialMeasurementLineText("Pomocná baterie",protocol.auxBatVdc,"VDC")
     ],
     right:[
+      " ",
+      officialOptionalMeasurementLineText("Výstup 2",protocol.output2Vac,"VAC") || " ",
+      officialOptionalMeasurementLineText("Výstup při záloze 2",protocol.backup2Vac,"VAC") || " ",
       officialMeasurementLineText("Hlavní baterie",protocol.mainBatVdc,"VDC"),
       officialMeasurementLineText("Rozvážení baterií",unbalance,"VDC"),
       officialMeasurementLineText("Teplota v okolí",protocol.temperature,"TEMP")
@@ -7949,7 +7978,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordTable([
       [
         {text:"______________________________________",size:18,align:"center"},
-        {xml:wordClientSignatureCellXml(protocol,{compact:true}) + wordParagraph("______________________________________",{size:18,align:"center"})}
+        {xml:wordParagraph("______________________________________",{size:18,align:"center"})}
       ],
       [
         {text:`Servis záložních zdrojů s.r.o. – ${tech}`,size:18,align:"center"},
@@ -7965,9 +7994,9 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
 function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok"){
   const now=new Date().toISOString();
   const title=`Doklad provozuschopnosti ${protocol.siteName || protocol.place || selectedSite?.adresa || ""}`.trim();
-  const signatureBytes=protocolSignatureImageBytes(protocol);
-  const imageContentType=signatureBytes ? '<Default Extension="png" ContentType="image/png"/>' : "";
-  const imageRel=signatureBytes ? '<Relationship Id="rIdSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/client-signature.png"/>' : "";
+  const signatureBytes=null;
+  const imageContentType="";
+  const imageRel="";
   const entries=[
     {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageContentType}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
     {name:"_rels/.rels",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>'},
@@ -7978,7 +8007,6 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
     {name:"docProps/core.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${wordXmlEscape(title)}</dc:title><dc:creator>${wordXmlEscape(protocol.createdBy || protocol.technicianEmail || currentUser?.email || "")}</dc:creator><cp:lastModifiedBy>${wordXmlEscape(currentUser?.email || "")}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`},
     {name:"docProps/app.xml",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Servis záložních zdrojů - mapa FZ</Application></Properties>'}
   ];
-  if(signatureBytes) entries.push({name:"word/media/client-signature.png",data:signatureBytes});
   return entries;
 }
 
@@ -8260,12 +8288,7 @@ function officialRtfTipekSignatureImage(officialData={}){
 }
 
 function officialRtfClientSignatureContent(protocol={}){
-  const name=officialOneLine(protocol.clientSign || protocol.customer || "",80);
-  const signature=officialRtfSignatureImage(protocol);
-  const parts=[];
-  if(name) parts.push(`{\\fs18 ${officialRtfEscape(name)}}`);
-  if(signature) parts.push(signature);
-  return parts.join(" ");
+  return "";
 }
 
 function officialRtfSignatureRow(protocol={},officialData={}){
@@ -8288,8 +8311,17 @@ function addOfficialRtfSignatures(output,protocol={},officialData={}){
 }
 
 function compactOfficialRtfEmptyNoteBeforeSignatures(output,officialData={}){
-  if(officialOneLine(officialData.note)) return output;
   return output.replace(/\\par\s*\\par\s*(\}\{\\rtlch\\fcs1 \\ab\\af0\\afs22 \\ltrch\\fcs0 \\fs22\\insrsid3356663\\charrsid9718217 \{\\\*\\bkmkstart _Hlk178752668\})/,"\\par $1");
+}
+
+function inlineOfficialRtfNoteHeading(output,officialData={}){
+  const note=officialOneLine(officialData.note,130);
+  if(!note) return output;
+  const marker="Pozn\\'e1mky:";
+  const idx=output.indexOf(marker);
+  if(idx<0) return output;
+  const insertion=` ${officialRtfEscape(note)}`;
+  return `${output.slice(0,idx+marker.length)}${insertion}${output.slice(idx+marker.length)}`;
 }
 
 function removeOfficialRtfOperatorIcoLabel(output){
@@ -8322,7 +8354,6 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
   const serial=protocol.serial || protocolSerialFromSite(site);
   const seal=protocol.seal || "";
   const tech="Ing. Michal Tipek";
-  const note=officialOneLine(officialData.note,protocolSignatureImageBytes(protocol) ? 80 : 120);
   return {
     "__SZZ_OPERATOR_1__":operator[0],
     "__SZZ_OPERATOR_2__":operator[1],
@@ -8343,13 +8374,13 @@ function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
     "__SZZ_REMEDY_DATE__":officialProtocolRemedyMonth(protocol),
     "__SZZ_CONDITIONS__":officialProtocolConditionsTail(protocol,mode),
     "__SZZ_INPUT__":officialMeasurementValue(protocol.inputVac,"VAC"),
-    "__SZZ_OUTPUT__":officialMeasurementValue(protocol.output1Vac || protocol.output2Vac,"VAC"),
-    "__SZZ_BACKUP__":officialMeasurementValue(protocol.backup1Vac || protocol.backup2Vac,"VAC"),
+    "__SZZ_OUTPUT__":officialMeasurementPairValue(protocol.output1Vac,protocol.output2Vac,"VAC"),
+    "__SZZ_BACKUP__":officialMeasurementPairValue(protocol.backup1Vac,protocol.backup2Vac,"VAC"),
     "__SZZ_AUX__":officialMeasurementValue(protocol.auxBatVdc,"VDC"),
     "__SZZ_MAIN__":officialMeasurementValue(protocol.mainBatVdc,"VDC"),
     "__SZZ_UNBALANCE__":officialOneLine(officialCombinedMeasurement(protocol.unbalance1,protocol.unbalance2)),
     "__SZZ_TEMP__":officialMeasurementValue(protocol.temperature,"TEMP"),
-    "__SZZ_NOTE__":note ? `Poznámka: ${note}` : "",
+    "__SZZ_NOTE__":"",
     "__SZZ_TECH__":officialOneLine(tech)
   };
 }
@@ -8363,6 +8394,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
   Object.entries(values).forEach(([placeholder,value])=>{
     output=output.replaceAll(placeholder,officialRtfEscape(value));
   });
+  output=inlineOfficialRtfNoteHeading(output,officialData);
   output=compactOfficialRtfEmptyNoteBeforeSignatures(output,officialData);
   output=compactOfficialRtfMeasurementSection(output,protocol);
   output=addOfficialRtfWatermark(output,officialData);
@@ -14315,7 +14347,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-03-login-button-history-v24";
+  const serviceWorkerBuildVersion="2026-08-04-offline-map-doklad-v25";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
