@@ -2966,8 +2966,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-07-official-measurements-v28";
-const APP_SHELL_CACHE_NAME="astip-szz-v28-static";
+const APP_BUILD_VERSION="2026-08-07-restore-official-layout-v29";
+const APP_SHELL_CACHE_NAME="astip-szz-v29-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -7863,66 +7863,35 @@ function officialProtocolMeasurementColumns(protocol={}){
   const unbalance=officialCombinedMeasurement(protocol.unbalance1,protocol.unbalance2);
   const output1=officialMeasurementLineText("Výstup 1",protocol.output1Vac,"VAC");
   const backup1=officialMeasurementLineText("Výstup při záloze 1",protocol.backup1Vac,"VAC");
-  const output2=officialOptionalMeasurementLineText("Výstup 2",protocol.output2Vac,"VAC");
-  const backup2=officialOptionalMeasurementLineText("Výstup při záloze 2",protocol.backup2Vac,"VAC");
-  const main=officialMeasurementLineText("Hlavní baterie",protocol.mainBatVdc,"VDC");
-  const aux=officialMeasurementLineText("Pomocná baterie",protocol.auxBatVdc,"VDC");
-  const temp=officialMeasurementLineText("Teplota v okolí",protocol.temperature,"TEMP");
-  const unbalanceLine=officialMeasurementLineText("Rozvážení baterií",unbalance,"VDC");
   return {
     left:[
       officialMeasurementLineText("Vstup",protocol.inputVac,"VAC"),
       output1,
       backup1,
-      aux
+      officialMeasurementLineText("Pomocná baterie",protocol.auxBatVdc,"VDC")
     ],
     right:[
-      output2,
-      backup2,
-      main,
-      unbalanceLine,
-      temp
-    ].filter(Boolean)
+      " ",
+      officialOptionalMeasurementLineText("Výstup 2",protocol.output2Vac,"VAC") || " ",
+      officialOptionalMeasurementLineText("Výstup při záloze 2",protocol.backup2Vac,"VAC") || " ",
+      officialMeasurementLineText("Hlavní baterie",protocol.mainBatVdc,"VDC"),
+      officialMeasurementLineText("Rozvážení baterií",unbalance,"VDC"),
+      officialMeasurementLineText("Teplota v okolí",protocol.temperature,"TEMP")
+    ]
   };
 }
 
-function officialProtocolMeasurementRows(protocol={}){
-  const unbalance=officialCombinedMeasurement(protocol.unbalance1,protocol.unbalance2);
-  const rows=[
-    [
-      officialMeasurementLineText("Vstup",protocol.inputVac,"VAC"),
-      officialMeasurementLineText("Hlavní baterie",protocol.mainBatVdc,"VDC")
-    ],
-    [
-      officialMeasurementLineText("Výstup 1",protocol.output1Vac,"VAC"),
-      officialOptionalMeasurementLineText("Výstup 2",protocol.output2Vac,"VAC")
-    ],
-    [
-      officialMeasurementLineText("Výstup při záloze 1",protocol.backup1Vac,"VAC"),
-      officialOptionalMeasurementLineText("Výstup při záloze 2",protocol.backup2Vac,"VAC")
-    ],
-    [
-      officialMeasurementLineText("Pomocná baterie",protocol.auxBatVdc,"VDC"),
-      officialMeasurementLineText("Rozvážení baterií",unbalance,"VDC")
-    ],
-    [
-      officialMeasurementLineText("Teplota v okolí",protocol.temperature,"TEMP"),
-      ""
-    ]
-  ];
-  return rows.filter(([left,right])=>safe(left).trim() || safe(right).trim());
-}
-
 function officialProtocolMeasurementNotesXml(protocol={},extraNote="",after=80){
-  const measurementRows=officialProtocolMeasurementRows(protocol).map(([left,right])=>[
-    {text:left || " ",size:22},
-    {text:right || " ",size:22}
-  ]);
+  const columns=officialProtocolMeasurementColumns(protocol);
+  const columnXml=lines=>lines.map(line=>wordParagraph(line,{size:22,after:0})).join("");
   const notes=[];
   if(safe(protocol.notes || protocol.issues)) notes.push(`Poznámka z protokolu – ${safe(protocol.notes || protocol.issues)}`);
   if(safe(extraNote)) notes.push(`Poznámka do dokladu – ${safe(extraNote)}`);
   const notesXml=notes.map(text=>wordParagraph(text,{size:22,after:0})).join("");
-  return wordTable(measurementRows,[4815,4815],{noBorders:true}) + (notesXml ? wordBlank(10) + notesXml : "") + wordBlank(after);
+  return wordTable([[
+    {xml:columnXml(columns.left),vAlign:"top"},
+    {xml:columnXml(columns.right),vAlign:"top"}
+  ]],[4815,4815],{noBorders:true}) + (notesXml ? wordBlank(10) + notesXml : "") + wordBlank(after);
 }
 
 function officialManufacturerText(officialData={}){
@@ -7948,21 +7917,19 @@ function officialManufacturerText(officialData={}){
   return text;
 }
 
-function officialRtfMeasurementTabRow(left="",right=""){
-  const paragraph="\\pard \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl215\\slmult1\\nowidctlpar\\tx4962\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ";
-  const leftRun=`{\\rtlch\\fcs1 \\af0\\afs24 \\ltrch\\fcs0 \\fs24 ${officialRtfEscape(left || " ")}}`;
-  const rightRun=`{\\rtlch\\fcs1 \\af0\\afs24 \\ltrch\\fcs0 \\fs24 ${officialRtfEscape(right || " ")}}`;
-  return `${paragraph}${leftRun}\\tab ${rightRun}\\par `;
+function officialRtfMeasurementTextLine(text){
+  return `{\\rtlch\\fcs1 \\af0\\afs24 \\ltrch\\fcs0 \\fs24 ${officialRtfEscape(text)}\\par }`;
 }
 
 function officialRtfCompactMeasurements(protocol={}){
-  return officialProtocolMeasurementRows(protocol)
-    .map(([left,right])=>officialRtfMeasurementTabRow(left,right))
-    .join("");
+  const columns=officialProtocolMeasurementColumns(protocol);
+  const leftRows=columns.left.map(officialRtfMeasurementTextLine).join("");
+  const rightRows=columns.right.map(officialRtfMeasurementTextLine).join("");
+  return `{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\sect }\\sectd \\ltrsect\\sbknone\\linex0\\headery708\\footery708\\cols2\\colsx2\\endnhere\\sectdefaultcl \\pard\\plain \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl260\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 \\rtlch\\fcs1 \\af24\\afs24\\alang1081 \\ltrch\\fcs0 \\fs24\\lang1029\\langfe2052\\kerning3\\cgrid\\langnp1029\\langfenp2052 ${leftRows}\\column ${rightRows}`;
 }
 
 function compactOfficialRtfMeasurementSection(output,protocol={}){
-  const compact=officialRtfCompactMeasurements(protocol);
+  const compact=`${officialRtfCompactMeasurements(protocol)}{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\sect }`;
   const patterns=[
     /\{\\rtlch\\fcs1 [^{}]*?\\sect \}\\sectd \\ltrsect\\sbknone\\linex0\\headery708\\footery708\\cols2\\colsx2[\s\S]*?Pomocn\\'e1 baterie \\endash[\s\S]*?\{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\insrsid3878691\\charrsid536511 \\sect \}/,
     /\{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 [^{}]*Vstup \\endash[\s\S]*?Pomocn\\'e1 baterie \\endash[\s\S]*?\{\\rtlch\\fcs1 \\af0 \\ltrch\\fcs0 \\insrsid3878691\\charrsid536511 \\sect \}/
@@ -14538,7 +14505,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-07-official-measurements-v28";
+  const serviceWorkerBuildVersion="2026-08-07-restore-official-layout-v29";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
