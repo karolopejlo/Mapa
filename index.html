@@ -2966,8 +2966,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-07-restore-official-layout-v29";
-const APP_SHELL_CACHE_NAME="astip-szz-v29-static";
+const APP_BUILD_VERSION="2026-08-07-official-right-column-v30";
+const APP_SHELL_CACHE_NAME="astip-szz-v30-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -7550,7 +7550,7 @@ function officialProtocolDataForSite(site=selectedSite){
   return localTime>remoteTime ? {...remote,...local} : {...local,...remote};
 }
 
-const OFFICIAL_CONTROL_SUBJECT_TEXT="Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČO: 09391126, DIČ: CZ09391126\nC 118823/KSBR Krajský soud v Brně";
+const OFFICIAL_CONTROL_SUBJECT_TEXT="Servis záložních zdrojů s.r.o.\nBožetěchova 3003/133\n612 00 Brno\nIČO: 09391126, DIČ: CZ09391126\nC 118823/KSBR Krajský soud v Brně";
 const OFFICIAL_DEFAULT_MANUFACTURER_TEXT="Servis záložních zdrojů s.r.o.\ntřída Kpt. Jaroše 1922/3, Černá Pole\n602 00, Brno\nIČO: 09391126, DIČ: CZ09391126\nC 118823/KSBR Krajský soud v Brně";
 const OFFICIAL_MANUFACTURERS={
   astip:{
@@ -7871,19 +7871,18 @@ function officialProtocolMeasurementColumns(protocol={}){
       officialMeasurementLineText("Pomocná baterie",protocol.auxBatVdc,"VDC")
     ],
     right:[
-      " ",
-      officialOptionalMeasurementLineText("Výstup 2",protocol.output2Vac,"VAC") || " ",
-      officialOptionalMeasurementLineText("Výstup při záloze 2",protocol.backup2Vac,"VAC") || " ",
+      officialOptionalMeasurementLineText("Výstup 2",protocol.output2Vac,"VAC"),
+      officialOptionalMeasurementLineText("Výstup při záloze 2",protocol.backup2Vac,"VAC"),
       officialMeasurementLineText("Hlavní baterie",protocol.mainBatVdc,"VDC"),
       officialMeasurementLineText("Rozvážení baterií",unbalance,"VDC"),
       officialMeasurementLineText("Teplota v okolí",protocol.temperature,"TEMP")
-    ]
+    ].filter(line=>safe(line).trim())
   };
 }
 
 function officialProtocolMeasurementNotesXml(protocol={},extraNote="",after=80){
   const columns=officialProtocolMeasurementColumns(protocol);
-  const columnXml=lines=>lines.map(line=>wordParagraph(line,{size:22,after:0})).join("");
+  const columnXml=lines=>lines.filter(line=>safe(line).trim()).map(line=>wordParagraph(line,{size:22,after:0})).join("");
   const notes=[];
   if(safe(protocol.notes || protocol.issues)) notes.push(`Poznámka z protokolu – ${safe(protocol.notes || protocol.issues)}`);
   if(safe(extraNote)) notes.push(`Poznámka do dokladu – ${safe(extraNote)}`);
@@ -14505,7 +14504,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-07-restore-official-layout-v29";
+  const serviceWorkerBuildVersion="2026-08-07-official-right-column-v30";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
