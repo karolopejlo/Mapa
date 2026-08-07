@@ -2966,8 +2966,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-05-official-note-v26";
-const APP_SHELL_CACHE_NAME="astip-szz-v26-static";
+const APP_BUILD_VERSION="2026-08-07-protocol-draft-v27";
+const APP_SHELL_CACHE_NAME="astip-szz-v27-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -6209,8 +6209,12 @@ async function saveAllDataEdits(){
     let value=String(el.value || "").trim();
     if(spec.type==="yesno") value=yesNoFixed(value,"ne");
     if(spec.type==="period") value=value==="6" ? "6" : "12";
-    if(!value && spec.type!=="yesno" && spec.type!=="period" && !spec.important) return;
+    if(!value && spec.type!=="yesno" && spec.type!=="period" && !spec.important && spec.key!=="Poznámky") return;
     editedRaw[spec.key]=value;
+    if(spec.key==="Poznámky"){
+      editedRaw["Poznámky_mapy"]=value;
+      editedRaw["Upravené poznámky"]=value;
+    }
     if(spec.important){
       (spec.keys || []).forEach(key=>{editedRaw[key]=value;});
     }
@@ -7798,7 +7802,12 @@ function officialProtocolConditionsValue(protocol={},mode="ok"){
 }
 
 function officialProtocolConditionsText(protocol={},mode="ok"){
-  return `-- ${officialProtocolConditionsValue(protocol,mode)} --`;
+  return `-- ${officialProtocolConditionsValue(protocol,mode)} --${officialProtocolConditionsReasonText(protocol)}`;
+}
+
+function officialProtocolConditionsReasonText(protocol={}){
+  const reason=officialOneLine(protocol.conditionsReason || protocol.environmentReason || protocol.reason || "",90);
+  return reason ? ` Důvod: ${reason}` : "";
 }
 
 function officialProtocolNextDate(protocol={},site=selectedSite){
@@ -7978,7 +7987,7 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
     wordTable([
       [
         {text:"______________________________________",size:18,align:"center"},
-        {xml:wordParagraph("______________________________________",{size:18,align:"center"})}
+        {xml:wordClientSignatureCellXml(protocol,{compact:true}) + wordParagraph("______________________________________",{size:18,align:"center"})}
       ],
       [
         {text:`Servis záložních zdrojů s.r.o. – ${tech}`,size:18,align:"center"},
@@ -7994,9 +8003,9 @@ function buildOfficialProtocolWordDocumentXml(protocol={},officialData={},mode="
 function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok"){
   const now=new Date().toISOString();
   const title=`Doklad provozuschopnosti ${protocol.siteName || protocol.place || selectedSite?.adresa || ""}`.trim();
-  const signatureBytes=null;
-  const imageContentType="";
-  const imageRel="";
+  const signatureBytes=protocolSignatureImageBytes(protocol);
+  const imageContentType=signatureBytes ? '<Default Extension="png" ContentType="image/png"/>' : "";
+  const imageRel=signatureBytes ? '<Relationship Id="rIdSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/client-signature.png"/>' : "";
   const entries=[
     {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageContentType}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
     {name:"_rels/.rels",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>'},
@@ -8007,6 +8016,7 @@ function buildOfficialProtocolWordEntries(protocol={},officialData={},mode="ok")
     {name:"docProps/core.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${wordXmlEscape(title)}</dc:title><dc:creator>${wordXmlEscape(protocol.createdBy || protocol.technicianEmail || currentUser?.email || "")}</dc:creator><cp:lastModifiedBy>${wordXmlEscape(currentUser?.email || "")}</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`},
     {name:"docProps/app.xml",data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Servis záložních zdrojů - mapa FZ</Application></Properties>'}
   ];
+  if(signatureBytes) entries.push({name:"word/media/client-signature.png",data:signatureBytes});
   return entries;
 }
 
@@ -8288,7 +8298,12 @@ function officialRtfTipekSignatureImage(officialData={}){
 }
 
 function officialRtfClientSignatureContent(protocol={}){
-  return "";
+  const name=officialOneLine(protocol.clientSign || protocol.customer || "",80);
+  const signature=officialRtfSignatureImage(protocol);
+  const parts=[];
+  if(name) parts.push(`{\\fs18 ${officialRtfEscape(name)}}`);
+  if(signature) parts.push(signature);
+  return parts.join(" ");
 }
 
 function officialRtfSignatureRow(protocol={},officialData={}){
@@ -8322,22 +8337,13 @@ function officialRtfHighlightedNoteRun(text,{bold=false,underline=false}={}){
 }
 
 function inlineOfficialRtfNoteHeading(output,officialData={}){
-  const note=officialOneLine(officialData.note,92);
+  const note=officialOneLine(officialData.note,130);
+  if(!note) return output;
   const marker="Pozn\\'e1mky:";
   const idx=output.indexOf(marker);
   if(idx<0) return output;
-  const start=output.lastIndexOf("\\pard\\plain",idx);
-  const end=output.indexOf("\\sect }\\sectd \\ltrsect\\sbknone",idx);
-  if(start<0 || end<0 || end<=start) return output;
-  const noteText=note ? ` ${note}` : "";
-  const paragraph=[
-    "\\pard\\plain \\ltrpar\\ql \\li0\\ri0\\sb0\\sa0\\sl210\\slmult1\\nowidctlpar\\wrapdefault\\hyphpar0\\aspalpha\\faroman\\adjustright\\rin0\\lin0\\itap0 ",
-    "\\rtlch\\fcs1 \\af24\\afs24\\alang1081 \\ltrch\\fcs0 \\fs24\\lang1029\\langfe2052\\kerning3\\cgrid\\langnp1029\\langfenp2052 ",
-    officialRtfHighlightedNoteRun("Poznámka:",{bold:true,underline:true}),
-    noteText ? officialRtfHighlightedNoteRun(noteText) : "",
-    "\\par "
-  ].join("");
-  return `${output.slice(0,start)}${paragraph}${output.slice(end)}`;
+  const insertion=officialRtfHighlightedNoteRun(` ${note}`);
+  return `${output.slice(0,idx+marker.length)}${insertion}${output.slice(idx+marker.length)}`;
 }
 
 function removeOfficialRtfOperatorIcoLabel(output){
@@ -8357,7 +8363,20 @@ function normalizeOfficialRtfClientLabel(output){
 }
 
 function officialProtocolConditionsTail(protocol={},mode="ok"){
-  return `${officialProtocolConditionsValue(protocol,mode)} --`;
+  return `${officialProtocolConditionsValue(protocol,mode)} --${officialProtocolConditionsReasonText(protocol)}`;
+}
+
+function highlightOfficialStopResultLetter(output,mode="ok"){
+  if(mode!=="stop") return output;
+  return output
+    .replace(
+      /(\{\\rtlch\\fcs1 \\ab\\af0\\afs22 \\ltrch\\fcs0 \\b\\fs22)(\\insrsid2818420\\charrsid9718217 \{\\\*\\bkmkstart _Hlk56757522\}g\})/,
+      "$1\\highlight7$2"
+    )
+    .replace(
+      /(\{\\rtlch\\fcs1 \\ab\\af0\\afs22 \\ltrch\\fcs0 \\b\\fs22)(\\insrsid7237376\\charrsid9718217 \) \})/,
+      "$1\\highlight7$2"
+    );
 }
 
 function officialProtocolTemplateValues(protocol={},officialData={},mode="ok"){
@@ -8411,6 +8430,7 @@ function fillOfficialRtfTemplate(template,protocol={},officialData={},mode="ok")
     output=output.replaceAll(placeholder,officialRtfEscape(value));
   });
   output=inlineOfficialRtfNoteHeading(output,officialData);
+  output=highlightOfficialStopResultLetter(output,mode);
   output=compactOfficialRtfEmptyNoteBeforeSignatures(output,officialData);
   output=compactOfficialRtfMeasurementSection(output,protocol);
   output=addOfficialRtfWatermark(output,officialData);
@@ -8869,6 +8889,79 @@ function saveProtocolLocally(payload,site=selectedSite,reason=""){
   };
   appendSiteLocalArray("protocolHistory",offlinePayload,site,120);
   return offlinePayload;
+}
+
+let protocolDraftTimer=null;
+let protocolDraftRestoreInProgress=false;
+
+function protocolDraftKey(site=selectedSite){
+  return siteLocalCacheKey("protocolDraft",site);
+}
+
+function clearProtocolDraft(site=selectedSite){
+  try{localStorage.removeItem(protocolDraftKey(site));}catch(e){}
+}
+
+function readProtocolDraft(site=selectedSite){
+  try{
+    const raw=localStorage.getItem(protocolDraftKey(site));
+    const parsed=raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed==="object" ? parsed : null;
+  }catch(e){
+    return null;
+  }
+}
+
+function saveProtocolDraftNow(){
+  if(protocolDraftRestoreInProgress || protocolEditState || !selectedSite) return;
+  const form=document.getElementById("protocolForm");
+  if(!form || form.style.display==="none") return;
+  try{
+    const payload=protocolPayload();
+    localStorage.setItem(protocolDraftKey(selectedSite),JSON.stringify({
+      savedAt:new Date().toISOString(),
+      siteKey:siteRecordKeys(selectedSite)[0] || selectedSite.id || "",
+      payload
+    }));
+    const st=document.getElementById("protocolStatus");
+    if(st && !/uložen|upravuješ/i.test(st.textContent || "")){
+      st.textContent="Rozepsaný protokol se průběžně ukládá v tomto zařízení.";
+    }
+  }catch(e){
+    console.warn("Koncept protokolu se nepodařilo uložit",e);
+  }
+}
+
+function scheduleProtocolDraftSave(){
+  if(protocolDraftRestoreInProgress || protocolEditState) return;
+  clearTimeout(protocolDraftTimer);
+  protocolDraftTimer=setTimeout(saveProtocolDraftNow,450);
+}
+
+function bindProtocolDraftAutosave(){
+  const form=document.getElementById("protocolForm");
+  if(!form || form.__protocolDraftBound) return;
+  form.__protocolDraftBound="1";
+  form.addEventListener("input",scheduleProtocolDraftSave);
+  form.addEventListener("change",scheduleProtocolDraftSave);
+}
+
+function restoreProtocolDraftIfAny(site=selectedSite){
+  const draft=readProtocolDraft(site);
+  if(!draft || !draft.payload) return false;
+  protocolDraftRestoreInProgress=true;
+  try{
+    fillProtocolFormFromHistory(draft.payload);
+    const st=document.getElementById("protocolStatus");
+    const when=protocolDisplayDate(draft.savedAt || "");
+    if(st) st.textContent=`Obnoven rozepsaný protokol uložený lokálně${when ? ` (${when})` : ""}.`;
+    return true;
+  }catch(e){
+    console.warn("Koncept protokolu se nepodařilo obnovit",e);
+    return false;
+  }finally{
+    protocolDraftRestoreInProgress=false;
+  }
 }
 
 let offlineProtocolSyncRunning=false;
@@ -10294,6 +10387,7 @@ function initProtocolClientSignaturePad(){
     ctx.fillStyle="#0f172a";
     ctx.fill();
     protoClientSignatureDirty=true;
+    scheduleProtocolDraftSave();
     try{canvas.setPointerCapture(e.pointerId);}catch(_e){}
   };
   const move=e=>{
@@ -10306,6 +10400,7 @@ function initProtocolClientSignaturePad(){
     ctx.stroke();
     last=point;
     protoClientSignatureDirty=true;
+    scheduleProtocolDraftSave();
   };
   const stop=e=>{
     if(!drawing) return;
@@ -10320,7 +10415,10 @@ function initProtocolClientSignaturePad(){
   canvas.addEventListener("pointercancel",stop);
   canvas.addEventListener("pointerleave",stop);
   const clearBtn=document.getElementById("clearClientSignatureBtn");
-  if(clearBtn) clearBtn.onclick=clearProtocolClientSignature;
+  if(clearBtn) clearBtn.onclick=()=>{
+    clearProtocolClientSignature();
+    scheduleProtocolDraftSave();
+  };
 }
 function protocolClientSignatureDataUrl(){
   const canvas=protocolSignatureCanvas();
@@ -11553,6 +11651,8 @@ async function prefillProtocol(){
   }
 
   updateProtocolSummary();
+  bindProtocolDraftAutosave();
+  restoreProtocolDraftIfAny(selectedSite);
 }
 
 function protocolPayload(){
@@ -11740,6 +11840,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
   const onlineSaveAvailable=!!(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine !== false);
   const saveOffline=reason=>{
     const offlinePayload=saveProtocolLocally(payload,selectedSite,reason);
+    clearProtocolDraft(selectedSite);
     applyProtocolFieldsToSite(offlinePayload,selectedSite);
     if(!editing) clearManualStatusLocalState(selectedSite);
     refreshSelectedDetailDataView();
@@ -11787,6 +11888,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
       if(!embeddedOk) throw e;
     }
     await updateSiteControlDateFromProtocol(payload,selectedSite,{clearManualStatus:!editing});
+    clearProtocolDraft(selectedSite);
     refreshSelectedDetailDataView();
     st.textContent=editing ? "Protokol upraven." : "Protokol uložen.";
     showSaveConfirmation(editing ? "Protokol upraven." : "Protokol uložen.");
@@ -14135,6 +14237,44 @@ setTimeout(()=>{
     }, 100);
   }
 
+  function upsertAddedSourceRowLocally(raw, savedId){
+    const cleanId = safe(savedId);
+    if(!cleanId || !raw) return null;
+    const prepared = {...raw, "Firebase_doc_id": cleanId};
+    let normalized = null;
+    try{
+      normalized = typeof normalize === "function" ? normalize([prepared])[0] : null;
+    }catch(e){
+      console.warn("Lokální normalizace nového zdroje selhala", e);
+    }
+    if(!normalized){
+      normalized = {
+        id: cleanId,
+        firebaseDocId: cleanId,
+        raw: prepared,
+        adresa: prepared["Adresa / umístění"] || prepared["Adresa_GPS"] || prepared["Název"] || "Nový zdroj",
+        zdroj: prepared["Popis_zdroje"] || prepared["Zdroj"] || "",
+        lat: Number(prepared["GPS_lat"]),
+        lon: Number(prepared["GPS_lon"]),
+        kraj: prepared["Kraj"] || ""
+      };
+    }
+    normalized.id = cleanId;
+    normalized.firebaseDocId = cleanId;
+    normalized.raw = {...(normalized.raw || {}), ...prepared, "Firebase_doc_id": cleanId};
+    normalized.firebaseData = {...(normalized.firebaseData || {}), raw: normalized.raw};
+    const localKey = (typeof detailKey === "function" ? detailKey(normalized) : cleanId) || cleanId;
+    rows = (rows || []).filter(row=>{
+      const rowDoc = typeof selectedSiteDocId === "function" ? selectedSiteDocId(row) : safe(row && row.firebaseDocId);
+      const rowKey = typeof detailKey === "function" ? detailKey(row) : safe(row && row.id);
+      return rowDoc !== cleanId && rowKey !== localKey;
+    }).concat([normalized]);
+    selectedSite = normalized;
+    if(typeof filters === "function") filters();
+    if(typeof render === "function") render();
+    return normalized;
+  }
+
   async function saveAddSourceFromDetail(baseSite){
     const st = document.getElementById("onlyNewStatus");
     const baseRaw = (baseSite && baseSite.raw) || {};
@@ -14186,6 +14326,8 @@ setTimeout(()=>{
         return;
       }
 
+      const localRow = upsertAddedSourceRowLocally(raw, savedId);
+
       if(window.showSaveConfirmation) window.showSaveConfirmation("Nový zdroj uložen.");
       if(st) st.textContent = "Nový zdroj uložen.";
 
@@ -14198,7 +14340,7 @@ setTimeout(()=>{
         render();
       }
       restoreNormalDrawerTemplateForSource();
-      if(visible && typeof window.openDetailById === "function"){
+      if((visible || localRow) && typeof window.openDetailById === "function"){
         setTimeout(()=>window.openDetailById(savedId), 250);
       }
     }catch(e){
@@ -14363,7 +14505,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-05-official-note-v26";
+  const serviceWorkerBuildVersion="2026-08-07-protocol-draft-v27";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
