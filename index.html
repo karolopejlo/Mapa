@@ -519,11 +519,6 @@ button,input,select,textarea{
   margin:10px 0;
   background:#f8fafc;
 }
-.history-item.history-processed{
-  background:#ecfdf5;
-  border-color:#86efac;
-  box-shadow:inset 4px 0 0 #22c55e;
-}
 .history-item b{
   font-size:14px;
 }
@@ -984,60 +979,6 @@ button,input,select,textarea{
   align-items:center;
   margin-bottom:10px;
 }
-.history-filter-row{
-  display:flex;
-  align-items:end;
-  justify-content:space-between;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-bottom:10px;
-}
-.history-filter-row label{
-  display:grid;
-  gap:4px;
-  margin:0;
-  font-size:12px;
-  color:#475569;
-  font-weight:800;
-}
-.history-filter-row input{
-  width:150px;
-  min-height:36px;
-  padding:6px 8px;
-  font-size:14px;
-}
-.history-filter-row button{
-  min-height:36px;
-  padding:6px 10px;
-}
-.history-processed-toggle{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin:8px 0 10px;
-  padding:8px 10px;
-  border:1px solid #cbd5e1;
-  border-radius:10px;
-  background:#fff;
-  font-weight:900;
-  color:#334155;
-}
-.history-processed-toggle input{
-  width:18px;
-  height:18px;
-}
-.history-processed-badge{
-  display:inline-flex;
-  align-items:center;
-  width:max-content;
-  margin:0 0 8px;
-  padding:4px 8px;
-  border-radius:999px;
-  background:#bbf7d0;
-  color:#166534;
-  font-size:12px;
-  font-weight:900;
-}
 .history-controls button{
   min-height:36px;
 }
@@ -1083,12 +1024,49 @@ button,input,select,textarea{
   display:grid;
   gap:8px;
 }
+.main-history-toolbar{
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.main-history-toolbar label{
+  display:grid;
+  gap:4px;
+  margin:0;
+  color:#475569;
+  font-size:12px;
+  font-weight:900;
+}
+.main-history-toolbar input{
+  width:150px;
+  min-height:36px;
+  padding:6px 8px;
+  font-size:14px;
+}
+.main-history-toolbar button{
+  min-height:36px;
+  padding:6px 10px;
+}
 .main-history-row{
   border:1px solid #dbe4ef;
   border-radius:12px;
   background:#f8fafc;
   padding:10px 12px;
   text-align:left;
+}
+.main-history-row.processed{
+  background:#ecfdf5;
+  border-color:#86efac;
+  box-shadow:inset 4px 0 0 #22c55e;
+}
+.main-history-row-top{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:start;
 }
 .main-history-row button{
   display:block;
@@ -1101,6 +1079,23 @@ button,input,select,textarea{
   text-align:left;
   font-weight:900;
   cursor:pointer;
+}
+.main-history-processed{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 7px;
+  border:1px solid #cbd5e1;
+  border-radius:999px;
+  background:#fff;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.main-history-processed input{
+  width:15px;
+  height:15px;
 }
 .main-history-row small{
   display:block;
@@ -3016,8 +3011,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-12-protocol-history-filter-v35";
-const APP_SHELL_CACHE_NAME="astip-szz-v35-static";
+const APP_BUILD_VERSION="2026-08-12-main-history-filter-v36";
+const APP_SHELL_CACHE_NAME="astip-szz-v36-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -6928,9 +6923,7 @@ window.openDetail=function(i){
   }
 }
 let detailHistoryItems=[];
-let detailHistoryAllItems=[];
 let detailHistoryIndex=0;
-let detailHistoryDateFilter="";
 let protocolEditState=null;
 
 function setInputValue(id,value){
@@ -9622,116 +9615,9 @@ function historyItemStableId(item={}){
   ].join("|"));
 }
 
-function readProtocolProcessedState(site=selectedSite){
-  return readSiteLocalObject("protocolProcessed",site);
-}
-
-function protocolProcessedLocalValue(item={},site=selectedSite){
-  const id=historyItemStableId(item);
-  if(!id) return false;
-  const local=readProtocolProcessedState(site);
-  const state=local[id];
-  if(state && typeof state==="object") return state.processed===true;
-  return state===true || item.processed===true || item.zpracovano===true;
-}
-
-function annotateHistoryItems(items=[],site=selectedSite){
-  return (items || []).map(item=>({
-    ...item,
-    processed: item?.processed===true || item?.zpracovano===true || protocolProcessedLocalValue(item,site)
-  }));
-}
-
-function filteredHistoryItems(){
-  const source=detailHistoryAllItems.length ? detailHistoryAllItems : detailHistoryItems;
-  const filtered=detailHistoryDateFilter
-    ? source.filter(item=>historyProtocolDateIso(item)===detailHistoryDateFilter)
-    : source.slice();
-  return annotateHistoryItems(filtered,selectedSite);
-}
-
-function setHistoryItems(items=[]){
-  detailHistoryAllItems=annotateHistoryItems(items,selectedSite);
-  detailHistoryItems=filteredHistoryItems();
-  detailHistoryIndex=0;
-}
-
 function resetHistoryItems(){
-  detailHistoryAllItems=[];
   detailHistoryItems=[];
   detailHistoryIndex=0;
-}
-
-function applyHistoryDateFilter(value=""){
-  detailHistoryDateFilter=safe(value);
-  detailHistoryItems=filteredHistoryItems();
-  detailHistoryIndex=0;
-  renderHistory();
-}
-
-function updateLocalProtocolProcessedState(item={},processed=false,site=selectedSite){
-  const id=historyItemStableId(item);
-  if(!id) return;
-  const state=readProtocolProcessedState(site);
-  state[id]={
-    processed:processed===true,
-    updatedAt:new Date().toISOString(),
-    updatedBy:currentUserEmail()
-  };
-  writeSiteLocalObject("protocolProcessed",state,site);
-  const updateItem=entry=>historyItemStableId(entry)===id ? {...entry,processed:processed===true,zpracovano:processed===true} : entry;
-  detailHistoryAllItems=detailHistoryAllItems.map(updateItem);
-  detailHistoryItems=detailHistoryItems.map(updateItem);
-}
-
-async function setCurrentHistoryProcessed(processed=false){
-  const item=detailHistoryItems[detailHistoryIndex];
-  const history=document.getElementById("history");
-  if(!item || !isProtocolHistoryItem(item)) return;
-  updateLocalProtocolProcessedState(item,processed,selectedSite);
-  const id=safe(item._id);
-  const docId=selectedSiteDocId(selectedSite);
-  if(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine!==false && id){
-    try{
-      const {doc,setDoc,serverTimestamp}=fb.fsMod;
-      const patch={
-        processed:processed===true,
-        zpracovano:processed===true,
-        processedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-        processedBy:currentUser.email || currentUserEmail()
-      };
-      if(docId){
-        await setDoc(doc(db,"sitesUnified",docId,"protocols",id),patch,{merge:true}).catch(()=>{});
-        const currentData=selectedSite?.firebaseData || {};
-        const protocolHistory=Array.isArray(currentData.protocolHistory)
-          ? currentData.protocolHistory.map(entry=>historyItemStableId(entry)===id ? {...entry,...patch,processed:processed===true,zpracovano:processed===true} : entry)
-          : [];
-        const protocolRefs=Array.isArray(currentData.protocolRefs)
-          ? currentData.protocolRefs.map(entry=>historyItemStableId(entry)===id ? {...entry,...patch,processed:processed===true,zpracovano:processed===true} : entry)
-          : [];
-        const embeddedPatch={};
-        if(protocolHistory.length) embeddedPatch.protocolHistory=protocolHistory;
-        if(protocolRefs.length) embeddedPatch.protocolRefs=protocolRefs;
-        if(Object.keys(embeddedPatch).length){
-          await setDoc(doc(db,"sitesUnified",docId),{
-            ...embeddedPatch,
-            updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
-          },{merge:true}).catch(()=>{});
-          selectedSite.firebaseData={...currentData,...embeddedPatch};
-        }
-      }
-      if(item._collection!=="protocolRefs"){
-        await setDoc(doc(db,"protocols",id),patch,{merge:true}).catch(()=>{});
-      }
-      showSaveConfirmation(processed ? "Protokol označen jako zpracovaný." : "Zpracování protokolu zrušeno.");
-    }catch(e){
-      if(history) history.insertAdjacentHTML("afterbegin",`<p class="small">Stav zpracování je uložen lokálně: ${esc(e.message)}</p>`);
-      showSaveConfirmation("Stav zpracování uložen lokálně.");
-    }
-  }else{
-    showSaveConfirmation(processed ? "Protokol označen lokálně jako zpracovaný." : "Zpracování protokolu zrušeno lokálně.");
-  }
-  renderHistory();
 }
 
 async function deleteCurrentHistoryProtocol(){
@@ -9760,14 +9646,6 @@ async function deleteCurrentHistoryProtocol(){
       selectedSite.firebaseData={...currentData,protocolHistory,protocolRefs};
     }
     removeSiteLocalItem("protocolHistory",item._id,selectedSite);
-    const deletedId=historyItemStableId(item);
-    if(deletedId){
-      const processedState=readProtocolProcessedState(selectedSite);
-      delete processedState[deletedId];
-      writeSiteLocalObject("protocolProcessed",processedState,selectedSite);
-      detailHistoryAllItems=detailHistoryAllItems.filter(entry=>historyItemStableId(entry)!==deletedId);
-      detailHistoryItems=detailHistoryItems.filter(entry=>historyItemStableId(entry)!==deletedId);
-    }
     showSaveConfirmation("Protokol smazán.");
     await loadHistory(selectedSite?.id || item.siteId);
   }catch(e){
@@ -9786,19 +9664,7 @@ function renderHistory(){
   }
 
   if(!detailHistoryItems.length){
-    history.innerHTML=`
-      <div class="history-filter-row">
-        <label>Datum kontroly
-          <input type="date" id="historyDateFilter" value="${esc(detailHistoryDateFilter)}">
-        </label>
-        ${detailHistoryDateFilter ? '<button class="secondary" type="button" id="historyClearFilterBtn">Zrušit filtr</button>' : ""}
-      </div>
-      <p class="small">${detailHistoryDateFilter ? "Pro vybrané datum tu není žádný protokol." : "Zatím žádný záznam."}</p>
-    `;
-    const emptyFilter=document.getElementById("historyDateFilter");
-    if(emptyFilter) emptyFilter.onchange=e=>applyHistoryDateFilter(e.target.value);
-    const emptyClear=document.getElementById("historyClearFilterBtn");
-    if(emptyClear) emptyClear.onclick=()=>applyHistoryDateFilter("");
+    history.textContent="Zatím žádný záznam.";
     updateOfficialProtocolSourceInfo();
     return;
   }
@@ -9809,7 +9675,6 @@ function renderHistory(){
   const d=detailHistoryItems[detailHistoryIndex];
   const canExportProtocol=isProtocolHistoryItem(d);
   const canDeleteProtocol=isHistoryAdmin() && canExportProtocol;
-  const processed=d.processed===true || d.zpracovano===true;
   const historyActionButtons=[
     canExportProtocol ? '<button class="secondary" type="button" id="editHistoryProtocolBtn">Upravit protokol</button>' : "",
     canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat do Wordu</button>' : "",
@@ -9845,20 +9710,12 @@ function renderHistory(){
 
   const photos=d._collection==="protocols" ? [] : (d.photoLinks||[]).filter(Boolean);
   history.innerHTML=`
-    <div class="history-filter-row">
-      <label>Datum kontroly
-        <input type="date" id="historyDateFilter" value="${esc(detailHistoryDateFilter)}">
-      </label>
-      ${detailHistoryDateFilter ? '<button class="secondary" type="button" id="historyClearFilterBtn">Zrušit filtr</button>' : ""}
-    </div>
     <div class="history-controls">
       <button class="secondary" type="button" id="historyPrevBtn">Předchozí</button>
       <div class="history-counter">${detailHistoryIndex+1} / ${detailHistoryItems.length}</div>
       <button class="secondary" type="button" id="historyNextBtn">Další</button>
     </div>
-    <div class="history-item ${processed ? "history-processed" : ""}">
-      ${processed ? '<div class="history-processed-badge">Zpracováno</div>' : ""}
-      ${canExportProtocol ? `<label class="history-processed-toggle"><input type="checkbox" id="historyProcessedToggle" ${processed ? "checked" : ""}> Zpracováno</label>` : ""}
+    <div class="history-item">
       ${rows.map(([label,value])=>`<div class="history-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join("")}
       ${photos.length ? `<div class="history-photos">${photos.map((url,idx)=>`<a href="${esc(url)}" target="_blank"><img src="${esc(url)}" alt="Foto ${idx+1}"></a>`).join("")}</div>` : ""}
       ${historyActionButtons ? `<div class="history-actions">${historyActionButtons}</div>` : ""}
@@ -9867,12 +9724,6 @@ function renderHistory(){
 
   const prev=document.getElementById("historyPrevBtn");
   const next=document.getElementById("historyNextBtn");
-  const filter=document.getElementById("historyDateFilter");
-  if(filter) filter.onchange=e=>applyHistoryDateFilter(e.target.value);
-  const clearFilter=document.getElementById("historyClearFilterBtn");
-  if(clearFilter) clearFilter.onclick=()=>applyHistoryDateFilter("");
-  const processedToggle=document.getElementById("historyProcessedToggle");
-  if(processedToggle) processedToggle.onchange=e=>setCurrentHistoryProcessed(e.target.checked);
   if(prev){
     prev.disabled=detailHistoryIndex<=0;
     prev.onclick=()=>{detailHistoryIndex--;renderHistory();};
@@ -9923,7 +9774,8 @@ async function loadHistory(siteId){
   const showLocalHistoryOnly=message=>{
     if(localHistoryItems.length){
       localHistoryItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-      setHistoryItems(localHistoryItems);
+      detailHistoryItems=localHistoryItems.slice();
+      detailHistoryIndex=0;
       renderHistory();
       return true;
     }
@@ -9976,7 +9828,8 @@ async function loadHistory(siteId){
     const initialItems=items.filter(item=>recordMatchesSite(item,selectedSite));
     if(initialItems.length){
       initialItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-      setHistoryItems(initialItems);
+      detailHistoryItems=initialItems.slice();
+      detailHistoryIndex=0;
       renderHistory();
     }
     const protocolRefs=Array.isArray(selectedSite?.firebaseData?.protocolRefs) ? selectedSite.firebaseData.protocolRefs : [];
@@ -10067,7 +9920,8 @@ async function loadHistory(siteId){
       showControlDateDisplay(selectedSite);
       render();
     }
-    setHistoryItems(finalItems);
+    detailHistoryItems=finalItems;
+    detailHistoryIndex=0;
     renderHistory();
   }catch(e){
     history.textContent="Chyba načtení historie: "+e.message;
@@ -10196,6 +10050,88 @@ function protocolGlobalHistoryTitle(item={}){
   return [title, device, serial].filter(Boolean).join(" | ");
 }
 
+let mainProtocolHistoryItems=[];
+let mainProtocolHistoryDateFilter="";
+const MAIN_PROTOCOL_PROCESSED_KEY="astipMap:mainProtocolProcessed";
+
+function readMainProtocolProcessedState(){
+  try{
+    const raw=localStorage.getItem(MAIN_PROTOCOL_PROCESSED_KEY);
+    const state=raw ? JSON.parse(raw) : {};
+    return state && typeof state==="object" && !Array.isArray(state) ? state : {};
+  }catch(e){
+    return {};
+  }
+}
+
+function writeMainProtocolProcessedState(state={}){
+  try{
+    localStorage.setItem(MAIN_PROTOCOL_PROCESSED_KEY,JSON.stringify(state || {}));
+  }catch(e){
+    console.warn("Stav zpracování hlavní historie se nepodařilo uložit",e);
+  }
+}
+
+function mainProtocolProcessed(item={}){
+  if(item.processed===true || item.zpracovano===true) return true;
+  const id=historyItemStableId(item);
+  if(!id) return false;
+  const state=readMainProtocolProcessedState()[id];
+  if(state && typeof state==="object") return state.processed===true;
+  return state===true;
+}
+
+function annotateMainProtocolItems(items=[]){
+  return (items || []).map(item=>({
+    ...item,
+    processed:mainProtocolProcessed(item)
+  }));
+}
+
+function filteredMainProtocolHistoryItems(){
+  const items=annotateMainProtocolItems(mainProtocolHistoryItems);
+  return mainProtocolHistoryDateFilter
+    ? items.filter(item=>historyProtocolDateIso(item)===mainProtocolHistoryDateFilter)
+    : items;
+}
+
+async function saveMainProtocolProcessed(item={},processed=false){
+  const id=historyItemStableId(item);
+  if(!id) return;
+  const state=readMainProtocolProcessedState();
+  state[id]={
+    processed:processed===true,
+    updatedAt:new Date().toISOString(),
+    updatedBy:currentUserEmail()
+  };
+  writeMainProtocolProcessedState(state);
+  mainProtocolHistoryItems=mainProtocolHistoryItems.map(entry=>historyItemStableId(entry)===id ? {...entry,processed:processed===true,zpracovano:processed===true} : entry);
+
+  if(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine!==false){
+    try{
+      const {doc,setDoc,serverTimestamp}=fb.fsMod;
+      const patch={
+        processed:processed===true,
+        zpracovano:processed===true,
+        processedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+        processedBy:currentUser.email || currentUserEmail()
+      };
+      if(safe(item._id) && item._collection!=="protocolRefs"){
+        await setDoc(doc(db,"protocols",safe(item._id)),patch,{merge:true}).catch(()=>{});
+      }
+      const docId=safe(item.firebaseDocId || item.siteDocId || "");
+      if(docId && safe(item._id)){
+        await setDoc(doc(db,"sitesUnified",docId,"protocols",safe(item._id)),patch,{merge:true}).catch(()=>{});
+      }
+      showSaveConfirmation(processed ? "Protokol označen jako zpracovaný." : "Zpracování protokolu zrušeno.");
+    }catch(e){
+      showSaveConfirmation("Stav zpracování uložen lokálně.");
+    }
+  }else{
+    showSaveConfirmation(processed ? "Protokol označen lokálně jako zpracovaný." : "Zpracování zrušeno lokálně.");
+  }
+}
+
 function readAllLocalProtocolHistoryItems(){
   const items=[];
   try{
@@ -10247,6 +10183,50 @@ async function loadMainProtocolHistoryItems(){
     .slice(0,80);
 }
 
+function renderMainProtocolHistoryList(){
+  const list=document.getElementById("mainProtocolHistoryList");
+  if(!list) return;
+  const items=filteredMainProtocolHistoryItems();
+  if(!items.length){
+    list.innerHTML=`<p class="small">${mainProtocolHistoryDateFilter ? "Pro vybrané datum není uložený žádný protokol." : "Zatím není uložený žádný protokol."}</p>`;
+    return;
+  }
+  list.innerHTML=items.map(item=>{
+    const id=historyItemStableId(item);
+    const title=protocolGlobalHistoryTitle(item);
+    const key=safe(item.siteKey || item.firebaseDocId || item.siteId || (Array.isArray(item.siteKeys) ? item.siteKeys[0] : ""));
+    const processed=item.processed===true || item.zpracovano===true;
+    const meta=isAppAdmin() ? [
+      historySavedDateLabel(item) ? `uloženo ${historySavedDateLabel(item)}` : "",
+      historyDateLabel(item) ? `kontrola ${historyDateLabel(item)}` : "",
+      safe(item.createdBy || item.technicianEmail || item.updatedBy)
+    ].filter(Boolean).join(" | ") : [
+      historyDateLabel(item) ? `kontrola ${historyDateLabel(item)}` : ""
+    ].filter(Boolean).join(" | ");
+    return `<div class="main-history-row ${processed ? "processed" : ""}">
+      <div class="main-history-row-top">
+        <button type="button" data-history-site-key="${esc(key)}">${esc(title)}</button>
+        <label class="main-history-processed"><input type="checkbox" data-main-protocol-processed="${esc(id)}" ${processed ? "checked" : ""}> Zpracováno</label>
+      </div>
+      ${meta ? `<small>${esc(meta)}</small>` : ""}
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-history-site-key]").forEach(btn=>{
+    btn.onclick=()=>{
+      const key=btn.getAttribute("data-history-site-key");
+      if(key && typeof window.openDetailById==="function") window.openDetailById(key);
+    };
+  });
+  list.querySelectorAll("[data-main-protocol-processed]").forEach(input=>{
+    input.onchange=async e=>{
+      const id=input.getAttribute("data-main-protocol-processed");
+      const item=mainProtocolHistoryItems.find(entry=>historyItemStableId(entry)===id);
+      await saveMainProtocolProcessed(item,e.target.checked);
+      renderMainProtocolHistoryList();
+    };
+  });
+}
+
 async function openMainProtocolHistoryPanel(){
   if(!canViewMainProtocolHistory()){
     showSaveConfirmation("Hlavní historii protokolů může zobrazit jen správce nebo Iva.");
@@ -10270,36 +10250,31 @@ async function openMainProtocolHistoryPanel(){
     </div>
     <div class="card" id="mainProtocolHistoryCard">
       <h3>Poslední protokoly</h3>
+      <div class="main-history-toolbar">
+        <label>Datum kontroly
+          <input type="date" id="mainProtocolHistoryDateFilter" value="${esc(mainProtocolHistoryDateFilter)}">
+        </label>
+        ${mainProtocolHistoryDateFilter ? '<button class="secondary" type="button" id="mainProtocolHistoryClearFilter">Zrušit filtr</button>' : ""}
+      </div>
       <div id="mainProtocolHistoryList" class="main-history-list small">Načítám historii...</div>
     </div>`;
   const close=document.getElementById("closeDrawer");
   if(close) close.onclick=()=>drawer.classList.remove("open");
   const list=document.getElementById("mainProtocolHistoryList");
+  const filter=document.getElementById("mainProtocolHistoryDateFilter");
+  if(filter) filter.onchange=e=>{
+    mainProtocolHistoryDateFilter=safe(e.target.value);
+    openMainProtocolHistoryPanel();
+  };
+  const clearFilter=document.getElementById("mainProtocolHistoryClearFilter");
+  if(clearFilter) clearFilter.onclick=()=>{
+    mainProtocolHistoryDateFilter="";
+    openMainProtocolHistoryPanel();
+  };
   const items=await loadMainProtocolHistoryItems();
   if(!list) return;
-  if(!items.length){
-    list.textContent="Zatím není uložený žádný protokol.";
-    return;
-  }
-  list.innerHTML=items.map(item=>{
-    const title=protocolGlobalHistoryTitle(item);
-    const key=safe(item.siteKey || item.firebaseDocId || item.siteId || (Array.isArray(item.siteKeys) ? item.siteKeys[0] : ""));
-    const meta=isAppAdmin() ? [
-      historySavedDateLabel(item) ? `uloženo ${historySavedDateLabel(item)}` : "",
-      historyDateLabel(item) ? `kontrola ${historyDateLabel(item)}` : "",
-      safe(item.createdBy || item.technicianEmail || item.updatedBy)
-    ].filter(Boolean).join(" | ") : "";
-    return `<div class="main-history-row">
-      <button type="button" data-history-site-key="${esc(key)}">${esc(title)}</button>
-      ${meta ? `<small>${esc(meta)}</small>` : ""}
-    </div>`;
-  }).join("");
-  list.querySelectorAll("[data-history-site-key]").forEach(btn=>{
-    btn.onclick=()=>{
-      const key=btn.getAttribute("data-history-site-key");
-      if(key && typeof window.openDetailById==="function") window.openDetailById(key);
-    };
-  });
+  mainProtocolHistoryItems=annotateMainProtocolItems(items);
+  renderMainProtocolHistoryList();
 }
 window.openMainProtocolHistoryPanel=openMainProtocolHistoryPanel;
 
