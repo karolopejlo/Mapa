@@ -1739,25 +1739,15 @@ button,input,select,textarea{
 
     <h4>Základní údaje zdroje</h4>
 
-    <div id="protoDeviceInputWrap" class="proto-device-input-wrap">
-      <label>Kontrolované zařízení – typ</label>
-      <input id="protoDeviceType">
-    </div>
-    <div id="protoDeviceSelectWrap2" class="proto-device-select-wrap hidden">
-      <label>Kontrolované zařízení – typ</label>
-      <select id="protoDeviceTypeSelect"><option value="">Vyber zařízení</option></select>
-    </div>
+    <input id="protoDeviceType" type="hidden">
+    <select id="protoDeviceTypeSelect" class="hidden" aria-hidden="true" tabindex="-1"><option value="">Vyber zařízení</option></select>
 
     <label>Výrobní č.</label>
     <input id="protoSerial">
 
-    <div id="protocolDeviceSelectWrap">
-      <label>Kontrolované zařízení / zdroj</label>
-      <p class="small">Pokud je v datech více zdrojů oddělených znakem +, vyber konkrétní zdroj.</p>
-      <select id="protoDeviceSelect">
-        <option value="">Automaticky / první zdroj</option>
-      </select>
-    </div>
+    <select id="protoDeviceSelect" class="hidden" aria-hidden="true" tabindex="-1">
+      <option value="">Automaticky / první zdroj</option>
+    </select>
 
     <label>Číslo plomby</label>
     <input id="protoSeal">
@@ -2966,8 +2956,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-10-shared-source-fields-v32";
-const APP_SHELL_CACHE_NAME="astip-szz-v32-static";
+const APP_BUILD_VERSION="2026-08-12-protocol-device-source-v33";
+const APP_SHELL_CACHE_NAME="astip-szz-v33-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -10504,7 +10494,15 @@ function populateProtocolDeviceSelect(){
   const selectWrap=document.getElementById("protoDeviceSelectWrap2");
   const select=document.getElementById("protoDeviceTypeSelect");
   const input=document.getElementById("protoDeviceType");
-  if(!selectedSite || !input || !select) return;
+  if(inputWrap) inputWrap.classList.add("hidden");
+  if(selectWrap) selectWrap.classList.add("hidden");
+  if(!selectedSite || !input) return;
+  const currentDevice=siteSourceLabel(selectedSite) || protocolDeviceTypeFromSite(selectedSite) || "";
+  input.value=currentDevice;
+  if(!select){
+    updateProtocolSummary();
+    return;
+  }
   const rawSource=[
     protocolDeviceTypeFromSite(selectedSite),
     selectedSite?.raw?.["Jaký zdroj"],
@@ -10516,15 +10514,9 @@ function populateProtocolDeviceSelect(){
   const devices=hasPlus ? rawSource.split("+").map(x=>x.trim()).filter(Boolean) : sourceOptionsFromSite(selectedSite);
   select.innerHTML='<option value="">Vyber zařízení</option>';
   devices.forEach((d,idx)=>{const o=document.createElement("option");o.value=d;o.textContent=d||`Zařízení ${idx+1}`;select.appendChild(o);});
-  if(hasPlus && devices.length>1){
-    if(inputWrap) inputWrap.classList.add("hidden");
-    if(selectWrap) selectWrap.classList.remove("hidden");
-    input.value="";
-  }else{
-    if(inputWrap) inputWrap.classList.remove("hidden");
-    if(selectWrap) selectWrap.classList.add("hidden");
-    input.value=devices[0]||protocolDeviceTypeFromSite(selectedSite)||"";
-  }
+  const deviceMatch=devices.find(device=>dataNormFixed(device)===dataNormFixed(currentDevice)) || devices[0] || currentDevice;
+  select.value=deviceMatch || "";
+  input.value=deviceMatch || currentDevice;
   updateProtocolSummary();
 }
 
@@ -10539,8 +10531,11 @@ function resetProtocolTechnicalFieldsForNewDevice(){
     if(el) el.value="";
   });
 
-  const sel=document.getElementById("protoDeviceSelect");
-  if(sel && sel.value) document.getElementById("protoDeviceType").value=sel.value;
+  const selectedSourceDevice=siteSourceLabel(selectedSite) || protocolDeviceTypeFromSite(selectedSite) || "";
+  const input=document.getElementById("protoDeviceType");
+  if(input) input.value=selectedSourceDevice;
+  const sel=document.getElementById("protoDeviceTypeSelect");
+  if(sel) sel.value=selectedSourceDevice;
   updateProtocolSummary();
 }
 
@@ -10600,7 +10595,7 @@ function updateProtocolSummary(){
     if(el) el.textContent=safe(value) || "-";
   };
   set("protoSummaryAddress", val("protoPlace"));
-  set("protoSummaryDevice", val("protoDeviceTypeSelect") || val("protoDeviceType") || val("protoDeviceSelect"));
+  set("protoSummaryDevice", val("protoDeviceType") || siteSourceLabel(selectedSite) || val("protoDeviceTypeSelect") || val("protoDeviceSelect"));
   set("protoSummarySerial", val("protoSerial"));
   set("protoSummaryLocation", val("protoPbzLocation"));
   set("protoSummaryPeriod", val("protoPeriod"));
@@ -11704,8 +11699,8 @@ function protocolPayload(){
     siteSource:selectedSite?.zdroj || "",
     technicianEmail:currentUser?.email || lastKnownUserEmail() || "",
     date:val("protoDate"),
-    selectedDevice:val("protoDeviceTypeSelect") || val("protoDeviceSelect"),
-    deviceType:val("protoDeviceType"),
+    selectedDevice:val("protoDeviceType") || siteSourceLabel(selectedSite) || val("protoDeviceTypeSelect") || val("protoDeviceSelect"),
+    deviceType:val("protoDeviceType") || protocolDeviceTypeFromSite(selectedSite) || siteSourceLabel(selectedSite),
     serial:val("protoSerial"),
     seal:val("protoSeal"),
     place:val("protoPlace"),
@@ -11824,33 +11819,37 @@ if(mailProtocolFormBtn){
   });
 }
 
-const officialProtocolDataBtn=document.getElementById("officialProtocolDataBtn");
-if(officialProtocolDataBtn){
-  officialProtocolDataBtn.addEventListener("click",()=>{
-    const box=document.getElementById("officialProtocolDataBox");
-    if(box) box.style.display=box.style.display==="none" ? "grid" : "none";
-  });
-}
 const officialManufacturerSelect=document.getElementById("officialManufacturerSelect");
 if(officialManufacturerSelect){
   officialManufacturerSelect.addEventListener("change",syncOfficialManufacturerHidden);
 }
-const saveOfficialProtocolDataBtn=document.getElementById("saveOfficialProtocolDataBtn");
-if(saveOfficialProtocolDataBtn){
-  saveOfficialProtocolDataBtn.addEventListener("click",async ()=>{
+document.addEventListener("click",async event=>{
+  const target=event.target && event.target.closest ? event.target.closest("#officialProtocolDataBtn,#saveOfficialProtocolDataBtn,#officialProtocolOkBtn,#officialProtocolStopBtn") : null;
+  if(!target) return;
+  event.preventDefault();
+  if(target.id==="officialProtocolDataBtn"){
+    const box=document.getElementById("officialProtocolDataBox");
+    if(box){
+      const shouldOpen=getComputedStyle(box).display==="none";
+      if(shouldOpen) fillOfficialProtocolInputs(selectedSite);
+      box.style.display=shouldOpen ? "grid" : "none";
+    }
+    return;
+  }
+  if(target.id==="saveOfficialProtocolDataBtn"){
     const data=await saveOfficialProtocolData();
     const box=document.getElementById("officialProtocolDataBox");
     if(data && box) box.style.display="none";
-  });
-}
-const officialProtocolOkBtn=document.getElementById("officialProtocolOkBtn");
-if(officialProtocolOkBtn){
-  officialProtocolOkBtn.addEventListener("click",()=>exportOfficialProtocol("ok"));
-}
-const officialProtocolStopBtn=document.getElementById("officialProtocolStopBtn");
-if(officialProtocolStopBtn){
-  officialProtocolStopBtn.addEventListener("click",()=>exportOfficialProtocol("stop"));
-}
+    return;
+  }
+  if(target.id==="officialProtocolOkBtn"){
+    exportOfficialProtocol("ok");
+    return;
+  }
+  if(target.id==="officialProtocolStopBtn"){
+    exportOfficialProtocol("stop");
+  }
+});
 
 document.getElementById("protocolForm").addEventListener("submit",async e=>{
   e.preventDefault();
@@ -14541,7 +14540,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-10-shared-source-fields-v32";
+  const serviceWorkerBuildVersion="2026-08-12-protocol-device-source-v33";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
