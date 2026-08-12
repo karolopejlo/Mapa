@@ -519,6 +519,11 @@ button,input,select,textarea{
   margin:10px 0;
   background:#f8fafc;
 }
+.history-item.history-processed{
+  background:#ecfdf5;
+  border-color:#86efac;
+  box-shadow:inset 4px 0 0 #22c55e;
+}
 .history-item b{
   font-size:14px;
 }
@@ -978,6 +983,60 @@ button,input,select,textarea{
   gap:8px;
   align-items:center;
   margin-bottom:10px;
+}
+.history-filter-row{
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.history-filter-row label{
+  display:grid;
+  gap:4px;
+  margin:0;
+  font-size:12px;
+  color:#475569;
+  font-weight:800;
+}
+.history-filter-row input{
+  width:150px;
+  min-height:36px;
+  padding:6px 8px;
+  font-size:14px;
+}
+.history-filter-row button{
+  min-height:36px;
+  padding:6px 10px;
+}
+.history-processed-toggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:8px 0 10px;
+  padding:8px 10px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  background:#fff;
+  font-weight:900;
+  color:#334155;
+}
+.history-processed-toggle input{
+  width:18px;
+  height:18px;
+}
+.history-processed-badge{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  margin:0 0 8px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:#bbf7d0;
+  color:#166534;
+  font-size:12px;
+  font-weight:900;
 }
 .history-controls button{
   min-height:36px;
@@ -2957,8 +3016,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-12-editable-protocol-device-v34";
-const APP_SHELL_CACHE_NAME="astip-szz-v34-static";
+const APP_BUILD_VERSION="2026-08-12-protocol-history-filter-v35";
+const APP_SHELL_CACHE_NAME="astip-szz-v35-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -6869,7 +6928,9 @@ window.openDetail=function(i){
   }
 }
 let detailHistoryItems=[];
+let detailHistoryAllItems=[];
 let detailHistoryIndex=0;
+let detailHistoryDateFilter="";
 let protocolEditState=null;
 
 function setInputValue(id,value){
@@ -9548,6 +9609,131 @@ function isHistoryAdmin(){
   return isAppAdmin();
 }
 
+function historyProtocolDateIso(item){
+  return dateInputValueFromAny(item?.date || item?.checkDate || item?.controlDate || "");
+}
+
+function historyItemStableId(item={}){
+  return safe(item._id || item.id || item.protocolId || item.refId || [
+    item.date || item.checkDate || "",
+    item.deviceType || item.siteSource || "",
+    item.serial || "",
+    item.savedAt || item.createdAt || ""
+  ].join("|"));
+}
+
+function readProtocolProcessedState(site=selectedSite){
+  return readSiteLocalObject("protocolProcessed",site);
+}
+
+function protocolProcessedLocalValue(item={},site=selectedSite){
+  const id=historyItemStableId(item);
+  if(!id) return false;
+  const local=readProtocolProcessedState(site);
+  const state=local[id];
+  if(state && typeof state==="object") return state.processed===true;
+  return state===true || item.processed===true || item.zpracovano===true;
+}
+
+function annotateHistoryItems(items=[],site=selectedSite){
+  return (items || []).map(item=>({
+    ...item,
+    processed: item?.processed===true || item?.zpracovano===true || protocolProcessedLocalValue(item,site)
+  }));
+}
+
+function filteredHistoryItems(){
+  const source=detailHistoryAllItems.length ? detailHistoryAllItems : detailHistoryItems;
+  const filtered=detailHistoryDateFilter
+    ? source.filter(item=>historyProtocolDateIso(item)===detailHistoryDateFilter)
+    : source.slice();
+  return annotateHistoryItems(filtered,selectedSite);
+}
+
+function setHistoryItems(items=[]){
+  detailHistoryAllItems=annotateHistoryItems(items,selectedSite);
+  detailHistoryItems=filteredHistoryItems();
+  detailHistoryIndex=0;
+}
+
+function resetHistoryItems(){
+  detailHistoryAllItems=[];
+  detailHistoryItems=[];
+  detailHistoryIndex=0;
+}
+
+function applyHistoryDateFilter(value=""){
+  detailHistoryDateFilter=safe(value);
+  detailHistoryItems=filteredHistoryItems();
+  detailHistoryIndex=0;
+  renderHistory();
+}
+
+function updateLocalProtocolProcessedState(item={},processed=false,site=selectedSite){
+  const id=historyItemStableId(item);
+  if(!id) return;
+  const state=readProtocolProcessedState(site);
+  state[id]={
+    processed:processed===true,
+    updatedAt:new Date().toISOString(),
+    updatedBy:currentUserEmail()
+  };
+  writeSiteLocalObject("protocolProcessed",state,site);
+  const updateItem=entry=>historyItemStableId(entry)===id ? {...entry,processed:processed===true,zpracovano:processed===true} : entry;
+  detailHistoryAllItems=detailHistoryAllItems.map(updateItem);
+  detailHistoryItems=detailHistoryItems.map(updateItem);
+}
+
+async function setCurrentHistoryProcessed(processed=false){
+  const item=detailHistoryItems[detailHistoryIndex];
+  const history=document.getElementById("history");
+  if(!item || !isProtocolHistoryItem(item)) return;
+  updateLocalProtocolProcessedState(item,processed,selectedSite);
+  const id=safe(item._id);
+  const docId=selectedSiteDocId(selectedSite);
+  if(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine!==false && id){
+    try{
+      const {doc,setDoc,serverTimestamp}=fb.fsMod;
+      const patch={
+        processed:processed===true,
+        zpracovano:processed===true,
+        processedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+        processedBy:currentUser.email || currentUserEmail()
+      };
+      if(docId){
+        await setDoc(doc(db,"sitesUnified",docId,"protocols",id),patch,{merge:true}).catch(()=>{});
+        const currentData=selectedSite?.firebaseData || {};
+        const protocolHistory=Array.isArray(currentData.protocolHistory)
+          ? currentData.protocolHistory.map(entry=>historyItemStableId(entry)===id ? {...entry,...patch,processed:processed===true,zpracovano:processed===true} : entry)
+          : [];
+        const protocolRefs=Array.isArray(currentData.protocolRefs)
+          ? currentData.protocolRefs.map(entry=>historyItemStableId(entry)===id ? {...entry,...patch,processed:processed===true,zpracovano:processed===true} : entry)
+          : [];
+        const embeddedPatch={};
+        if(protocolHistory.length) embeddedPatch.protocolHistory=protocolHistory;
+        if(protocolRefs.length) embeddedPatch.protocolRefs=protocolRefs;
+        if(Object.keys(embeddedPatch).length){
+          await setDoc(doc(db,"sitesUnified",docId),{
+            ...embeddedPatch,
+            updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString()
+          },{merge:true}).catch(()=>{});
+          selectedSite.firebaseData={...currentData,...embeddedPatch};
+        }
+      }
+      if(item._collection!=="protocolRefs"){
+        await setDoc(doc(db,"protocols",id),patch,{merge:true}).catch(()=>{});
+      }
+      showSaveConfirmation(processed ? "Protokol označen jako zpracovaný." : "Zpracování protokolu zrušeno.");
+    }catch(e){
+      if(history) history.insertAdjacentHTML("afterbegin",`<p class="small">Stav zpracování je uložen lokálně: ${esc(e.message)}</p>`);
+      showSaveConfirmation("Stav zpracování uložen lokálně.");
+    }
+  }else{
+    showSaveConfirmation(processed ? "Protokol označen lokálně jako zpracovaný." : "Zpracování protokolu zrušeno lokálně.");
+  }
+  renderHistory();
+}
+
 async function deleteCurrentHistoryProtocol(){
   const item=detailHistoryItems[detailHistoryIndex];
   const history=document.getElementById("history");
@@ -9574,6 +9760,14 @@ async function deleteCurrentHistoryProtocol(){
       selectedSite.firebaseData={...currentData,protocolHistory,protocolRefs};
     }
     removeSiteLocalItem("protocolHistory",item._id,selectedSite);
+    const deletedId=historyItemStableId(item);
+    if(deletedId){
+      const processedState=readProtocolProcessedState(selectedSite);
+      delete processedState[deletedId];
+      writeSiteLocalObject("protocolProcessed",processedState,selectedSite);
+      detailHistoryAllItems=detailHistoryAllItems.filter(entry=>historyItemStableId(entry)!==deletedId);
+      detailHistoryItems=detailHistoryItems.filter(entry=>historyItemStableId(entry)!==deletedId);
+    }
     showSaveConfirmation("Protokol smazán.");
     await loadHistory(selectedSite?.id || item.siteId);
   }catch(e){
@@ -9585,15 +9779,26 @@ function renderHistory(){
   const history=document.getElementById("history");
   if(!history) return;
   if(!canViewProtocolHistory()){
-    detailHistoryItems=[];
-    detailHistoryIndex=0;
+    resetHistoryItems();
     history.textContent="Historii protokolů uvidí přihlášený technik.";
     updateOfficialProtocolSourceInfo();
     return;
   }
 
   if(!detailHistoryItems.length){
-    history.textContent="Zatím žádný záznam.";
+    history.innerHTML=`
+      <div class="history-filter-row">
+        <label>Datum kontroly
+          <input type="date" id="historyDateFilter" value="${esc(detailHistoryDateFilter)}">
+        </label>
+        ${detailHistoryDateFilter ? '<button class="secondary" type="button" id="historyClearFilterBtn">Zrušit filtr</button>' : ""}
+      </div>
+      <p class="small">${detailHistoryDateFilter ? "Pro vybrané datum tu není žádný protokol." : "Zatím žádný záznam."}</p>
+    `;
+    const emptyFilter=document.getElementById("historyDateFilter");
+    if(emptyFilter) emptyFilter.onchange=e=>applyHistoryDateFilter(e.target.value);
+    const emptyClear=document.getElementById("historyClearFilterBtn");
+    if(emptyClear) emptyClear.onclick=()=>applyHistoryDateFilter("");
     updateOfficialProtocolSourceInfo();
     return;
   }
@@ -9604,6 +9809,7 @@ function renderHistory(){
   const d=detailHistoryItems[detailHistoryIndex];
   const canExportProtocol=isProtocolHistoryItem(d);
   const canDeleteProtocol=isHistoryAdmin() && canExportProtocol;
+  const processed=d.processed===true || d.zpracovano===true;
   const historyActionButtons=[
     canExportProtocol ? '<button class="secondary" type="button" id="editHistoryProtocolBtn">Upravit protokol</button>' : "",
     canExportProtocol ? '<button class="secondary" type="button" id="exportHistoryProtocolBtn">Exportovat do Wordu</button>' : "",
@@ -9639,12 +9845,20 @@ function renderHistory(){
 
   const photos=d._collection==="protocols" ? [] : (d.photoLinks||[]).filter(Boolean);
   history.innerHTML=`
+    <div class="history-filter-row">
+      <label>Datum kontroly
+        <input type="date" id="historyDateFilter" value="${esc(detailHistoryDateFilter)}">
+      </label>
+      ${detailHistoryDateFilter ? '<button class="secondary" type="button" id="historyClearFilterBtn">Zrušit filtr</button>' : ""}
+    </div>
     <div class="history-controls">
       <button class="secondary" type="button" id="historyPrevBtn">Předchozí</button>
       <div class="history-counter">${detailHistoryIndex+1} / ${detailHistoryItems.length}</div>
       <button class="secondary" type="button" id="historyNextBtn">Další</button>
     </div>
-    <div class="history-item">
+    <div class="history-item ${processed ? "history-processed" : ""}">
+      ${processed ? '<div class="history-processed-badge">Zpracováno</div>' : ""}
+      ${canExportProtocol ? `<label class="history-processed-toggle"><input type="checkbox" id="historyProcessedToggle" ${processed ? "checked" : ""}> Zpracováno</label>` : ""}
       ${rows.map(([label,value])=>`<div class="history-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join("")}
       ${photos.length ? `<div class="history-photos">${photos.map((url,idx)=>`<a href="${esc(url)}" target="_blank"><img src="${esc(url)}" alt="Foto ${idx+1}"></a>`).join("")}</div>` : ""}
       ${historyActionButtons ? `<div class="history-actions">${historyActionButtons}</div>` : ""}
@@ -9653,6 +9867,12 @@ function renderHistory(){
 
   const prev=document.getElementById("historyPrevBtn");
   const next=document.getElementById("historyNextBtn");
+  const filter=document.getElementById("historyDateFilter");
+  if(filter) filter.onchange=e=>applyHistoryDateFilter(e.target.value);
+  const clearFilter=document.getElementById("historyClearFilterBtn");
+  if(clearFilter) clearFilter.onclick=()=>applyHistoryDateFilter("");
+  const processedToggle=document.getElementById("historyProcessedToggle");
+  if(processedToggle) processedToggle.onchange=e=>setCurrentHistoryProcessed(e.target.checked);
   if(prev){
     prev.disabled=detailHistoryIndex<=0;
     prev.onclick=()=>{detailHistoryIndex--;renderHistory();};
@@ -9689,8 +9909,7 @@ async function loadHistory(siteId){
   const history=document.getElementById("history");
   if(!history) return;
   if(!canViewProtocolHistory()){
-    detailHistoryItems=[];
-    detailHistoryIndex=0;
+    resetHistoryItems();
     history.textContent="Historii protokolů uvidí přihlášený technik.";
     updateOfficialProtocolSourceInfo();
     return;
@@ -9704,14 +9923,12 @@ async function loadHistory(siteId){
   const showLocalHistoryOnly=message=>{
     if(localHistoryItems.length){
       localHistoryItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-      detailHistoryItems=localHistoryItems.slice();
-      detailHistoryIndex=0;
+      setHistoryItems(localHistoryItems);
       renderHistory();
       return true;
     }
     history.textContent=message;
-    detailHistoryItems=[];
-    detailHistoryIndex=0;
+    resetHistoryItems();
     updateOfficialProtocolSourceInfo();
     return false;
   };
@@ -9759,8 +9976,7 @@ async function loadHistory(siteId){
     const initialItems=items.filter(item=>recordMatchesSite(item,selectedSite));
     if(initialItems.length){
       initialItems.sort((a,b)=>protocolTimeValue(b)-protocolTimeValue(a));
-      detailHistoryItems=initialItems.slice();
-      detailHistoryIndex=0;
+      setHistoryItems(initialItems);
       renderHistory();
     }
     const protocolRefs=Array.isArray(selectedSite?.firebaseData?.protocolRefs) ? selectedSite.firebaseData.protocolRefs : [];
@@ -9838,8 +10054,7 @@ async function loadHistory(siteId){
 
     const finalItems=items.filter(item=>recordMatchesSite(item,selectedSite));
     if(!finalItems.length){
-      detailHistoryItems=[];
-      detailHistoryIndex=0;
+      resetHistoryItems();
       history.textContent="Zatím žádný záznam.";
       updateOfficialProtocolSourceInfo();
       return;
@@ -9852,8 +10067,7 @@ async function loadHistory(siteId){
       showControlDateDisplay(selectedSite);
       render();
     }
-    detailHistoryItems=finalItems;
-    detailHistoryIndex=0;
+    setHistoryItems(finalItems);
     renderHistory();
   }catch(e){
     history.textContent="Chyba načtení historie: "+e.message;
@@ -14567,7 +14781,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-12-editable-protocol-device-v34";
+  const serviceWorkerBuildVersion="2026-08-12-protocol-history-filter-v35";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
