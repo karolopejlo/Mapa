@@ -1739,7 +1739,8 @@ button,input,select,textarea{
 
     <h4>Základní údaje zdroje</h4>
 
-    <input id="protoDeviceType" type="hidden">
+    <label>Typ zařízení</label>
+    <input id="protoDeviceType" placeholder="např. PS 20 000/3f - 45 min.">
     <select id="protoDeviceTypeSelect" class="hidden" aria-hidden="true" tabindex="-1"><option value="">Vyber zařízení</option></select>
 
     <label>Výrobní č.</label>
@@ -2956,8 +2957,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-12-protocol-device-source-v33";
-const APP_SHELL_CACHE_NAME="astip-szz-v33-static";
+const APP_BUILD_VERSION="2026-08-12-editable-protocol-device-v34";
+const APP_SHELL_CACHE_NAME="astip-szz-v34-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -9351,6 +9352,31 @@ function applyProtocolFieldsToRaw(raw,protocol={}){
   return out;
 }
 
+function applyProtocolFieldsToRows(protocol={},site=selectedSite){
+  if(!protocol || !site || !Array.isArray(rows)) return;
+  const selectedKey=detailKey(site) || site.id || "";
+  const docId=selectedSiteDocId(site);
+  let updatedSelected=null;
+  rows=rows.map(row=>{
+    if(!manualStatusSiteMatches(row,site,selectedKey,docId)) return row;
+    const raw=applyProtocolFieldsToRaw({...(row.raw || {})},protocol);
+    if(docId) raw["Firebase_doc_id"]=docId;
+    const refreshed=normalize([raw])[0];
+    const next={
+      ...row,
+      ...refreshed,
+      id:row.id,
+      i:row.i,
+      firebaseDocId:row.firebaseDocId || raw["Firebase_doc_id"] || "",
+      firebaseData:{...(row.firebaseData || {}),raw}
+    };
+    updatedSelected=next;
+    return next;
+  });
+  window.rows=rows;
+  if(updatedSelected) selectedSite=updatedSelected;
+}
+
 function applyProtocolFieldsToSite(protocol,site=selectedSite){
   if(!protocol || !site) return;
   const raw=applyProtocolFieldsToRaw({...(site.raw || {})},protocol);
@@ -10497,7 +10523,7 @@ function populateProtocolDeviceSelect(){
   if(inputWrap) inputWrap.classList.add("hidden");
   if(selectWrap) selectWrap.classList.add("hidden");
   if(!selectedSite || !input) return;
-  const currentDevice=siteSourceLabel(selectedSite) || protocolDeviceTypeFromSite(selectedSite) || "";
+  const currentDevice=protocolDeviceTypeFromSite(selectedSite) || sourceTypeTextFromRaw(selectedSite?.raw || {}) || "";
   input.value=currentDevice;
   if(!select){
     updateProtocolSummary();
@@ -10531,7 +10557,7 @@ function resetProtocolTechnicalFieldsForNewDevice(){
     if(el) el.value="";
   });
 
-  const selectedSourceDevice=siteSourceLabel(selectedSite) || protocolDeviceTypeFromSite(selectedSite) || "";
+  const selectedSourceDevice=protocolDeviceTypeFromSite(selectedSite) || sourceTypeTextFromRaw(selectedSite?.raw || {}) || "";
   const input=document.getElementById("protoDeviceType");
   if(input) input.value=selectedSourceDevice;
   const sel=document.getElementById("protoDeviceTypeSelect");
@@ -10595,7 +10621,7 @@ function updateProtocolSummary(){
     if(el) el.textContent=safe(value) || "-";
   };
   set("protoSummaryAddress", val("protoPlace"));
-  set("protoSummaryDevice", val("protoDeviceType") || siteSourceLabel(selectedSite) || val("protoDeviceTypeSelect") || val("protoDeviceSelect"));
+  set("protoSummaryDevice", val("protoDeviceType") || protocolDeviceTypeFromSite(selectedSite) || val("protoDeviceTypeSelect") || val("protoDeviceSelect") || siteSourceLabel(selectedSite));
   set("protoSummarySerial", val("protoSerial"));
   set("protoSummaryLocation", val("protoPbzLocation"));
   set("protoSummaryPeriod", val("protoPeriod"));
@@ -11699,8 +11725,8 @@ function protocolPayload(){
     siteSource:selectedSite?.zdroj || "",
     technicianEmail:currentUser?.email || lastKnownUserEmail() || "",
     date:val("protoDate"),
-    selectedDevice:val("protoDeviceType") || siteSourceLabel(selectedSite) || val("protoDeviceTypeSelect") || val("protoDeviceSelect"),
-    deviceType:val("protoDeviceType") || protocolDeviceTypeFromSite(selectedSite) || siteSourceLabel(selectedSite),
+    selectedDevice:val("protoDeviceType") || protocolDeviceTypeFromSite(selectedSite) || val("protoDeviceTypeSelect") || val("protoDeviceSelect") || siteSourceLabel(selectedSite),
+    deviceType:val("protoDeviceType") || protocolDeviceTypeFromSite(selectedSite) || sourceTypeTextFromRaw(selectedSite?.raw || {}) || siteSourceLabel(selectedSite),
     serial:val("protoSerial"),
     seal:val("protoSeal"),
     place:val("protoPlace"),
@@ -11919,6 +11945,7 @@ document.getElementById("protocolForm").addEventListener("submit",async e=>{
       if(!embeddedOk) throw e;
     }
     await updateSiteControlDateFromProtocol(payload,selectedSite,{clearManualStatus:!editing});
+    applyProtocolFieldsToRows(payload,selectedSite);
     clearProtocolDraft(selectedSite);
     refreshSelectedDetailDataView();
     st.textContent=editing ? "Protokol upraven." : "Protokol uložen.";
@@ -14540,7 +14567,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-12-protocol-device-source-v33";
+  const serviceWorkerBuildVersion="2026-08-12-editable-protocol-device-v34";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;
