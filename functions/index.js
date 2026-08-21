@@ -7,8 +7,6 @@ const SMTP_PORT = defineSecret("SMTP_PORT");
 const SMTP_USER = defineSecret("SMTP_USER");
 const SMTP_PASS = defineSecret("SMTP_PASS");
 
-const MAIL_TO = "iva.glozova@astip.cz";
-const MAIL_CC = "jan.soldan@astip.cz";
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
@@ -26,6 +24,11 @@ function astipEmail(request) {
   return email.endsWith("@astip.cz") ? email : "";
 }
 
+function cleanRecipientEmail(value) {
+  const email = Array.isArray(value) ? stringValue(value[0]).toLowerCase() : stringValue(value).toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
 exports.sendProtocolMail = onCall({
   region: "europe-west1",
   invoker: "public",
@@ -41,6 +44,10 @@ exports.sendProtocolMail = onCall({
   const data = request.data || {};
   const subject = stringValue(data.subject) || "Protokol zkousky provozuschopnosti";
   const body = stringValue(data.body) || "V priloze posilam vyexportovany protokol.";
+  const recipientEmail = cleanRecipientEmail(data.recipientEmail || data.to || data.email);
+  if (!recipientEmail) {
+    throw new HttpsError("invalid-argument", "Chybi cilovy e-mail pro odeslani protokolu.");
+  }
   const fileBase64 = stringValue(data.fileBase64);
   if (!fileBase64) {
     throw new HttpsError("invalid-argument", "Chybi Word protokol k odeslani.");
@@ -66,8 +73,7 @@ exports.sendProtocolMail = onCall({
   await transporter.sendMail({
     from: `"SZZ servisni mapa" <${smtpUser}>`,
     replyTo: senderEmail,
-    to: MAIL_TO,
-    cc: MAIL_CC,
+    to: recipientEmail,
     subject,
     text: body,
     attachments: [{
@@ -79,7 +85,6 @@ exports.sendProtocolMail = onCall({
 
   return {
     ok: true,
-    to: MAIL_TO,
-    cc: MAIL_CC
+    to: recipientEmail
   };
 });

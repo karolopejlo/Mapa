@@ -722,6 +722,15 @@ button,input,select,textarea{
   margin:5px 0 0;
   color:#64748b;
 }
+.client-signature-fields{
+  grid-column:1 / -1;
+}
+.client-signature-fields[hidden]{
+  display:none !important;
+}
+#showClientSignatureBtn{
+  align-self:end;
+}
 #protocolDeviceSelectWrap.hidden{
   display:none !important;
 }
@@ -998,6 +1007,27 @@ button,input,select,textarea{
 }
 .history-actions button{
   min-height:36px;
+}
+.history-handoff{
+  width:100%;
+  display:flex;
+  justify-content:flex-end;
+  margin-top:4px;
+}
+.history-handoff label{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:36px;
+  padding:8px 12px;
+  border:1px solid #cbd5e1;
+  border-radius:8px;
+  background:#f8fafc;
+  font-weight:800;
+  color:#334155;
+}
+.history-handoff input{
+  width:auto;
 }
 .history-counter{
   text-align:center;
@@ -2013,22 +2043,21 @@ button,input,select,textarea{
           <option value="zdroj byl odzkoušen na prázdno">zdroj byl odzkoušen na prázdno</option>
         </select>
       </div>
-      <div class="checkrow">
-        <input type="checkbox" id="protoHandedForProcessing">
-        <label for="protoHandedForProcessing" style="margin:0">Předán protokol ke zpracování</label>
-      </div>
     </div>
 
     <div class="edit-grid">
-      <div><label>Za objednavatele</label><input id="protoClientSign" placeholder="čitelně + podpis"></div>
       <div><label>Kontrolu provedl</label><input id="protoTechSign"></div>
-      <div class="signature-pad-wrap">
-        <label>Elektronický podpis objednavatele</label>
-        <canvas id="protoClientSignaturePad" width="900" height="260"></canvas>
-        <div class="signature-pad-actions">
-          <button class="secondary" type="button" id="clearClientSignatureBtn">Vymazat podpis</button>
+      <button class="secondary" type="button" id="showClientSignatureBtn">Podpis zákazníka</button>
+      <div class="client-signature-fields" id="clientSignatureFields" hidden>
+        <div><label>Za objednavatele</label><input id="protoClientSign" placeholder="čitelně + podpis"></div>
+        <div class="signature-pad-wrap">
+          <label>Elektronický podpis objednavatele</label>
+          <canvas id="protoClientSignaturePad" width="900" height="260"></canvas>
+          <div class="signature-pad-actions">
+            <button class="secondary" type="button" id="clearClientSignatureBtn">Vymazat podpis</button>
+          </div>
+          <p class="small signature-pad-hint">Podepiš prstem nebo elektronickou tužkou.</p>
         </div>
-        <p class="small signature-pad-hint">Podepiš prstem nebo elektronickou tužkou.</p>
       </div>
     </div>
 
@@ -3086,8 +3115,8 @@ window.map=L.map("map").setView([49.9,15.5],7);
 const map=window.map;
 const MAP_TILE_URL_TEMPLATE="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAP_TILE_CACHE_NAME="astip-szz-map-tiles-v1";
-const APP_BUILD_VERSION="2026-08-21-protocol-source-status-v37";
-const APP_SHELL_CACHE_NAME="astip-szz-v37-static";
+const APP_BUILD_VERSION="2026-08-21-protocol-history-mail-signature-v38";
+const APP_SHELL_CACHE_NAME="astip-szz-v38-static";
 const CZECH_OFFLINE_TILE_VERSION="cz-v1-z6-11";
 const CZECH_OFFLINE_DONE_KEY="astipCzechOfflineMapVersion";
 const CZECH_OFFLINE_BOUNDS={west:12.05,south:48.45,east:18.95,north:51.15};
@@ -7041,10 +7070,36 @@ function protocolEditId(){
   return safe(protocolEditState && protocolEditState.id);
 }
 
+function showClientSignatureFields(options={}){
+  const wrap=document.getElementById("clientSignatureFields");
+  if(wrap) wrap.hidden=false;
+  const btn=document.getElementById("showClientSignatureBtn");
+  if(btn) btn.style.display="none";
+  initProtocolClientSignaturePad();
+  if(options.focus!==false){
+    const input=document.getElementById("protoClientSign");
+    if(input) input.focus();
+  }
+}
+
+function hideClientSignatureFields(){
+  const wrap=document.getElementById("clientSignatureFields");
+  if(wrap) wrap.hidden=true;
+  const btn=document.getElementById("showClientSignatureBtn");
+  if(btn) btn.style.display="";
+}
+
+function resetClientSignatureFields(){
+  hideClientSignatureFields();
+  clearProtocolClientSignature();
+  setProtocolFieldValue("protoClientSign","");
+}
+
 function drawSavedProtocolSignature(dataUrl){
   const canvas=protocolSignatureCanvas();
   const ctx=protocolSignatureContext();
   if(!canvas || !ctx || !safe(dataUrl)) return;
+  showClientSignatureFields({focus:false});
   const img=new Image();
   img.onload=()=>{
     ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -7060,7 +7115,7 @@ function drawSavedProtocolSignature(dataUrl){
 function fillProtocolFormFromHistory(protocol={}){
   const form=document.getElementById("protocolForm");
   if(form) form.reset();
-  clearProtocolClientSignature();
+  resetClientSignatureFields();
   populateProtocolDeviceSelect();
   setProtocolFieldValue("protoDate",dateInputValueFromAny(protocol.date || protocol.checkDate || protocol.createdAt));
   setProtocolFieldValue("protoPlace",protocol.place || protocol.siteAddress || protocol.siteName || selectedSite?.adresa || "");
@@ -7102,9 +7157,11 @@ function fillProtocolFormFromHistory(protocol={}){
   setProtocolFieldValue("protoCustomerNote",protocol.customerNote || protocol.customerNotes || protocol.noteForCustomer || "");
   setProtocolFieldValue("protoSourceStatus",protocol.sourceStatus || protocol.sourceResult || (protocol.stopState === true ? "stop" : "ok") || "ok");
   setProtocolFieldValue("protoTestMethod",protocol.sourceTestMethod || protocol.testMethod || "");
-  setInputChecked("protoHandedForProcessing",protocol.handedForProcessing || protocol.predanKeZpracovani);
   setProtocolFieldValue("protoClientSign",protocol.clientSign || protocol.customer || "");
   setProtocolFieldValue("protoTechSign",protocol.techSign || protocol.technician || protocol.createdBy || protocol.technicianEmail || currentUser?.email || "");
+  if(safe(protocol.clientSign) || safe(protocol.clientSignatureDataUrl)){
+    showClientSignatureFields({focus:false});
+  }
 
   const backed=protocol.backedDevices || {};
   setInputChecked("protoLift",backed.lift);
@@ -7439,17 +7496,30 @@ function base64ToBytes(base64){
   return bytes;
 }
 
-function protocolSignatureImageBytes(protocol={}){
-  const dataUrl=safe(protocol.clientSignatureDataUrl || protocol.clientSignature || "");
-  const match=dataUrl.match(/^data:image\/png;base64,(.+)$/);
+function imageDataUrlBytes(dataUrl){
+  const clean=safe(dataUrl);
+  const match=clean.match(/^data:image\/(?:png|jpeg|jpg|webp);base64,(.+)$/i);
   if(!match) return null;
   try{return base64ToBytes(match[1]);}catch(e){return null;}
+}
+
+function protocolSignatureImageBytes(protocol={}){
+  const dataUrl=safe(protocol.clientSignatureDataUrl || protocol.clientSignature || "");
+  return imageDataUrlBytes(dataUrl);
+}
+
+function protocolTechnicianSignatureImageBytes(protocol={}){
+  const dataUrl=safe(protocol.techSignatureDataUrl || protocol.technicianSignatureDataUrl || protocol.technicianSignature || "");
+  return imageDataUrlBytes(dataUrl);
 }
 
 function wordSignatureImageRun(relId="rIdSignature",options={}){
   const cx=Number(options.cx) || 2600000;
   const cy=Number(options.cy) || 760000;
-  return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="7" name="Podpis objednavatele"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="7" name="podpis-objednavatele.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  const docId=Number(options.docId) || 7;
+  const docName=wordXmlEscape(options.docName || "Podpis objednavatele");
+  const fileName=wordXmlEscape(options.fileName || "podpis-objednavatele.png");
+  return `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${docId}" name="${docName}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${docId}" name="${fileName}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
 }
 
 function wordClientSignatureCellXml(protocol={},options={}){
@@ -7463,6 +7533,21 @@ function wordClientSignatureCellXml(protocol={},options={}){
   return parts.join("") || wordParagraph(" ",{size:18,after:0});
 }
 
+function wordTechnicianSignatureCellXml(protocol={},tech=""){
+  const parts=[];
+  if(safe(tech)) parts.push(wordParagraph(tech,{size:20,after:35}));
+  if(protocolTechnicianSignatureImageBytes(protocol)){
+    parts.push(wordParagraphXml(wordSignatureImageRun("rIdTechSignature",{
+      cx:2800000,
+      cy:820000,
+      docId:8,
+      docName:"Podpis technika",
+      fileName:"podpis-technika.png"
+    }),{after:0}));
+  }
+  return parts.join("") || wordParagraph(" ",{size:20,after:0});
+}
+
 function wordSignatureGrid(protocol={}){
   const tech=protocol.techSign || protocol.technician || currentUser?.displayName || currentUser?.email || "";
   return wordTable([
@@ -7472,7 +7557,7 @@ function wordSignatureGrid(protocol={}){
     ],
     [
       {xml:wordClientSignatureCellXml(protocol),height:1050},
-      {text:protocolExportValue(tech) || " ",size:20,height:1050}
+      {xml:wordTechnicianSignatureCellXml(protocol,tech),height:1050}
     ]
   ],[4815,4815]) + wordParagraph("(čitelně + podpis)",{size:16,after:35});
 }
@@ -7665,8 +7750,13 @@ function buildProtocolWordEntries(protocol={}){
   const now=new Date().toISOString();
   const title=`Protokol ${protocol.siteName || protocol.place || ""}`.trim();
   const signatureBytes=protocolSignatureImageBytes(protocol);
-  const imageContentType=signatureBytes ? '<Default Extension="png" ContentType="image/png"/>' : "";
-  const imageRel=signatureBytes ? '<Relationship Id="rIdSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/client-signature.png"/>' : "";
+  const techSignatureBytes=protocolTechnicianSignatureImageBytes(protocol);
+  const hasImages=!!(signatureBytes || techSignatureBytes);
+  const imageContentType=hasImages ? '<Default Extension="png" ContentType="image/png"/>' : "";
+  const imageRel=[
+    signatureBytes ? '<Relationship Id="rIdSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/client-signature.png"/>' : "",
+    techSignatureBytes ? '<Relationship Id="rIdTechSignature" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/technician-signature.png"/>' : ""
+  ].filter(Boolean).join("");
   const entries=[
     {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${imageContentType}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`},
     {name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},
@@ -7678,6 +7768,7 @@ function buildProtocolWordEntries(protocol={}){
     {name:"docProps/app.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Servis záložních zdrojů - mapa FZ</Application></Properties>`}
   ];
   if(signatureBytes) entries.push({name:"word/media/client-signature.png",data:signatureBytes});
+  if(techSignatureBytes) entries.push({name:"word/media/technician-signature.png",data:techSignatureBytes});
   return entries;
 }
 
@@ -8725,8 +8816,14 @@ async function exportOfficialProtocol(mode="ok"){
   showSaveConfirmation("Doklad exportován do Wordu.");
 }
 
-function confirmProtocolMailSend(){
-  return confirm("Opravdu chcete odeslat protokol na mail iva.glozova@astip.cz?");
+function askProtocolMailRecipient(defaultEmail=""){
+  const email=safe(prompt("Zadej e-mail, kam poslat protokol:",defaultEmail || ""));
+  if(!email) return "";
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    showSaveConfirmation("E-mail nemá správný formát.");
+    return "";
+  }
+  return email.toLowerCase();
 }
 
 function utf8Bytes(text){
@@ -8855,27 +8952,108 @@ function downloadBlobFile(filename,blob){
   },0);
 }
 
-function preparedProtocolExport(protocol){
+function protocolTechnicianIdentityCandidates(protocol={}){
+  const values=[
+    protocol.technicianEmail,
+    protocol.createdBy,
+    protocol.updatedBy,
+    currentUser?.email,
+    lastKnownUserEmail(),
+    protocol.techSign,
+    protocol.technician,
+    currentUser?.displayName
+  ];
+  const out=[];
+  values.forEach(value=>{
+    const clean=safe(value).toLowerCase();
+    if(clean && !out.includes(clean)) out.push(clean);
+    const safeId=clean.replace(/[\/#?\[\]]/g,"_");
+    if(safeId && !out.includes(safeId)) out.push(safeId);
+  });
+  return out;
+}
+
+function signatureDataUrlFromRecord(record={}){
+  const fields=["signatureDataUrl","techSignatureDataUrl","dataUrl","imageDataUrl","podpisDataUrl","signature","podpis"];
+  for(const field of fields){
+    const value=safe(record[field]);
+    if(/^data:image\//i.test(value)) return value;
+  }
+  return "";
+}
+
+async function imageUrlToDataUrl(url){
+  const clean=safe(url);
+  if(!/^https?:\/\//i.test(clean)) return "";
+  try{
+    const res=await fetch(clean,{mode:"cors"});
+    if(!res.ok) return "";
+    const blob=await res.blob();
+    return await new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(String(reader.result || ""));
+      reader.onerror=()=>reject(reader.error || new Error("Podpis nejde načíst."));
+      reader.readAsDataURL(blob);
+    });
+  }catch(e){
+    console.warn("Podpis technika z URL nejde načíst",e);
+    return "";
+  }
+}
+
+async function technicianSignatureDataUrlForProtocol(protocol={}){
+  if(safe(protocol.techSignatureDataUrl || protocol.technicianSignatureDataUrl)) return safe(protocol.techSignatureDataUrl || protocol.technicianSignatureDataUrl);
+  if(!firebaseReady || !db || !fb.fsMod || navigator.onLine===false) return "";
+  try{
+    const {doc,getDoc}=fb.fsMod;
+    const collections=["technicianSignatures","technician_signatures","technicians"];
+    const ids=protocolTechnicianIdentityCandidates(protocol);
+    for(const collectionName of collections){
+      for(const id of ids){
+        if(!id) continue;
+        const snap=await getDoc(doc(db,collectionName,id));
+        if(!snap.exists()) continue;
+        const data=snap.data() || {};
+        const direct=signatureDataUrlFromRecord(data);
+        if(direct) return direct;
+        const url=safe(data.signatureUrl || data.imageUrl || data.url || data.downloadUrl);
+        const fromUrl=await imageUrlToDataUrl(url);
+        if(fromUrl) return fromUrl;
+      }
+    }
+  }catch(e){
+    console.warn("Podpis technika se nepodařilo načíst",e);
+  }
+  return "";
+}
+
+async function enrichProtocolWithTechnicianSignature(protocol={}){
+  const signature=await technicianSignatureDataUrlForProtocol(protocol);
+  return signature ? {...protocol,techSignatureDataUrl:signature,technicianSignatureDataUrl:signature} : protocol;
+}
+
+async function preparedProtocolExport(protocol){
   if(!protocol) return null;
   const filled={
     ...protocol,
     createdBy:protocol.createdBy || protocol.technicianEmail || currentUser?.email || ""
   };
+  const enriched=await enrichProtocolWithTechnicianSignature(filled);
   const baseName=filled.deviceType || filled.selectedDevice || filled.siteSource || filled.siteName || selectedSite?.adresa || "protokol";
   const fileName=`protokol-${protocolExportDatePart(filled)}-${protocolWordFileNamePart(baseName)}.docx`;
   return {
-    filled,
+    filled:enriched,
     fileName,
-    blob:buildProtocolWordBlob(filled)
+    blob:buildProtocolWordBlob(enriched)
   };
 }
 
-function exportProtocolToWord(protocol){
+async function exportProtocolToWord(protocol){
   if(!protocol){
     showSaveConfirmation("Není vybraný protokol k exportu.");
     return;
   }
-  const prepared=preparedProtocolExport(protocol);
+  const prepared=await preparedProtocolExport(protocol);
   downloadBlobFile(prepared.fileName,prepared.blob);
   showSaveConfirmation("Protokol exportován do Wordu.");
 }
@@ -8916,26 +9094,33 @@ function blobToBase64(blob){
   });
 }
 
-async function sendProtocolByMail(protocol){
+async function sendProtocolByMail(protocol,recipientEmail){
   if(!protocol){
     showSaveConfirmation("Není vybraný protokol k poslání.");
+    return;
+  }
+  const recipient=safe(recipientEmail).toLowerCase();
+  if(!recipient){
+    showSaveConfirmation("Není zadaný cílový e-mail.");
     return;
   }
   if(!firebaseReady || !fb.fnMod || !mailFunctions){
     throw new Error("Odesílací funkce není dostupná. Nejdřív je potřeba nasadit Firebase Function sendProtocolMail.");
   }
-  const prepared=preparedProtocolExport(protocol);
+  const prepared=await preparedProtocolExport(protocol);
   const st=document.getElementById("protocolStatus");
   if(st) st.textContent="Odesílám protokol na mail...";
   const sendMail=fb.fnMod.httpsCallable(mailFunctions,"sendProtocolMail");
   await sendMail({
+    recipientEmail:recipient,
+    to:recipient,
     subject:protocolMailSubject(prepared.filled),
     body:protocolMailBody(prepared.filled,prepared.fileName),
     fileName:prepared.fileName,
     fileBase64:await blobToBase64(prepared.blob)
   });
-  if(st) st.textContent="Protokol byl odeslán na iva.glozova@astip.cz, kopie na jan.soldan@astip.cz.";
-  showSaveConfirmation("Protokol odeslán na mail.");
+  if(st) st.textContent=`Protokol byl odeslán na ${recipient}.`;
+  showSaveConfirmation(`Protokol odeslán na ${recipient}.`);
 }
 
 function protocolMailErrorText(error){
@@ -9782,6 +9967,9 @@ function renderHistory(){
     canExportProtocol ? '<button class="secondary" type="button" id="mailHistoryProtocolBtn">Poslat na mail</button>' : "",
     canDeleteProtocol ? '<button class="danger" type="button" id="deleteHistoryProtocolBtn">Smazat protokol</button>' : ""
   ].filter(Boolean).join("");
+  const historyHandoff=canExportProtocol
+    ? `<div class="history-handoff"><label><input type="checkbox" id="historyHandedForProcessing" ${protocolHandedForProcessing(d) ? "checked" : ""}> Předán protokol ke zpracování</label></div>`
+    : "";
   const rows=[
     ["Typ záznamu", d._type || "Záznam"],
     ["Datum", historyDateLabel(d)],
@@ -9795,7 +9983,6 @@ function renderHistory(){
     ["Výsledek", d.result || d.conditions || ""],
     ["Stav zdroje po kontrole", d.sourceResult || (d.sourceStatus ? (normalizeProtocolSourceStatus(d.sourceStatus)==="stop" ? "Zdroj je ve stop stavu" : "Zdroj je v pořádku") : "")],
     ["Způsob odzkoušení", d.sourceTestMethod || d.testMethod || ""],
-    ["Předán ke zpracování", d.handedForProcessing || d.predanKeZpracovani ? "ano" : ""],
     ["Reset diagnostiky", d.resetDiagnostics || ""],
     ["Baterie", [d.batteryCount ? `${d.batteryCount} ks` : "", d.capacityAh ? `${d.capacityAh} Ah` : "", d.setCount ? `${d.setCount} sad` : ""].filter(Boolean).join(", ")],
     ["Měření AC", [d.inputVac&&`vstup ${d.inputVac} Vac`, d.output1Vac&&`výstup 1 ${d.output1Vac} Vac`, d.output2Vac&&`výstup 2 ${d.output2Vac} Vac`].filter(Boolean).join(", ")],
@@ -9827,6 +10014,7 @@ function renderHistory(){
       ${sourceStatusBadge}
       ${photos.length ? `<div class="history-photos">${photos.map((url,idx)=>`<a href="${esc(url)}" target="_blank"><img src="${esc(url)}" alt="Foto ${idx+1}"></a>`).join("")}</div>` : ""}
       ${historyActionButtons ? `<div class="history-actions">${historyActionButtons}</div>` : ""}
+      ${historyHandoff}
     </div>
   `;
 
@@ -9845,13 +10033,24 @@ function renderHistory(){
   const edit=document.getElementById("editHistoryProtocolBtn");
   if(edit) edit.onclick=editCurrentHistoryProtocol;
   const exp=document.getElementById("exportHistoryProtocolBtn");
-  if(exp) exp.onclick=()=>exportProtocolToWord(detailHistoryItems[detailHistoryIndex]);
+  if(exp) exp.onclick=async()=>{
+    exp.disabled=true;
+    try{
+      await exportProtocolToWord(detailHistoryItems[detailHistoryIndex]);
+    }catch(e){
+      showSaveConfirmation("Export protokolu se nepodařil.");
+      console.warn("Export protokolu selhal",e);
+    }finally{
+      exp.disabled=false;
+    }
+  };
   const mail=document.getElementById("mailHistoryProtocolBtn");
   if(mail) mail.onclick=async()=>{
-    if(!confirmProtocolMailSend()) return;
+    const recipient=askProtocolMailRecipient("");
+    if(!recipient) return;
     mail.disabled=true;
     try{
-      await sendProtocolByMail(detailHistoryItems[detailHistoryIndex]);
+      await sendProtocolByMail(detailHistoryItems[detailHistoryIndex],recipient);
     }catch(e){
       const st=document.getElementById("protocolStatus");
       const message=protocolMailErrorText(e);
@@ -9860,6 +10059,12 @@ function renderHistory(){
     }finally{
       mail.disabled=false;
     }
+  };
+  const handoff=document.getElementById("historyHandedForProcessing");
+  if(handoff) handoff.onchange=async e=>{
+    handoff.disabled=true;
+    await saveDetailProtocolHandoff(detailHistoryItems[detailHistoryIndex],e.target.checked);
+    renderHistory();
   };
   updateOfficialProtocolSourceInfo();
 }
@@ -10254,6 +10459,77 @@ async function saveMainProtocolProcessed(item={},processed=false){
     }
   }else{
     showSaveConfirmation(processed ? "Protokol označen lokálně jako zpracovaný." : "Zpracování zrušeno lokálně.");
+  }
+}
+
+async function saveDetailProtocolHandoff(item={},handed=false){
+  const id=historyItemStableId(item);
+  if(!id || !isProtocolHistoryItem(item)) return;
+  const isHanded=handed===true;
+  const updated={
+    ...item,
+    handedForProcessing:isHanded,
+    predanKeZpracovani:isHanded,
+    updatedAt:new Date().toISOString(),
+    updatedBy:currentUserEmail()
+  };
+  detailHistoryItems=detailHistoryItems.map(entry=>historyItemStableId(entry)===id ? updated : entry);
+  mainProtocolHistoryItems=mainProtocolHistoryItems.map(entry=>historyItemStableId(entry)===id ? {...entry,handedForProcessing:isHanded,predanKeZpracovani:isHanded} : entry);
+  if(selectedSite){
+    removeSiteLocalItem("protocolHistory",id,selectedSite);
+    appendSiteLocalArray("protocolHistory",updated,selectedSite,120);
+    if(Array.isArray(selectedSite.firebaseData?.protocolHistory)){
+      selectedSite.firebaseData.protocolHistory=selectedSite.firebaseData.protocolHistory.map(entry=>historyItemStableId(entry)===id ? updated : entry);
+    }
+    if(Array.isArray(selectedSite.firebaseData?.protocolRefs)){
+      selectedSite.firebaseData.protocolRefs=selectedSite.firebaseData.protocolRefs.map(entry=>historyItemStableId(entry)===id ? {...entry,handedForProcessing:isHanded,predanKeZpracovani:isHanded} : entry);
+    }
+  }
+
+  if(firebaseReady && db && fb.fsMod && currentUser && navigator.onLine!==false){
+    try{
+      const {doc,setDoc,serverTimestamp}=fb.fsMod;
+      const patch={
+        handedForProcessing:isHanded,
+        predanKeZpracovani:isHanded,
+        updatedAt:serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+        updatedBy:currentUser.email || currentUserEmail()
+      };
+      if(safe(item._id) && item._collection!=="protocolRefs"){
+        await setDoc(doc(db,"protocols",safe(item._id)),patch,{merge:true}).catch(()=>{});
+      }
+      const docId=safe(item.firebaseDocId || item.siteDocId || selectedSiteDocId(selectedSite));
+      if(docId && safe(item._id)){
+        await setDoc(doc(db,"sitesUnified",docId,"protocols",safe(item._id)),patch,{merge:true}).catch(()=>{});
+        await appendEmbeddedSiteItem("protocolRefs",{
+          _id:safe(item._id),
+          siteId:updated.siteId,
+          siteKey:updated.siteKey,
+          firebaseDocId:updated.firebaseDocId || docId,
+          date:updated.date,
+          createdAt:updated.createdAt || updated.savedAt,
+          savedAt:updated.savedAt || updated.createdAt,
+          createdBy:updated.createdBy || updated.technicianEmail || "",
+          technicianEmail:updated.technicianEmail || updated.createdBy || "",
+          siteName:updated.siteName || updated.place || "",
+          siteAddress:updated.place || updated.siteAddress || "",
+          deviceType:updated.deviceType || updated.selectedDevice || "",
+          serial:updated.serial || "",
+          handedForProcessing:isHanded,
+          predanKeZpracovani:isHanded,
+          sourceStatus:updated.sourceStatus || "",
+          sourceResult:updated.sourceResult || ""
+        },selectedSite).catch(()=>{});
+        if(Array.isArray(selectedSite?.firebaseData?.protocolHistory) && selectedSite.firebaseData.protocolHistory.some(entry=>historyItemStableId(entry)===id)){
+          await appendEmbeddedSiteItem("protocolHistory",updated,selectedSite).catch(()=>{});
+        }
+      }
+      showSaveConfirmation(isHanded ? "Protokol označen jako předaný ke zpracování." : "Předání protokolu zrušeno.");
+    }catch(e){
+      showSaveConfirmation(isHanded ? "Předání uloženo lokálně." : "Zrušení předání uloženo lokálně.");
+    }
+  }else{
+    showSaveConfirmation(isHanded ? "Předání uloženo lokálně." : "Zrušení předání uloženo lokálně.");
   }
 }
 
@@ -10789,6 +11065,10 @@ function initProtocolClientSignaturePad(){
     clearProtocolClientSignature();
     scheduleProtocolDraftSave();
   };
+}
+const showClientSignatureBtn=document.getElementById("showClientSignatureBtn");
+if(showClientSignatureBtn){
+  showClientSignatureBtn.addEventListener("click",()=>showClientSignatureFields());
 }
 function protocolClientSignatureDataUrl(){
   const canvas=protocolSignatureCanvas();
@@ -11958,7 +12238,7 @@ async function prefillProtocol(){
   document.getElementById("protoPbzLocation").value = sourceLocation;
   setProtocolFieldValue("protoSourceStatus","ok");
   setProtocolFieldValue("protoTestMethod","");
-  setInputChecked("protoHandedForProcessing",false);
+  resetClientSignatureFields();
 
   // předvyplnění z dat v indexu / CSV
   setIfEmpty("protoBatteryCount", pickRawValue(raw,["Počet baterií","Pocet baterii","Počet baterií (ks)","Baterie ks","Počet AKU"]));
@@ -12060,6 +12340,7 @@ async function prefillProtocol(){
 function protocolPayload(){
   const original=protocolEditState?.item || {};
   const signature=protocolClientSignatureDataUrl() || original.clientSignatureDataUrl || "";
+  const handedForProcessing=original.handedForProcessing===true || original.predanKeZpracovani===true || original.sentForProcessing===true;
   const nowIso=new Date().toISOString();
   const originalCreatedAt=original.createdAt && typeof original.createdAt.toDate==="function" ? original.createdAt.toDate().toISOString() : (safe(original.createdAt) || nowIso);
   return {
@@ -12151,8 +12432,8 @@ function protocolPayload(){
     sourceStatus:normalizeProtocolSourceStatus(val("protoSourceStatus")),
     sourceResult:normalizeProtocolSourceStatus(val("protoSourceStatus"))==="stop" ? "Zdroj je ve stop stavu" : "Zdroj je v pořádku",
     sourceTestMethod:normalizeProtocolSourceStatus(val("protoSourceStatus"))==="stop" ? "" : val("protoTestMethod"),
-    handedForProcessing:checkbox("protoHandedForProcessing"),
-    predanKeZpracovani:checkbox("protoHandedForProcessing"),
+    handedForProcessing,
+    predanKeZpracovani:handedForProcessing,
     clientSign:val("protoClientSign"),
     clientSignatureDataUrl:signature,
     techSign:val("protoTechSign") || (currentUser?.displayName || currentUser?.email || lastKnownUserEmail() || ""),
@@ -12173,7 +12454,7 @@ function protocolPayloadFingerprint(payload={}){
 
 const exportProtocolFormBtn=document.getElementById("exportProtocolFormBtn");
 if(exportProtocolFormBtn){
-  exportProtocolFormBtn.addEventListener("click",()=>{
+  exportProtocolFormBtn.addEventListener("click",async()=>{
     const st=document.getElementById("protocolStatus");
     if(!selectedSite){
       if(st) st.textContent="Není vybrané místo.";
@@ -12181,7 +12462,16 @@ if(exportProtocolFormBtn){
     }
     const payload=protocolPayload();
     payload.createdBy=currentUser?.email || payload.technicianEmail || "";
-    exportProtocolToWord(payload);
+    exportProtocolFormBtn.disabled=true;
+    try{
+      await exportProtocolToWord(payload);
+    }catch(e){
+      if(st) st.textContent="Export protokolu se nepodařil.";
+      showSaveConfirmation("Export protokolu se nepodařil.");
+      console.warn("Export rozepsaného protokolu selhal",e);
+    }finally{
+      exportProtocolFormBtn.disabled=false;
+    }
   });
 }
 
@@ -12195,10 +12485,11 @@ if(mailProtocolFormBtn){
     }
     const payload=protocolPayload();
     payload.createdBy=currentUser?.email || payload.technicianEmail || "";
-    if(!confirmProtocolMailSend()) return;
+    const recipient=askProtocolMailRecipient("");
+    if(!recipient) return;
     mailProtocolFormBtn.disabled=true;
     try{
-      await sendProtocolByMail(payload);
+      await sendProtocolByMail(payload,recipient);
     }catch(e){
       const message=protocolMailErrorText(e);
       if(st) st.textContent=`Chyba odeslání e-mailu: ${message}`;
@@ -15033,7 +15324,7 @@ document.addEventListener("DOMContentLoaded",()=>{
 function registerSzzServiceWorker(){
   if(!("serviceWorker" in navigator) || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
   if(window.__szzServiceWorkerRegistrationPromise) return window.__szzServiceWorkerRegistrationPromise;
-  const serviceWorkerBuildVersion="2026-08-21-protocol-source-status-v37";
+  const serviceWorkerBuildVersion="2026-08-21-protocol-history-mail-signature-v38";
   const reloadKey=`astipSzzSwReloaded:${serviceWorkerBuildVersion}`;
   if(!window.__szzSwControllerChangeBound){
     window.__szzSwControllerChangeBound=true;

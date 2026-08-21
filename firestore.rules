@@ -12,6 +12,22 @@ service cloud.firestore {
       allow read, write: if astipUser();
     }
 
+    match /sitesUnified/{docId}/{subPath=**} {
+      allow read, write: if astipUser();
+    }
+
+    match /technicianSignatures/{docId} {
+      allow read, write: if astipUser();
+    }
+
+    match /technician_signatures/{docId} {
+      allow read, write: if astipUser();
+    }
+
+    match /technicians/{docId} {
+      allow read, write: if astipUser();
+    }
+
     match /siteEdits/{docId} {
       allow read, write: if astipUser();
     }
